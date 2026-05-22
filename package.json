@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "start:all": "pgrep -x ollama >/dev/null || ollama serve & next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

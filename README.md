@@ -118,7 +118,8 @@ State lives in `~/.mira/ig.json`, not in the repo or a database.
 
 | Command | Action |
 |---------|--------|
-| `npm run dev` | Start the dev server |
+| `npm run start:all` | Start Ollama (if not running) **and** the dev server together |
+| `npm run dev` | Start the dev server only |
 | `npm run build` | Production build |
 | `npm start` | Run the production build |
 | `npm run lint` | Lint |
