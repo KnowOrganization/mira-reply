@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mira — Instagram Auto-Reply
 
-## Getting Started
+> A personal AI that watches your Instagram comments, classifies intent, drafts human-sounding replies, and delivers links by DM — with a 3-panel review workspace so you stay in control.
 
-First, run the development server:
+<p>
+  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" />
+  <img alt="React" src="https://img.shields.io/badge/React-19-blue?logo=react" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-blue?logo=typescript" />
+  <img alt="Ollama" src="https://img.shields.io/badge/LLM-Ollama-orange" />
+</p>
+
+---
+
+## ✨ What it does
+
+- **Watches comments** on your Instagram posts via webhook + polling
+- **Classifies intent** — question, business inquiry, praise, personal, spam
+- **Drafts replies** with a local LLM, mirroring the commenter's language (English / Hinglish)
+- **Delivers links by DM** when a comment asks for one
+- **Knowledge base** — answers post-specific questions, asks the owner once when unsure, then serves every queued commenter
+- **Review workspace** — 3-panel triage UI to approve, edit, or send
+
+Reply modes: `shadow` (draft only) · `assisted` (approve before send) · `auto` (send immediately).
+
+---
+
+## 🧱 Requirements
+
+| Need | Why | Install |
+|------|-----|---------|
+| **Node.js 20+** | runs the app | https://nodejs.org |
+| **Ollama** | local LLM for replies + embeddings | https://ollama.com |
+| **Meta / Instagram app** | OAuth + webhook access | https://developers.facebook.com/apps |
+
+> ⚠️ **Ollama is required.** Every reply and knowledge search calls it. No Ollama → no replies.
+> To avoid installing it on every machine, point `OLLAMA_HOST` at one shared Ollama instance.
+
+Pull the models once:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+ollama pull qwen2.5:7b-instruct   # reply generation (~4.7 GB)
+ollama pull nomic-embed-text      # knowledge embeddings (~270 MB)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🚀 Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+# 1. Clone
+git clone https://github.com/Danyalsk/mira-reply.git
+cd mira-reply
 
-## Learn More
+# 2. Install dependencies
+npm install
 
-To learn more about Next.js, take a look at the following resources:
+# 3. Create your env file
+cp .env.local.example .env.local
+#    then open .env.local and fill in the values
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# 4. Make sure Ollama is running
+ollama serve        # (skip if it already runs as a service)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# 5. Start the app
+npm run dev
+```
 
-## Deploy on Vercel
+Open **http://localhost:3000**.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🔐 Environment variables
+
+Copy `.env.local.example` → `.env.local` and fill it in. **`.env.local` is gitignored — never commit real secrets.**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `META_APP_ID` | ✅ | Meta app ID — [developers.facebook.com/apps](https://developers.facebook.com/apps) |
+| `META_APP_SECRET` | ✅ | Meta app secret |
+| `NEXT_PUBLIC_BASE_URL` | ✅ | Public base URL — must match the OAuth redirect whitelisted in the Meta dashboard |
+| `META_WEBHOOK_VERIFY_TOKEN` | ✅ | Any random string — set the same value in the Meta dashboard |
+| `MIRA_REPLY_MODE` | ✅ | `shadow` · `assisted` · `auto` |
+| `OLLAMA_HOST` | ⬜ | Defaults to `http://localhost:11434` |
+| `OLLAMA_MODEL` | ⬜ | Defaults to `qwen2.5:7b-instruct` |
+| `OLLAMA_EMBED_MODEL` | ⬜ | Defaults to `nomic-embed-text` |
+
+> 🔒 **The Instagram access token is never an env var and is never committed.**
+> After you connect via OAuth, it is stored at `~/.mira/ig.json` (file mode `0600`) on your own machine only.
+
+---
+
+## 🔗 Connecting Instagram
+
+1. In the Meta dashboard, add the **Instagram API with Instagram Login** product.
+2. Whitelist the OAuth redirect: `<NEXT_PUBLIC_BASE_URL>/api/ig/callback`.
+3. For live comment ingestion, the Meta webhook needs a public URL — expose your dev server with a tunnel (e.g. `cloudflared tunnel`) and set `NEXT_PUBLIC_BASE_URL` to that tunnel URL.
+4. Start the app, click **Connect**, complete OAuth. The token lands in `~/.mira/ig.json`.
+
+---
+
+## 🗂️ Project structure
+
+```
+app/
+  api/ig/        Instagram routes — webhook, OAuth, drafts, posts, knowledge, stream
+  oauth/         OAuth completion page
+  privacy/ terms/  policy pages (required by Meta review)
+components/      UI — Workspace (3-panel triage), Dashboard, Brain, Chat
+lib/ig/          Pipeline — intent, llm, knowledge, dm, watcher, store, rulebook
+lib/             Shared — types, storage, utils
+```
+
+State lives in `~/.mira/ig.json`, not in the repo or a database.
+
+---
+
+## 📜 Scripts
+
+| Command | Action |
+|---------|--------|
+| `npm run dev` | Start the dev server |
+| `npm run build` | Production build |
+| `npm start` | Run the production build |
+| `npm run lint` | Lint |
+
+---
+
+## 🛠️ Tech stack
+
+Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Framer Motion · Ollama · Server-Sent Events
