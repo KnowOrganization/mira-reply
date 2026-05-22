@@ -14,6 +14,10 @@ type Props = {
 const PATTERN = [1, 0.7, 0.9, 0.62, 0.86, 0.76, 0.97, 0.66, 0.82, 0.72, 0.93, 0.64, 0.88];
 const SPOKES = 32;
 
+// Math.sin/cos differ in the last float digit between Node and the browser,
+// which breaks SSR hydration. Round to 3 decimals so both sides match.
+const r3 = (n: number) => Math.round(n * 1000) / 1000;
+
 export function MiraLogo({
   size = 28,
   showWordmark = false,
@@ -26,10 +30,10 @@ export function MiraLogo({
     const len = PATTERN[i % PATTERN.length];
     const r0 = 13;
     const r1 = 13 + len * 33;
-    const x0 = 50 + Math.cos(a) * r0;
-    const y0 = 50 + Math.sin(a) * r0;
-    const x1 = 50 + Math.cos(a) * r1;
-    const y1 = 50 + Math.sin(a) * r1;
+    const x0 = r3(50 + Math.cos(a) * r0);
+    const y0 = r3(50 + Math.sin(a) * r0);
+    const x1 = r3(50 + Math.cos(a) * r1);
+    const y1 = r3(50 + Math.sin(a) * r1);
     marks.push(
       <line
         key={i}
