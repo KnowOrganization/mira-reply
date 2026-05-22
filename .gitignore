@@ -30,8 +30,14 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files — NEVER commit real secrets; only the example template
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# local account/token store (Instagram access token lives here)
+.mira/
 
 # vercel
 .vercel
