@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "start:all": "pgrep -x ollama >/dev/null || ollama serve & next dev",
+    "start:all": "pgrep -x ollama >/dev/null || ollama serve & ngrok http 3000 --url=https://unveiled-walrus-blade.ngrok-free.dev & next dev",
+    "tunnel": "ngrok http 3000 --url=https://unveiled-walrus-blade.ngrok-free.dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
