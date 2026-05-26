@@ -1,39 +1,45 @@
+// Pipeline — Mira v2 orchestrator.
+//
+// Thin coordinator: reads store once, assembles context (cached), runs
+// perception (soul read), checks memory, plans actions, executes handlers,
+// applies safety gate, queues or auto-sends the result.
+//
+// Public API is UNCHANGED — watcher.ts and all API routes import from here.
+
 import {
   readStore,
   updateStore,
   type PendingDraft,
   type ReplyLog,
-  type Post,
-  type Clarification,
-  type PostLink,
+  type IgStore,
   type Settings,
 } from "./store";
 import { publish } from "./bus";
-import { replyToComment, hideComment } from "./graph";
-import { tryDM, tryPrivateReply } from "./dm";
-import { classifyIntent, quickClassify, type Intent } from "./intent";
-import { chat, chatJSON } from "./llm";
-import { recallFact, bumpFactHit } from "./knowledge";
+import { replyToComment } from "./graph";
+import { tryPrivateReply } from "./dm";
 import { primeSeen } from "./seen";
-import { sanitizeReply, styleSeed, tooSimilar, detectVibe } from "./variation";
-import { prefilter, firstEmoji, RULEBOOK_PROMPT } from "./rulebook";
+import { recallFact } from "./knowledge";
+import { firstEmoji } from "./rulebook";
+import { prefilter } from "./rulebook";
+import { chat } from "./llm";
 import {
   awaitSendSlot,
   withinDailyCap,
   recordDailyStat,
   shouldSkipForVariety,
 } from "./sender";
+import { quickClassify } from "./intent";
 
-// the owner's brain — personal + account facts, refreshed on each decide()
-// and injected into every reply so Mira sounds like the real owner.
-let _personaContext = "";
+// v2 modules
+import { assembleContext, invalidateAccountCache } from "./ctx";
+import { perceive } from "./perception";
+import { plan } from "./planner";
+import { handleReply } from "./handlers/reply";
+import { handleLink } from "./handlers/link";
+import { handleClarify } from "./handlers/clarify";
+import { handleSkip } from "./handlers/skip";
 
-const ANTI_AI_BLOCKLIST = [
-  "as an ai", "i am an ai", "i'm here to help", "i'd be happy to",
-  "happy to help", "feel free to", "absolutely!", "delve",
-  "i appreciate", "thanks for reaching out", "looking forward",
-  "hope this helps", "let me know if",
-];
+// ── Public types (unchanged) ───────────────────────────────────────────────
 
 export type DraftInput = {
   kind: "comment" | "dm";
@@ -44,148 +50,20 @@ export type DraftInput = {
   postId?: string;
 };
 
-function buildPostContext(post?: Post): string {
-  if (!post) return "";
-  const parts: string[] = [];
-  if (post.caption) parts.push(`Caption: "${post.caption}"`);
-  if (post.notes) parts.push(`Owner notes: ${post.notes}`);
-  if (post.qa.length) {
-    parts.push("Owner Q&A:\n" + post.qa.slice(-10).map((x) => `Q: ${x.q}\nA: ${x.a}`).join("\n"));
-  }
-  if (post.links?.length) {
-    parts.push("Saved links: " + post.links.map((l) => `${l.label} (${l.type})`).join(", "));
-  }
-  return parts.join("\n\n");
-}
+// DraftDecision kept for backward compat (agent.ts, API routes reference it)
+export type DraftDecision =
+  | { action: "send"; text: string; intent: string; dmText?: string }
+  | { action: "draft"; text: string; intent: string; reviewOnly?: boolean }
+  | { action: "clarify"; question: string; kind: "context" | "link"; intent: string }
+  | { action: "skip"; reason: string; intent: string; hide?: boolean };
 
-function buildSystemPrompt(args: {
-  toneSummary: string;
-  samples: string[];
-  postContext: string;
-  hint?: string;
-}) {
-  return [
-    "Tu Mira — Instagram account holder ke behalf reply karta hai.",
-    "LANGUAGE: mirror the commenter. If the comment is in English, reply in English. If it is in Hinglish / Roman Hindi, reply in Hinglish. Never switch the language they used. Casual, short, real. NO AI tone, NO formal.",
-    "Keep replies short and natural — usually 1-2 lines. For a real question, go as long as a proper answer genuinely needs. Natural emoji ok. Match owner style.",
-    RULEBOOK_PROMPT,
-    args.toneSummary && `Owner tone: ${args.toneSummary}`,
-    args.samples.length
-      ? `Owner past replies (style):\n${args.samples.slice(0, 5).map((s) => `- ${s}`).join("\n")}`
-      : "",
-    _personaContext &&
-      `ABOUT THE OWNER — Mira's brain. Use this to sound like them and answer questions about them:\n${_personaContext}`,
-    args.postContext && `POST CONTEXT:\n${args.postContext}`,
-    args.hint || "",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-}
+// ── Internal helpers ───────────────────────────────────────────────────────
 
-/**
- * The dedupe comparison set for an intent — recent sent replies AND drafts
- * still pending. Including pending drafts means a burst of similar comments
- * gets distinct replies even before any of them is sent.
- */
-async function recentForIntent(
-  intent: string
-): Promise<{ recent: string[]; threshold: number }> {
-  const s = await readStore();
-  const sent = s.history
-    .filter(
-      (h) =>
-        h.status === "sent" &&
-        h.kind === "comment" &&
-        h.intent === intent &&
-        !!h.outbound
-    )
-    .slice(0, 25)
-    .map((h) => h.outbound);
-  const pending = s.pendingDrafts
-    .filter((d) => d.kind === "comment" && d.intent === intent && !!d.draftText)
-    .map((d) => d.draftText);
-  return {
-    recent: [...pending, ...sent].slice(0, 40),
-    threshold: s.settings.uniquenessThreshold,
-  };
-}
-
-/** Sanitize a reply, then regenerate it if it's too close to recent replies. */
-async function dedupeReply(
-  raw: string,
-  intent: string,
-  sys: string,
-  userContent: string
-): Promise<string> {
-  let text = sanitizeReply(raw);
-  const { recent, threshold } = await recentForIntent(intent);
-  let tries = 0;
-  while (tries < 2 && tooSimilar(text, recent, threshold).similar) {
-    tries++;
-    const avoid = recent.slice(0, 6).map((r) => `- ${r}`).join("\n");
-    text = sanitizeReply(
-      await chat(
-        [
-          {
-            role: "system",
-            content: `${sys}\n\nThese recent replies are too repetitive — do NOT echo their wording or structure:\n${avoid}\nWrite something genuinely fresh.`,
-          },
-          { role: "user", content: userContent },
-        ],
-        { temperature: 0.97 }
-      )
-    );
-  }
-  return text;
-}
-
-/** Generate a customer-facing reply: style-seeded, sanitized, deduped. */
-async function variedChat(
-  sys: string,
-  userContent: string,
-  intent: string,
-  temp = 0.8
-): Promise<string> {
-  const seeded = `${sys}\n\n${styleSeed()}`;
-  const first = await chat(
-    [
-      { role: "system", content: seeded },
-      { role: "user", content: userContent },
-    ],
-    { temperature: temp }
-  );
-  return dedupeReply(first, intent, seeded, userContent);
-}
-
-function pickLinkForComment(text: string, links: PostLink[]): PostLink | null {
-  if (!links?.length) return null;
-  const t = text.toLowerCase();
-  const has = (kws: string[]) => kws.some((k) => t.includes(k));
-  if (has(["where", "location", "place", "kahan", "kaha"])) return links.find((l) => l.type === "location") || null;
-  if (has(["song", "music", "track", "gana", "gaana"])) return links.find((l) => l.type === "song") || null;
-  if (has(["bike", "gear", "camera", "lens", "ride"])) return links.find((l) => l.type === "gear") || null;
-  if (has(["buy", "shop", "price", "kahan se", "where to buy"])) return links.find((l) => l.type === "shop") || null;
-  return links[0];
-}
-
-/** Mode-aware gate: may this decision auto-send without owner approval? */
-function shouldAutoSend(settings: Settings, decision: DraftDecision): boolean {
-  const mode = settings.replyMode;
-  if (mode === "shadow") return false; // draft only, never send
-  // a review-only draft (flirty / sensitive) is never auto-sent, any mode
-  if (decision.action === "draft" && decision.reviewOnly) return false;
-  if (mode === "auto") return true; // send everything, drafts included
-  if (decision.action !== "send") return false; // balanced/assisted need confidence
-  if (mode === "balanced") return true; // acks + confident KB answers + links
-  // assisted — only generic acknowledgements, and only if enabled
-  return (
-    decision.intent === "simple_acknowledgement" && settings.autoReplySimpleAcks
-  );
-}
-
-async function recentRepliedTo(userId: string, withinMs: number): Promise<boolean> {
-  const s = await readStore();
-  // only an actual sent reply counts — a skipped/hidden log must not gate
+async function recentRepliedTo(
+  userId: string,
+  withinMs: number,
+  s: IgStore
+): Promise<boolean> {
   return s.history.some(
     (h) =>
       h.toUserId === userId &&
@@ -194,25 +72,27 @@ async function recentRepliedTo(userId: string, withinMs: number): Promise<boolea
   );
 }
 
-async function bumpCommenter(userId: string, username: string | undefined) {
-  await updateStore((s) => {
-    const ex = s.commenters[userId];
-    return {
-      ...s,
-      commenters: {
-        ...s.commenters,
-        [userId]: {
-          igUserId: userId,
-          username: username || ex?.username || "",
-          firstSeenAt: ex?.firstSeenAt || Date.now(),
-          lastSeenAt: Date.now(),
-          commentCount: (ex?.commentCount || 0) + 1,
-          repliedCount: ex?.repliedCount || 0,
-          themes: ex?.themes || [],
-        },
+async function bumpCommenter(
+  userId: string,
+  username: string | undefined,
+  s: IgStore
+) {
+  const ex = s.commenters[userId];
+  await updateStore((st) => ({
+    ...st,
+    commenters: {
+      ...st.commenters,
+      [userId]: {
+        igUserId: userId,
+        username: username || ex?.username || "",
+        firstSeenAt: ex?.firstSeenAt || Date.now(),
+        lastSeenAt: Date.now(),
+        commentCount: (ex?.commentCount || 0) + 1,
+        repliedCount: ex?.repliedCount || 0,
+        themes: ex?.themes || [],
       },
-    };
-  });
+    },
+  }));
 }
 
 async function bumpReplied(userId: string) {
@@ -229,228 +109,25 @@ async function bumpReplied(userId: string) {
   });
 }
 
-export type DraftDecision =
-  | { action: "send"; text: string; intent: Intent; dmText?: string }
-  | { action: "draft"; text: string; intent: Intent; reviewOnly?: boolean }
-  | { action: "clarify"; question: string; kind: "context" | "link"; intent: Intent }
-  | { action: "skip"; reason: string; intent: Intent; hide?: boolean };
-
-async function decide(input: DraftInput, post: Post | undefined): Promise<DraftDecision> {
-  const s = await readStore();
-
-  // rulebook prefilter — deterministic structural checks, no LLM spend
-  const pre = prefilter(input.text, s.account?.username || "");
-  if (pre?.action === "skip")
-    return { action: "skip", reason: pre.reason, intent: "unclear" };
-  if (pre?.action === "react") {
-    const raw = await chat([
-      {
-        role: "system",
-        content:
-          "Reply to this Instagram comment with EXACTLY ONE emoji that fits its vibe. Output only the emoji — no words, nothing else.",
-      },
-      { role: "user", content: input.text },
-    ]);
-    return {
-      action: "send",
-      text: firstEmoji(raw),
-      intent: "simple_acknowledgement",
-    };
-  }
-
-  // refresh the persona context from the brain (personal + account facts)
-  const personaNow = Date.now();
-  _personaContext = s.knowledge
-    .filter(
-      (f) =>
-        f.scope === "account" &&
-        (f.topic === "personal" || f.topic === "general") &&
-        !(f.expiresAt && f.expiresAt < personaNow)
-    )
-    .slice(0, 12)
-    .map((f) => `- ${f.question} — ${f.answer}`)
-    .join("\n");
-
-  const intent = await classifyIntent(input.text, !!(post?.notes || post?.qa.length));
-  const vibe = detectVibe(input.text);
-  const commenter = s.commenters[input.fromUserId];
-  const superfanNote =
-    commenter && commenter.commentCount >= 4
-      ? ` This commenter is a loyal regular (${commenter.commentCount} comments) — be extra warm and familiar.`
-      : "";
-
-  // spam / promo — skipped but left publicly visible (no auto-hide).
-  if (intent === "spam_promo")
-    return { action: "skip", reason: "spam", intent };
-  // troll / hate — hidden from public view. Never auto-blocks the user.
-  if (intent === "negative_attack")
-    return { action: "skip", reason: "troll", intent, hide: true };
-  // brand collab / sponsorship / business contact — never auto-handled; the
-  // owner takes these personally.
-  if (intent === "business_inquiry")
-    return { action: "skip", reason: "business_inquiry", intent };
-  // off-topic / follow-back / shoutout / buy-sell / religion / politics
-  if (intent === "chatter")
-    return { action: "skip", reason: "chatter", intent };
-  // sexual / creepy — hidden from public view, never replied to
-  if (intent === "inappropriate")
-    return { action: "skip", reason: "inappropriate", intent, hide: true };
-  // Personal / flirty message. In a DM this may be a genuine private
-  // relationship — Mira must never impersonate the owner there, so skip.
-  // On a PUBLIC comment it is just a familiar or flirty fan, who still
-  // deserves a warm, light reply.
-  if (intent === "personal_relationship") {
-    if (input.kind === "dm")
-      return { action: "skip", reason: "personal_relationship", intent };
-    const sys = buildSystemPrompt({
-      toneSummary: s.toneSummary,
-      samples: s.styleSamples,
-      postContext: buildPostContext(post),
-      hint: `Inbound is a flirty or familiar comment from a follower. Reply with ONE light, friendly, breezy line — warm but not flirting back. Max 6 words. No question, no emoji wall. Vibe: ${vibe}.${superfanNote}`,
-    });
-    const text = await variedChat(
-      sys,
-      `Inbound: "${input.text}"\nReply (just the line, no quotes):`,
-      "simple_acknowledgement",
-      0.9
-    );
-    // flirty replies are sensitive — always queued for owner review, even in
-    // auto mode (reviewOnly), never auto-sent
-    return {
-      action: "draft",
-      text,
-      intent: "simple_acknowledgement",
-      reviewOnly: true,
-    };
-  }
-
-  // Simple acknowledgement → short auto reply
-  if (intent === "simple_acknowledgement") {
-    // owner wants praise replies only when there is real text — skip bare
-    // emoji and one-word praise
-    const realWords = input.text
-      .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, " ")
-      .trim()
-      .split(/\s+/)
-      .filter((w) => /[a-zऀ-ॿ]/i.test(w));
-    if (realWords.length < 2)
-      return { action: "skip", reason: "low-value praise", intent };
-    const sys = buildSystemPrompt({
-      toneSummary: s.toneSummary,
-      samples: s.styleSamples,
-      postContext: buildPostContext(post),
-      hint: `Inbound is short praise/emoji. Reply with ONE warm casual ack. Max 6 words. NO question, NO emoji wall. Match the commenter's vibe: ${vibe}.${superfanNote}`,
-    });
-    const text = await variedChat(
-      sys,
-      `Inbound: "${input.text}"\nReply (just the ack, no quotes):`,
-      intent,
-      0.9
-    );
-    return { action: "send", text, intent };
-  }
-
-  // Link request → use ONLY this post's attached links (strictly post-scoped —
-  // a link attached to one post is never sent on another).
-  if (intent === "link_request") {
-    const postLink = pickLinkForComment(input.text, post?.links || []);
-    if (!postLink) {
-      // no link on this post → ask the owner to attach one
-      return {
-        action: "clarify",
-        kind: "link",
-        question: `Someone asked for a link on this post. Attach it (paste the URL):`,
-        intent,
-      };
-    }
-    const sys = buildSystemPrompt({
-      toneSummary: s.toneSummary,
-      samples: s.styleSamples,
-      postContext: buildPostContext(post),
-      hint: `Person asked for a link. Reply publicly in ONE casual line, mention you sent it to their DMs. Vibe: ${vibe}.${superfanNote}`,
-    });
-    const text = await variedChat(sys, `Inbound: "${input.text}"\nReply:`, intent);
-    return {
-      action: "send",
-      text,
-      dmText: `Hey! Here's the ${postLink.label}: ${postLink.url}`,
-      intent,
-    };
-  }
-
-  // Knowledge base first — cross-post recall. A fact Mira learned once, on any
-  // post, answers this comment now with no owner involvement.
-  const recalled = await recallFact(input.text, input.postId);
-  if (recalled) {
-    await bumpFactHit(recalled.fact.id);
-    const known = recalled.fact;
-    const sys = buildSystemPrompt({
-      toneSummary: s.toneSummary,
-      samples: s.styleSamples,
-      postContext: buildPostContext(post),
-      hint: `You already KNOW the answer. Fact: "${known.answer}". Reply naturally using it — 1-2 short lines, like a person, not a database lookup. Never say "according to my records". Vibe: ${vibe}.${superfanNote}`,
-    });
-    const text = await variedChat(
-      sys,
-      `Inbound: "${input.text}"\nReply (plain text):`,
-      intent
-    );
-    if (known.link) {
-      return { action: "send", text, dmText: `Here you go: ${known.link.url}`, intent };
-    }
-    return { action: "send", text, intent };
-  }
-
-  // Generic and post-specific question — ask LLM with optional uncertainty escape
-  const sys = buildSystemPrompt({
-    toneSummary: s.toneSummary,
-    samples: s.styleSamples,
-    postContext: buildPostContext(post),
-    hint:
-      'Output JSON: {"status":"ok","draft":"..."} if confident from POST CONTEXT or general knowledge. ' +
-      'If post-specific (where shot, song, gear, who) and POST CONTEXT lacks it, output: {"status":"needs_owner_input","question":"<short question for owner>"}. ' +
-      "Don't invent locations/dates/songs/gear.",
-  });
-  type Out = { status: "ok" | "needs_owner_input"; draft?: string; question?: string };
-  const out = await chatJSON<Out>(
-    [
-      { role: "system", content: sys },
-      { role: "user", content: `Inbound ${input.kind}: "${input.text}"\nReply JSON:` },
-    ],
-    { status: "needs_owner_input", question: "Need more info to reply to this." }
-  );
-  if (out.status === "needs_owner_input")
-    return { action: "clarify", kind: "context", question: out.question || "Need info", intent };
-
-  let draft = sanitizeReply(out.draft || "");
-  if (ANTI_AI_BLOCKLIST.some((p) => draft.toLowerCase().includes(p))) {
-    const fix = await chat([
-      { role: "system", content: sys + "\nNO AI or corporate phrases. Casual only." },
-      { role: "user", content: `Rewrite reply for: "${input.text}" (1-2 short lines, plain text):` },
-    ]);
-    draft = sanitizeReply(fix);
-  }
-  // dedupe against recent replies — regenerate in plain text if too similar
-  const plainSys = buildSystemPrompt({
-    toneSummary: s.toneSummary,
-    samples: s.styleSamples,
-    postContext: buildPostContext(post),
-    hint: `Reply to the comment in plain text, 1-2 short lines, casual. Match the commenter's vibe: ${vibe}.${superfanNote}`,
-  });
-  draft = await dedupeReply(
-    draft,
-    intent,
-    plainSys,
-    `Reply naturally to this comment: "${input.text}"`
-  );
-  return { action: "draft", text: draft, intent };
+function shouldAutoSend(
+  settings: Settings,
+  reviewOnly: boolean,
+  action: "send" | "draft"
+): boolean {
+  const mode = settings.replyMode;
+  if (mode === "shadow") return false;
+  if (mode === "assisted") return false;
+  if (reviewOnly) return false;
+  if (mode === "auto") return true;
+  return action === "send";
 }
 
-// Generation runs serialized — each comment's dedupe sees the prior drafts,
-// so a burst of similar comments still gets distinct replies. Kept on
-// globalThis so dev HMR does not spawn parallel chains.
+// ── Serialized generation chain ────────────────────────────────────────────
+// Kept on globalThis so HMR doesn't spawn parallel chains.
 const pq = globalThis as unknown as { __mira_pipeline_chain?: Promise<unknown> };
 if (!pq.__mira_pipeline_chain) pq.__mira_pipeline_chain = Promise.resolve();
+
+// ── Main entry points (public API — unchanged) ─────────────────────────────
 
 export async function processInbound(input: DraftInput): Promise<void> {
   const prev = pq.__mira_pipeline_chain as Promise<unknown>;
@@ -463,17 +140,13 @@ export async function processInbound(input: DraftInput): Promise<void> {
     () => undefined
   );
   const pd = await run;
-  // the send happens OUTSIDE the serialized chain — paced, so a slow send
-  // does not block the next comment from generating.
+  // Paced send runs OUTSIDE the serialized chain
   if (pd) void pacedAutoSend(pd);
 }
 
-/**
- * Re-run a clarification's triggering comment plus every comment queued behind
- * it (waiters), now that the answer / link is known. The owner answers once,
- * everyone waiting on it gets replied to.
- */
-export async function reprocessClarification(c: Clarification): Promise<void> {
+export async function reprocessClarification(
+  c: import("./store").Clarification
+): Promise<void> {
   const comments = [
     {
       commentId: c.commentId || c.id,
@@ -495,38 +168,77 @@ export async function reprocessClarification(c: Clarification): Promise<void> {
   }
 }
 
-/**
- * Generate a reply for one inbound comment. Returns a draft to auto-send, or
- * null when it was queued for review / clarified / skipped.
- */
+// ── Core pipeline ──────────────────────────────────────────────────────────
+
 async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
+  // ── 1. Single store read — used everywhere below ──────────────────────────
   const store = await readStore();
   if (!store.account) return null;
   const settings = store.settings;
 
-  // own comment skip
+  // ── 2. Hard pre-checks (no LLM, no context needed) ───────────────────────
   if (input.fromUserId === store.account.igUserId && settings.skipOwnComments)
     return null;
 
-  // blocklist
   if (store.blocklist.includes(input.fromUserId)) {
-    publish({ type: "log", level: "info", msg: `Blocked ${input.fromUserId} skipped`, ts: Date.now() });
-    return null;
-  }
-  // trusted contact
-  if (store.trustedContacts.find((c) => c.igUserId === input.fromUserId)) {
-    publish({ type: "log", level: "warn", msg: `Trusted contact ${input.fromUserId} — owner notify`, ts: Date.now() });
+    publish({
+      type: "log",
+      level: "info",
+      msg: `Blocked ${input.fromUserId} skipped`,
+      ts: Date.now(),
+    });
     return null;
   }
 
-  await bumpCommenter(input.fromUserId, input.fromUsername);
+  if (store.trustedContacts.find((c) => c.igUserId === input.fromUserId)) {
+    publish({
+      type: "log",
+      level: "warn",
+      msg: `Trusted contact ${input.fromUserId} — owner notify`,
+      ts: Date.now(),
+    });
+    return null;
+  }
+
+  // ── 3. Structural prefilter (no LLM) ─────────────────────────────────────
+  const pre = prefilter(input.text, store.account.username || "");
+  if (pre?.action === "skip") {
+    publish({
+      type: "log",
+      level: "info",
+      msg: `Prefilter skip (${pre.reason}) @${input.fromUsername || input.fromUserId}`,
+      ts: Date.now(),
+    });
+    return null;
+  }
+
+  // Emoji-only → react with one emoji (prefilter says "react")
+  if (pre?.action === "react") {
+    const raw = await chat(
+      [
+        {
+          role: "system",
+          content:
+            "Reply to this Instagram comment with EXACTLY ONE emoji that fits its vibe. Output only the emoji — no words, nothing else.",
+        },
+        { role: "user", content: input.text },
+      ],
+      { temperature: 0.7 }
+    );
+    const text = firstEmoji(raw);
+    const pd = makeDraft(input, text, "simple_acknowledgement", undefined);
+    await queueDraft(pd);
+    return pd; // auto-sendable
+  }
+
+  // ── 4. Stats + commenter bump ──────────────────────────────────────────────
+  await bumpCommenter(input.fromUserId, input.fromUsername, store);
   await recordDailyStat({ comments: 1 });
 
-  // cooldown — suppress *repeat acks* to the same user, but never block a
-  // real question or link request (those always deserve an answer)
+  // ── 5. Cooldown for simple acks ───────────────────────────────────────────
   const cooldownMs = settings.cooldownMinutes * 60_000;
   if (cooldownMs > 0 && quickClassify(input.text) === "simple_acknowledgement") {
-    if (await recentRepliedTo(input.fromUserId, cooldownMs)) {
+    if (await recentRepliedTo(input.fromUserId, cooldownMs, store)) {
       publish({
         type: "log",
         level: "info",
@@ -537,134 +249,154 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
     }
   }
 
-  const post = input.postId ? store.posts[input.postId] : undefined;
-  const decision = await decide(input, post);
+  // ── 6. Context assembly — cached, no re-read ──────────────────────────────
+  const ctx = await assembleContext(
+    input.text,
+    input.postId,
+    input.fromUserId,
+    store
+  );
 
-  if (decision.action === "skip") {
-    if (decision.hide && input.kind === "comment" && store.account) {
-      // troll / hate shield — hide the comment from public view. Never
-      // auto-blocks the user.
-      await hideComment(input.threadOrMediaId, store.account.accessToken).catch(
-        () => {}
-      );
-      await updateStore((s) => ({
-        ...s,
-        history: [
-          {
-            id: `r_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-            kind: "comment" as const,
-            commentId: input.threadOrMediaId,
-            inbound: input.text,
-            outbound: "",
-            intent: decision.intent,
-            postId: input.postId,
-            toUserId: input.fromUserId,
-            sentAt: Date.now(),
-            status: "skipped" as const,
-            reason: decision.reason,
-          },
-          ...s.history,
-        ].slice(0, 1000),
-      }));
-      publish({
-        type: "log",
-        level: "warn",
-        msg: `Hidden ${decision.reason} comment from @${input.fromUsername || input.fromUserId}`,
-        ts: Date.now(),
-      });
-    } else {
-      // business inquiry → flag the owner; everything else is a quiet skip
-      const business = decision.reason === "business_inquiry";
-      publish({
-        type: "log",
-        level: business ? "warn" : "info",
-        msg: business
-          ? `Business / collab inquiry from @${input.fromUsername || input.fromUserId} — over to you`
-          : `Skipped (${decision.reason}) @${input.fromUsername || input.fromUserId}`,
-        ts: Date.now(),
-      });
-    }
-    return null;
-  }
-
-  if (decision.action === "clarify") {
-    // dedup — if Mira already has an open clarification of the same kind on
-    // this post, never ask the owner twice. Queue this comment behind it as a
-    // waiter; it is served the moment that one clarification is answered.
-    const dup = store.clarifications.find(
-      (x) =>
-        x.status === "open" &&
-        (x.kind || "context") === decision.kind &&
-        x.postId === (input.postId || "")
-    );
-    if (dup) {
-      await updateStore((s) => ({
-        ...s,
-        clarifications: s.clarifications.map((x) =>
-          x.id === dup.id
-            ? {
-                ...x,
-                waiters: [
-                  ...(x.waiters || []),
-                  {
-                    commentId: input.threadOrMediaId,
-                    fromUserId: input.fromUserId,
-                    fromUsername: input.fromUsername,
-                    commentText: input.text,
-                  },
-                ],
-              }
-            : x
-        ),
-      }));
+  // ── 7. Trained override — short-circuit before any perception/planning ────
+  if (ctx.trainedMatch) {
+    const tm = ctx.trainedMatch;
+    if (tm.kind === "skip") {
       publish({
         type: "log",
         level: "info",
-        msg: `Already asked — @${input.fromUsername || input.fromUserId} queued behind it`,
+        msg: `Trained skip @${input.fromUsername || input.fromUserId}`,
         ts: Date.now(),
       });
       return null;
     }
-    const c: Clarification = {
-      id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      commentId: input.threadOrMediaId,
-      postId: input.postId || "",
-      commentText: input.text,
-      question: decision.question,
-      kind: decision.kind,
-      fromUserId: input.fromUserId,
-      fromUsername: input.fromUsername,
-      createdAt: Date.now(),
-      status: "open",
-    };
-    await updateStore((s) => ({
-      ...s,
-      clarifications: [c, ...s.clarifications].slice(0, 200),
-    }));
-    publish({ type: "log", level: "warn", msg: `Need input: ${decision.question}`, ts: Date.now() });
-    publish({ type: "draft", draftId: c.id, ts: Date.now() });
-    return null;
+    if (tm.kind === "clarify") {
+      await handleClarify(
+        { question: tm.question, kind: "context", intent: tm.intent },
+        input,
+        store
+      );
+      return null;
+    }
+    // trained reply — queue directly, no LLM generation
+    const pd = makeDraft(input, tm.text, tm.intent, undefined);
+    await queueDraft(pd);
+    return shouldAutoSend(settings, false, "send") ? pd : null;
   }
 
-  // both 'draft' and 'send' produce a PendingDraft
-  const pd: PendingDraft = {
-    id: `d_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    kind: input.kind,
-    threadOrMediaId: input.threadOrMediaId,
-    fromUserId: input.fromUserId,
-    fromUsername: input.fromUsername,
-    inboundText: input.text,
-    draftText: decision.text,
-    dmText: decision.action === "send" ? decision.dmText : undefined,
-    intent: decision.intent,
-    postId: input.postId,
-    createdAt: Date.now(),
-  };
+  // ── 8. Perception — soul read ─────────────────────────────────────────────
+  const perception = await perceive(input.text, ctx);
 
-  let allowAutoSend = shouldAutoSend(settings, decision);
+  // ── 9. Memory search — does KB have an answer? ────────────────────────────
+  const recalled = perception.is_safe_to_engage
+    ? await recallFact(input.text, input.postId)
+    : null;
+  const hasKBHit = !!recalled;
 
-  // selective reply — a real person doesn't answer every single ack
-  if (allowAutoSend && shouldSkipForVariety(decision.intent, settings)) {
+  // ── 10. Action planning ───────────────────────────────────────────────────
+  const actionPlan = await plan(perception, ctx, hasKBHit);
+
+  publish({
+    type: "log",
+    level: "info",
+    msg: `Plan: [${actionPlan.steps.map((s) => s.tool).join(", ")}] — ${actionPlan.rationale}`,
+    ts: Date.now(),
+  });
+
+  // ── 11. Execute steps ─────────────────────────────────────────────────────
+  let replyText: string | null = null;
+  let dmText: string | undefined;
+  let reviewOnly = false;
+  let intent = "unclear";
+  let wasSkipped = false;
+  let wasClarified = false;
+
+  for (const step of actionPlan.steps) {
+    switch (step.tool) {
+      case "skip": {
+        await handleSkip(
+          { ...step.args, intent },
+          input,
+          store
+        );
+        wasSkipped = true;
+        break;
+      }
+
+      case "clarify": {
+        const q = (step as { tool: "clarify"; args: { question: string; kind: "context" | "link" } }).args;
+        await handleClarify(
+          { question: q.question, kind: q.kind, intent },
+          input,
+          store
+        );
+        wasClarified = true;
+        break;
+      }
+
+      case "link": {
+        const linkResult = await handleLink(input, ctx);
+        if (linkResult.outcome === "found") {
+          dmText = linkResult.dmText;
+          // Public reply text from link handler (if no reply step follows)
+          if (!replyText) replyText = linkResult.publicReply;
+          intent = "link_request";
+        } else {
+          // No link on this post — open a clarification
+          await handleClarify(
+            {
+              question: linkResult.clarifyQuestion,
+              kind: "link",
+              intent: "link_request",
+            },
+            input,
+            store
+          );
+          wasClarified = true;
+        }
+        break;
+      }
+
+      case "reply": {
+        const replyArgs = (step as { tool: "reply"; args: NonNullable<(typeof step extends { tool: "reply"; args: infer A } ? A : never)> }).args;
+        // If KB had a hit, pass it into the reply handler
+        if (recalled && replyArgs.style === "knowledge") {
+          replyArgs.knownAnswer = recalled.fact.answer;
+          replyArgs.knownLink = recalled.fact.link?.url;
+        }
+        const result = await handleReply(replyArgs, input, ctx, perception);
+        if (result.outcome === "reply") {
+          replyText = result.text;
+          if (result.dmText && !dmText) dmText = result.dmText;
+          if (result.reviewOnly) reviewOnly = true;
+          intent = perception.relationship_signal === "personal"
+            ? "simple_acknowledgement"
+            : perception.what_they_want.includes("link")
+            ? "link_request"
+            : perception.what_they_want.includes("question")
+            ? "question_general"
+            : "simple_acknowledgement";
+        } else {
+          // needs_owner — open a clarification
+          await handleClarify(
+            { question: result.question, kind: "context", intent },
+            input,
+            store
+          );
+          wasClarified = true;
+        }
+        break;
+      }
+    }
+
+    if (wasSkipped || wasClarified) break; // no further steps after terminal actions
+  }
+
+  if (wasSkipped || wasClarified || !replyText) return null;
+
+  // ── 12. Selective reply + daily cap ──────────────────────────────────────
+  let allowAutoSend = shouldAutoSend(settings, reviewOnly, "send");
+
+  if (allowAutoSend && shouldSkipForVariety(intent, settings)) {
     publish({
       type: "log",
       level: "info",
@@ -673,7 +405,7 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
     });
     return null;
   }
-  // daily send cap — over cap, queue for review instead of auto-sending
+
   if (allowAutoSend && !(await withinDailyCap(settings))) {
     allowAutoSend = false;
     publish({
@@ -684,28 +416,58 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
     });
   }
 
-  // queue the draft either way — so the next comment's dedupe can see it
-  await updateStore((s) => ({
-    ...s,
-    pendingDrafts: [pd, ...s.pendingDrafts].slice(0, 200),
-  }));
+  // ── 13. Queue the draft (dedup can see it for next comment) ───────────────
+  const pd = makeDraft(input, replyText, intent, dmText);
+  await queueDraft(pd);
 
-  if (allowAutoSend) {
-    return pd; // the caller sends it, paced, outside the serialized chain
-  }
+  if (allowAutoSend) return pd;
+
   await recordDailyStat({ drafted: 1 });
   publish({ type: "draft", draftId: pd.id, ts: Date.now() });
   return null;
 }
 
-/** Send an auto-approved draft, paced — runs outside the generation chain. */
+// ── Draft helpers ──────────────────────────────────────────────────────────
+
+function makeDraft(
+  input: DraftInput,
+  text: string,
+  intent: string,
+  dmText: string | undefined
+): PendingDraft {
+  return {
+    id: `d_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    kind: input.kind,
+    threadOrMediaId: input.threadOrMediaId,
+    fromUserId: input.fromUserId,
+    fromUsername: input.fromUsername,
+    inboundText: input.text,
+    draftText: text,
+    dmText,
+    intent,
+    postId: input.postId,
+    createdAt: Date.now(),
+  };
+}
+
+async function queueDraft(pd: PendingDraft): Promise<void> {
+  await updateStore((s) => ({
+    ...s,
+    pendingDrafts: [pd, ...s.pendingDrafts].slice(0, 200),
+  }));
+}
+
+// ── Paced auto-send ────────────────────────────────────────────────────────
+
 async function pacedAutoSend(pd: PendingDraft): Promise<void> {
   const store = await readStore();
   if (!store.account) return;
   await recordDailyStat({ autoReplied: 1 });
-  await awaitSendSlot(store.settings); // paced + jittered — never a burst
+  await awaitSendSlot(store.settings);
   await sendDraft(pd, store.account.accessToken, store.account.igUserId);
 }
+
+// ── sendDraft (public — unchanged API) ────────────────────────────────────
 
 export async function sendDraft(
   pd: PendingDraft,
@@ -713,6 +475,17 @@ export async function sendDraft(
   igUserId: string
 ) {
   void igUserId;
+  const cur0 = await readStore();
+  if (cur0.settings.replyMode === "shadow") {
+    publish({
+      type: "log",
+      level: "warn",
+      msg: `Shadow mode — send suppressed for draft ${pd.id}`,
+      ts: Date.now(),
+    });
+    return;
+  }
+
   const log: ReplyLog = {
     id: `r_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     kind: pd.kind,
@@ -725,6 +498,7 @@ export async function sendDraft(
     sentAt: Date.now(),
     status: "sent",
   };
+
   try {
     if (pd.kind === "comment") {
       const posted = (await replyToComment(
@@ -732,10 +506,8 @@ export async function sendDraft(
         pd.draftText,
         token
       )) as { id?: string } | undefined;
-      // mark Mira's own reply as seen — the watcher must never process it
-      // (otherwise Mira replies to its own replies → infinite loop)
       if (posted?.id) primeSeen([posted.id]);
-      // link accompaniment → deliver via private reply to the comment
+
       if (pd.dmText) {
         const cur = await readStore();
         if (cur.settings.autoDMLinks) {
@@ -755,6 +527,7 @@ export async function sendDraft(
         }
       }
     } else {
+      const { tryDM } = await import("./dm");
       const r = await tryDM(pd.fromUserId, pd.draftText);
       if (!r.ok) {
         log.status = "failed";
@@ -765,17 +538,100 @@ export async function sendDraft(
     log.status = "failed";
     log.reason = e instanceof Error ? e.message : "unknown";
   }
+
   await updateStore((s) => ({
     ...s,
     pendingDrafts: s.pendingDrafts.filter((x) => x.id !== pd.id),
     history: [log, ...s.history].slice(0, 1000),
   }));
+
   if (log.status === "sent") {
     await bumpReplied(pd.fromUserId);
     await recordDailyStat({ sent: 1, dmSent: pd.dmText ? 1 : 0 });
+    // Invalidate account cache so next comment sees updated hitCounts
+    invalidateAccountCache();
   }
+
   publish({ type: "sent", replyId: log.id, ts: Date.now() });
 }
 
 // re-export for callers that imported from old module path
 export { classifyIntent } from "./intent";
+
+/**
+ * Compatibility shim for callers that used the old decide() API (playground route).
+ * Runs the full v2 pipeline logic against a fake store entry.
+ */
+export async function decide(
+  input: DraftInput,
+  post: import("./store").Post | undefined
+): Promise<DraftDecision> {
+  const { readStore } = await import("./store");
+  const store = await readStore();
+
+  // Insert the playground post into a temporary store view
+  const fakeStore = post
+    ? { ...store, posts: { ...store.posts, [post.id]: post } }
+    : store;
+
+  if (!fakeStore.account) {
+    return { action: "skip", reason: "no account", intent: "unclear" };
+  }
+
+  const ctx = await assembleContext(
+    input.text,
+    input.postId,
+    input.fromUserId,
+    fakeStore
+  );
+
+  if (ctx.trainedMatch) {
+    const tm = ctx.trainedMatch;
+    if (tm.kind === "skip") return { action: "skip", reason: "trained-skip", intent: tm.intent };
+    if (tm.kind === "clarify") return { action: "clarify", kind: "context", question: tm.question, intent: tm.intent };
+    return { action: "send", text: tm.text, intent: tm.intent };
+  }
+
+  const { prefilter } = await import("./rulebook");
+  const pre = prefilter(input.text, fakeStore.account.username || "");
+  if (pre?.action === "skip") return { action: "skip", reason: pre.reason, intent: "unclear" };
+
+  const perception = await perceive(input.text, ctx);
+  if (!perception.is_safe_to_engage) {
+    return { action: "skip", reason: "unsafe", intent: "unclear" };
+  }
+
+  const recalled = await recallFact(input.text, input.postId);
+  const actionPlan = await plan(perception, ctx, !!recalled);
+
+  for (const step of actionPlan.steps) {
+    if (step.tool === "skip") {
+      return { action: "skip", reason: step.args.reason, intent: "unclear", hide: step.args.hide };
+    }
+    if (step.tool === "clarify") {
+      const s = step as { tool: "clarify"; args: { question: string; kind: "context" | "link" } };
+      return { action: "clarify", kind: s.args.kind, question: s.args.question, intent: "unclear" };
+    }
+    if (step.tool === "reply") {
+      const replyArgs = (step as { tool: "reply"; args: Parameters<typeof handleReply>[0] }).args;
+      if (recalled && replyArgs.style === "knowledge") {
+        replyArgs.knownAnswer = recalled.fact.answer;
+      }
+      const result = await handleReply(replyArgs, input, ctx, perception);
+      if (result.outcome === "needs_owner") {
+        return { action: "clarify", kind: "context", question: result.question, intent: "unclear" };
+      }
+      return { action: "draft", text: result.text, intent: "question_general", reviewOnly: result.reviewOnly };
+    }
+    if (step.tool === "link") {
+      const linkResult = await handleLink(input, ctx);
+      if (linkResult.outcome === "missing") {
+        return { action: "clarify", kind: "link", question: linkResult.clarifyQuestion, intent: "link_request" };
+      }
+      return { action: "send", text: linkResult.publicReply, dmText: linkResult.dmText, intent: "link_request" };
+    }
+  }
+
+  return { action: "skip", reason: "no actionable steps", intent: "unclear" };
+}
+
