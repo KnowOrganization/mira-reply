@@ -1,7 +1,7 @@
 export const ig = {
   appId: process.env.META_APP_ID || "",
   appSecret: process.env.META_APP_SECRET || "",
-  baseUrl: process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3001",
+  baseUrl: process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000",
   verifyToken: process.env.META_WEBHOOK_VERIFY_TOKEN || "",
   redirectPath: "/api/ig/callback",
   scopes: [

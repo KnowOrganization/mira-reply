@@ -23,16 +23,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // validate + fetch profile
-  const meRes = await fetch(
-    `https://graph.instagram.com/v23.0/me?fields=id,username&access_token=${encodeURIComponent(t)}`
-  );
-  const me = (await meRes.json()) as {
-    id?: string;
-    username?: string;
-    error?: { message?: string };
-  };
-  if (me.error || !me.id) {
+  // validate + fetch profile — try Bearer header first (v17+), fall back to query param
+  let me: { id?: string; username?: string; error?: { message?: string } } = {};
+  for (const attempt of ["bearer", "query"] as const) {
+    const meUrl = `https://graph.instagram.com/v23.0/me?fields=id,username${attempt === "query" ? `&access_token=${encodeURIComponent(t)}` : ""}`;
+    const meRes = await fetch(meUrl, attempt === "bearer" ? { headers: { Authorization: `Bearer ${t}` } } : {});
+    me = (await meRes.json()) as typeof me;
+    if (me.id) break;
+  }
+  if (!me.id) {
     return NextResponse.json(
       { error: me.error?.message || "invalid or blocked token" },
       { status: 400 }
@@ -59,6 +58,9 @@ export async function POST(req: NextRequest) {
     /* token already long-lived — keep it */
   }
 
+  const existing = await readStore();
+  const accountChanged = existing.account && existing.account.igUserId !== String(me.id);
+
   await patchStore({
     account: {
       igUserId: String(me.id),
@@ -67,7 +69,22 @@ export async function POST(req: NextRequest) {
       tokenExpiresAt: Date.now() + expiresIn * 1000,
       connectedAt: Date.now(),
     },
-    lastToken: accessToken, // remember it — survives logout for reconnect
+    lastToken: accessToken,
+    ...(accountChanged ? {
+      posts: {},
+      commentsCache: [],
+      history: [],
+      pendingDrafts: [],
+      clarifications: [],
+      fingerprints: [],
+      knowledge: [],
+      commenters: {},
+      dmLog: [],
+      sendQueue: [],
+      dailyStats: {},
+      linkPending: [],
+      feedEvents: [],
+    } : {}),
   });
   ensureWatcher();
   return NextResponse.json({ ok: true, username: me.username });

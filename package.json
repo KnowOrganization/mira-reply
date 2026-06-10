@@ -3,14 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "start:all": "pgrep -x ollama >/dev/null || ollama serve & ngrok http 3000 --url=https://unveiled-walrus-blade.ngrok-free.dev & next dev",
+    "dev": "next dev -p 3000",
+    "start:all": "pgrep -x ollama >/dev/null || ollama serve & ngrok http 3000 --url=https://unveiled-walrus-blade.ngrok-free.dev & next dev -p 3000",
     "tunnel": "ngrok http 3000 --url=https://unveiled-walrus-blade.ngrok-free.dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "mcp:brain": "tsx scripts/mcp-brain.mjs"
   },
   "dependencies": {
+    "@xyflow/react": "^12.11.0",
+    "better-sqlite3": "^12.10.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
@@ -20,16 +23,20 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
+    "tsx": "^4.22.3",
     "typescript": "^5"
   }
 }

@@ -32,6 +32,7 @@ import { quickClassify } from "./intent";
 
 // v2 modules
 import { assembleContext, invalidateAccountCache } from "./ctx";
+import { brain } from "./mcp/client";
 import { perceive } from "./perception";
 import { plan } from "./planner";
 import { handleReply } from "./handlers/reply";
@@ -126,6 +127,9 @@ function shouldAutoSend(
 // Kept on globalThis so HMR doesn't spawn parallel chains.
 const pq = globalThis as unknown as { __mira_pipeline_chain?: Promise<unknown> };
 if (!pq.__mira_pipeline_chain) pq.__mira_pipeline_chain = Promise.resolve();
+
+// Warm the brain MCP (account cache + KB embedding index) once per process.
+void brain.warm();
 
 // ── Main entry points (public API — unchanged) ─────────────────────────────
 
@@ -293,7 +297,12 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
   const hasKBHit = !!recalled;
 
   // ── 10. Action planning ───────────────────────────────────────────────────
-  const actionPlan = await plan(perception, ctx, hasKBHit);
+  const actionPlan = await plan(perception, ctx, hasKBHit, {
+    text: input.text,
+    fromUserId: input.fromUserId,
+    postId: input.postId,
+    commentId: input.kind === "comment" ? input.threadOrMediaId : undefined,
+  });
 
   publish({
     type: "log",
@@ -542,7 +551,7 @@ export async function sendDraft(
   await updateStore((s) => ({
     ...s,
     pendingDrafts: s.pendingDrafts.filter((x) => x.id !== pd.id),
-    history: [log, ...s.history].slice(0, 1000),
+    history: [log, ...s.history].slice(0, 10000),
   }));
 
   if (log.status === "sent") {
@@ -550,6 +559,7 @@ export async function sendDraft(
     await recordDailyStat({ sent: 1, dmSent: pd.dmText ? 1 : 0 });
     // Invalidate account cache so next comment sees updated hitCounts
     invalidateAccountCache();
+    brain.invalidateAll();
   }
 
   publish({ type: "sent", replyId: log.id, ts: Date.now() });
@@ -602,7 +612,11 @@ export async function decide(
   }
 
   const recalled = await recallFact(input.text, input.postId);
-  const actionPlan = await plan(perception, ctx, !!recalled);
+  const actionPlan = await plan(perception, ctx, !!recalled, {
+    text: input.text,
+    fromUserId: input.fromUserId,
+    postId: input.postId,
+  });
 
   for (const step of actionPlan.steps) {
     if (step.tool === "skip") {

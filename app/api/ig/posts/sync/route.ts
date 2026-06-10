@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readStore, patchStore, type Post } from "@/lib/ig/store";
+import { getAllMedia } from "@/lib/ig/graph";
 
 export const runtime = "nodejs";
 
@@ -8,19 +9,7 @@ export async function POST() {
   if (!store.account) return NextResponse.json({ error: "not connected" }, { status: 400 });
   const token = store.account.accessToken;
 
-  const url = new URL("https://graph.instagram.com/v23.0/me/media");
-  url.searchParams.set(
-    "fields",
-    "id,caption,media_type,timestamp,permalink,thumbnail_url,media_url"
-  );
-  url.searchParams.set("limit", "50");
-  url.searchParams.set("access_token", token);
-
-  const res = await fetch(url);
-  if (!res.ok) {
-    return NextResponse.json({ error: await res.text() }, { status: 502 });
-  }
-  const j = (await res.json()) as {
+  let j: {
     data: Array<{
       id: string;
       caption?: string;
@@ -31,8 +20,17 @@ export async function POST() {
       media_url?: string;
     }>;
   };
+  try {
+    // paginated — pulls EVERY post, not just the newest page
+    j = (await getAllMedia(token)) as typeof j;
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "media fetch failed" },
+      { status: 502 }
+    );
+  }
 
-  const next = { ...store.posts };
+  const next: Record<string, import("@/lib/ig/store").Post> = {};
   for (const m of j.data) {
     const existing = next[m.id];
     next[m.id] = {

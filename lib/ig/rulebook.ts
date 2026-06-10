@@ -63,15 +63,32 @@ export function prefilter(
   const core = noEmoji.replace(/@[a-zA-Z0-9._]+/g, "").trim();
   const coreWords = core.split(/\s+/).filter((w) => /\p{L}/u.test(w));
 
-  // tags another person with little else → that's between them, stay out.
-  // (A longer comment that tags someone — e.g. a recommendation — falls
-  // through so the LLM can apply the "recommends the account" rule.)
-  if (tagsOther && coreWords.length < 3)
-    return { action: "skip", reason: "tags-other" };
+  // A comment that tags another user is THEIR conversation — an inside joke,
+  // banter, or a tag-drop. We have no context for it, so stay out. Two
+  // exceptions fall through to the pipeline: it also tags the account
+  // directly (then it is addressed to us), or it reads like recommending
+  // this account to that person (rulebook: thank them).
+  if (tagsOther) {
+    const tagsAccount = mentions.some((m) => m.slice(1).toLowerCase() === acct);
+    const looksLikeRecommendation =
+      /\b(follow|check (?:this|it|out)|see this|you'?d love|gotta see|need to see|this (?:page|account|guy)|amazing (?:page|account|content))\b/i.test(
+        core
+      );
+    if (!tagsAccount && !looksLikeRecommendation)
+      return { action: "skip", reason: "tags-other" };
+  }
 
-  // a single vague word with no mention ("ok", "hmm", "nice") → too thin
-  if (mentions.length === 0 && coreWords.length <= 1)
-    return { action: "skip", reason: "one-word" };
+  // a single vague word with no mention ("ok", "hmm", "nice") → too thin.
+  // BUT a one-word *question* ("Location?", "Price?", "Song?") is a real
+  // ask — never skip those; let the pipeline answer them.
+  if (mentions.length === 0 && coreWords.length <= 1) {
+    const oneWordQuestion =
+      /\?/.test(t) ||
+      /^(location|where|price|cost|song|music|track|gear|link|who|when|how|kahan|kaha)\b/i.test(
+        core
+      );
+    if (!oneWordQuestion) return { action: "skip", reason: "one-word" };
+  }
 
   return null;
 }

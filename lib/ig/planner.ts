@@ -12,6 +12,8 @@ import { chatJSON } from "./llm";
 import { type AssembledContext } from "./ctx";
 import { type Perception } from "./perception";
 import { type ReplyStyle } from "./handlers/reply";
+import { prefetch, type DraftInputLite } from "./mcp/router";
+import { planWithLoop } from "./mcp/loop";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -157,7 +159,8 @@ export function quickPlan(
 
 function buildPlannerPrompt(
   perception: Perception,
-  ctx: AssembledContext
+  ctx: AssembledContext,
+  brainBlock: string
 ): string {
   return [
     "You are planning the actions Mira will take for an Instagram comment.",
@@ -171,6 +174,8 @@ function buildPlannerPrompt(
     `- Confidence Mira can answer: ${perception.confidence}`,
     `- Compound (needs multiple actions): ${perception.compound}`,
     `- Sensitive: ${perception.sensitive}`,
+    "",
+    brainBlock || "BRAIN: (no prefetch)",
     "",
     ctx.postContext ? `POST CONTEXT:\n${ctx.postContext}` : "No post context.",
     "",
@@ -217,22 +222,45 @@ const FALLBACK_PLAN: ActionPlan = {
 export async function plan(
   perception: Perception,
   ctx: AssembledContext,
-  hasKBHit: boolean
+  hasKBHit: boolean,
+  input?: DraftInputLite
 ): Promise<ActionPlan> {
+  // Brain prefetch — Layer 4.5. Single round-trip, parallel tools.
+  // Runs even before the fast path so quickPlan can use kbHit signal.
+  let brainBlock = "";
+  let kbHit = hasKBHit;
+  if (input) {
+    try {
+      const pre = await prefetch(input, perception);
+      brainBlock = pre.block;
+      kbHit = kbHit || pre.kbHit;
+    } catch {
+      /* brain miss — fall back to existing logic */
+    }
+  }
+
   // Fast path — handles ~60-70% of comments without an LLM call
-  const fast = quickPlan(perception, ctx, hasKBHit);
+  const fast = quickPlan(perception, ctx, kbHit);
   if (fast) return fast;
 
   // LLM path — for complex, compound, or ambiguous comments
-  const prompt = buildPlannerPrompt(perception, ctx);
+  const prompt = buildPlannerPrompt(perception, ctx, brainBlock);
+  const userMsg = `Plan the actions for this comment. Output JSON only.`;
+
+  // Opt-in iterative tool-use for genuinely uncertain comments. Single shot
+  // otherwise — keeps the hot path fast.
+  const needsLoop =
+    perception.confidence < 0.4 ||
+    (perception.knowledge_gaps.length > 0 && !kbHit);
+
+  if (needsLoop) {
+    return planWithLoop(prompt, userMsg, FALLBACK_PLAN);
+  }
 
   const result = await chatJSON<ActionPlan>(
     [
       { role: "system", content: prompt },
-      {
-        role: "user",
-        content: `Plan the actions for this comment. Output JSON only.`,
-      },
+      { role: "user", content: userMsg },
     ],
     FALLBACK_PLAN,
     0.3 // low temp — consistent structured output

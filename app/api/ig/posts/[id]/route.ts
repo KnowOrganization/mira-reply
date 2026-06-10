@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readStore, patchStore, type PostLink } from "@/lib/ig/store";
 import { serveLinkForPost } from "@/lib/ig/links";
+import { reprocessClarification } from "@/lib/ig/pipeline";
 
 export const runtime = "nodejs";
 
@@ -55,6 +56,28 @@ export async function PATCH(
   // a link was just attached → serve every comment on this post waiting on one
   if (body.addLink) {
     await serveLinkForPost(id).catch(() => {});
+  }
+
+  // the owner just added context (notes / Q&A) → that may now answer the
+  // open clarifications on this post. Close them and re-run their comments;
+  // if the new context resolves them, Mira replies — if not, it re-asks.
+  const notesChanged = typeof body.notes === "string" && body.notes !== p.notes;
+  if (notesChanged || body.addQA) {
+    const fresh = await readStore();
+    const open = fresh.clarifications.filter(
+      (c) => c.postId === id && c.status === "open"
+    );
+    if (open.length) {
+      await patchStore({
+        clarifications: fresh.clarifications.map((c) =>
+          c.postId === id && c.status === "open"
+            ? { ...c, status: "answered" as const }
+            : c
+        ),
+      });
+      // re-run in the background — does not block the response
+      for (const c of open) void reprocessClarification(c);
+    }
   }
 
   return NextResponse.json({ post: updated });

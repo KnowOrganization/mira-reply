@@ -39,6 +39,12 @@ yarn-error.log*
 # local account/token store (Instagram access token lives here)
 .mira/
 
+# runtime SQLite store (live IG user data — not source)
+/data/
+
+# nested unrelated Xcode/Swift project (has its own git repo)
+/mira/
+
 # vercel
 .vercel
 

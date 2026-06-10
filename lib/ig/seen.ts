@@ -7,14 +7,29 @@ const g = globalThis as unknown as { __mira_seen?: Set<string> };
 if (!g.__mira_seen) g.__mira_seen = new Set();
 const seen = g.__mira_seen;
 
-/** Check-and-set: true if this comment was already seen; marks it seen. */
-export function seenComment(id: string): boolean {
-  if (seen.has(id)) return true;
+/** Read-only: has this comment been seen? Does NOT mark it. */
+export function hasSeen(id: string): boolean {
+  return seen.has(id);
+}
+
+/** Mark one comment seen. */
+export function markSeen(id: string): void {
   seen.add(id);
   if (seen.size > CAP) {
     const first = seen.values().next().value;
     if (first) seen.delete(first);
   }
+}
+
+/**
+ * Check-and-set: true if already seen; marks it seen. For ingestion paths
+ * that act on a comment the instant they check it (e.g. the webhook). The
+ * watcher must NOT use this — it has skip gates AFTER the check, so it uses
+ * hasSeen() + markSeen() to avoid burying a comment it never processed.
+ */
+export function seenComment(id: string): boolean {
+  if (hasSeen(id)) return true;
+  markSeen(id);
   return false;
 }
 

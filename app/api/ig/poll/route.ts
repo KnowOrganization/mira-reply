@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { readStore, patchStore } from "@/lib/ig/store";
-import { getRecentMedia, getMediaComments } from "@/lib/ig/graph";
+import { getAllMedia, getMediaComments } from "@/lib/ig/graph";
 import { processInbound } from "@/lib/ig/pipeline";
 import { publish } from "@/lib/ig/bus";
+import { matchAutomations, executeAutomation, type AutomationEvent } from "@/lib/ig/automation";
+import { ensureWatcher } from "@/lib/ig/watcher";
 
 export const runtime = "nodejs";
 
@@ -11,6 +13,7 @@ if (!g.__mira_seen) g.__mira_seen = new Set();
 const seen = g.__mira_seen;
 
 export async function GET(req: Request) {
+  ensureWatcher(); // restart watcher if it died on server restart
   const store = await readStore();
   if (!store.account) return NextResponse.json({ error: "not connected" }, { status: 400 });
   const token = store.account.accessToken;
@@ -23,7 +26,7 @@ export async function GET(req: Request) {
   let queued = 0;
   let newest = watermark;
   try {
-    const media = (await getRecentMedia(token, 25)) as { data?: Array<{ id: string }> };
+    const media = (await getAllMedia(token)) as { data?: Array<{ id: string }> };
     for (const m of media.data ?? []) {
       const cm = (await getMediaComments(m.id, token)) as {
         data?: Array<{
@@ -41,10 +44,10 @@ export async function GET(req: Request) {
         seen.add(c.id);
         if (!c.from) continue;
         if (c.from.id === store.account.igUserId) continue;
-        // skip anything older than watermark (or all on init flag)
         if (initFlag) continue;
         if (ts <= watermark) continue;
         queued++;
+
         publish({
           type: "comment",
           commentId: c.id,
@@ -54,16 +57,40 @@ export async function GET(req: Request) {
           text: c.text,
           ts,
         });
-        processInbound({
-          kind: "comment",
-          threadOrMediaId: c.id,
+
+        const freshStore = await readStore();
+        const evt: AutomationEvent = {
+          type: "comment_post",
+          commentId: c.id,
           fromUserId: c.from.id,
-          fromUsername: c.from.username,
+          fromUsername: c.from.username ?? "",
           text: c.text,
           postId: m.id,
-        }).catch((e) =>
-          publish({ type: "log", level: "error", msg: `pipeline: ${String(e)}`, ts: Date.now() })
-        );
+        };
+
+        publish({ type: "log", level: "info", msg: `poll: comment ${c.id} on post ${m.id} from @${c.from.username ?? c.from.id} — checking automations`, ts: Date.now() });
+
+        const matched = matchAutomations(freshStore, evt);
+        if (matched.length > 0) {
+          publish({ type: "log", level: "info", msg: `poll: ${matched.length} automation(s) matched for comment ${c.id}`, ts: Date.now() });
+          for (const auto of matched) {
+            await executeAutomation(auto, evt).catch((e) =>
+              publish({ type: "log", level: "error", msg: `poll automation [${auto.id}]: ${String(e)}`, ts: Date.now() })
+            );
+          }
+        } else {
+          publish({ type: "log", level: "info", msg: `poll: no automations matched — sending to pipeline`, ts: Date.now() });
+          processInbound({
+            kind: "comment",
+            threadOrMediaId: c.id,
+            fromUserId: c.from.id,
+            fromUsername: c.from.username,
+            text: c.text,
+            postId: m.id,
+          }).catch((e) =>
+            publish({ type: "log", level: "error", msg: `pipeline: ${String(e)}`, ts: Date.now() })
+          );
+        }
       }
     }
     await patchStore({ pollWatermark: newest || Date.now() });

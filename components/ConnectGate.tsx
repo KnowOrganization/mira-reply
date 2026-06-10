@@ -52,20 +52,21 @@ export function ConnectGate() {
     }
   }
 
-  function connect() {
+  function connect(forceSwitch = false) {
     setError(null);
     const w = 600;
     const h = 760;
     const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
     const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
+    const connectUrl = forceSwitch ? "/api/ig/connect?switch=1" : "/api/ig/connect";
     const popup = window.open(
-      "/api/ig/connect",
+      connectUrl,
       "mira_ig_oauth",
       `width=${w},height=${h},left=${left},top=${top}`
     );
     // popup blocked → fall back to a full-page redirect
     if (!popup) {
-      window.location.href = "/api/ig/connect";
+      window.location.href = connectUrl;
       return;
     }
     setBusy(true);
@@ -252,7 +253,7 @@ export function ConnectGate() {
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.98 }}
             transition={{ type: "spring", stiffness: 340, damping: 24 }}
-            onClick={canReconnect ? reconnect : connect}
+            onClick={canReconnect ? reconnect : () => connect(false)}
             disabled={busy}
             className="w-full h-13 rounded-2xl flex items-center justify-center gap-2 text-[14.5px] font-bold disabled:opacity-70"
             style={{
@@ -271,6 +272,18 @@ export function ConnectGate() {
               : "Connect Instagram"}
             {!busy && <ArrowRight size={17} />}
           </motion.button>
+
+          {/* switch to a different Instagram account */}
+          {canReconnect && (
+            <button
+              onClick={() => connect(true)}
+              disabled={busy}
+              className="w-full mt-2.5 h-10 rounded-2xl text-[13px] font-semibold disabled:opacity-50"
+              style={{ background: "var(--bg-inset)", color: "var(--text-muted)" }}
+            >
+              Connect different account
+            </button>
+          )}
 
           {/* escape hatch — connect with an access token, no OAuth */}
           <div className="mt-3.5 pt-3.5" style={{ borderTop: "1px solid var(--border)" }}>

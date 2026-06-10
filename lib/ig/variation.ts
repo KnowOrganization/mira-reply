@@ -58,9 +58,40 @@ export function tooSimilar(
   return { similar: worst >= threshold, worst };
 }
 
-// CJK scripts the local model occasionally leaks into replies.
-const STRAY_CJK =
-  /[\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]/gu;
+// Scripts the local model occasionally leaks into a reply. Replies must be
+// English (Latin) or Hinglish (Latin/Devanagari) only — anything else is a
+// generation glitch.
+const STRAY_SCRIPT =
+  /[\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Cyrillic}\p{Script=Arabic}\p{Script=Greek}\p{Script=Hebrew}\p{Script=Thai}]/gu;
+
+/**
+ * True if the reply is MOSTLY a stray script — i.e. the model answered in the
+ * wrong language entirely (e.g. Russian). Stripping can't salvage that; the
+ * caller must regenerate.
+ */
+export function mostlyWrongLanguage(s: string): boolean {
+  const letters = (s.match(/\p{L}/gu) || []).length;
+  if (letters < 4) return false;
+  const stray = (s.match(STRAY_SCRIPT) || []).length;
+  return stray / letters > 0.3;
+}
+
+/**
+ * Strip model meta-commentary that leaks into a reply — the local model
+ * sometimes appends "(Note: this is a friendly response...)" explaining
+ * itself. None of that belongs in what the follower sees.
+ */
+function stripMetaCommentary(s: string): string {
+  return s
+    // trailing parenthetical explanation: "(Note: ...)", "(This is ...)"
+    .replace(
+      /\s*\(\s*(?:note|this (?:is|response|reply|keeps?|message)|here(?:'s| is)|i (?:kept|made|chose|added)|the (?:emoji|tone|reply|note))\b[^)]*\)?\s*$/i,
+      ""
+    )
+    // a bare trailing "Note: ..." run with no parentheses
+    .replace(/\s*\bnote:\s[\s\S]*$/i, "")
+    .trim();
+}
 
 /** Drop control characters but keep tab, newline and carriage return. */
 function stripControl(s: string): string {
@@ -73,18 +104,54 @@ function stripControl(s: string): string {
   return out;
 }
 
+/** Emoji / pictographic glyphs (incl. regional indicators). */
+const EMOJI_G = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}]/gu;
+
 /**
- * Clean a model-generated reply: drop surrounding quotes, strip stray CJK
- * tokens the local model sometimes leaks, remove control chars. Emoji and
- * Latin/Devanagari (Hinglish) are kept.
+ * Keep at most ONE emoji — the first — and drop the rest. The local model
+ * loves emoji walls ("✨ ... 📍 ... 💪"); the owner's rulebook wants one max.
+ */
+function capEmoji(s: string): string {
+  let kept = false;
+  return s
+    .replace(EMOJI_G, (m) => {
+      if (kept) return "";
+      kept = true;
+      return m;
+    })
+    // drop ZWJ / variation selectors / skin-tone modifiers orphaned by removal
+    .replace(/(?<!\p{Extended_Pictographic})[‍️\u{1F3FB}-\u{1F3FF}]/gu, "");
+}
+
+/**
+ * Lowercase shouted phrases — a run of 2+ ALL-CAPS words reads as an ad
+ * slogan ("BUY WITH CONFIDENCE"). A lone all-caps word (KTM, BS6) is left
+ * alone, so real acronyms survive.
+ */
+function deShout(s: string): string {
+  return s.replace(/\b[A-Z][A-Z]+(?:\s+[A-Z][A-Z]+)+\b/g, (m) => m.toLowerCase());
+}
+
+/**
+ * Clean a model-generated reply: drop surrounding quotes, strip model
+ * meta-commentary and stray non-Latin scripts, remove control chars, cap
+ * emoji at one, de-shout ALL-CAPS slogans. Latin/Devanagari (Hinglish) kept.
  */
 export function sanitizeReply(text: string): string {
-  return stripControl(text)
+  let out = stripControl(text)
     .trim()
     .replace(/^["'`]+|["'`]+$/g, "")
-    .replace(STRAY_CJK, "")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  out = stripMetaCommentary(out);
+  out = out.replace(STRAY_SCRIPT, "");
+  out = deShout(out);
+  out = capEmoji(out);
+  // tidy whitespace left where emoji / stray tokens were stripped
+  return out
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+([.,!?])/g, "$1")
     .trim();
 }
 

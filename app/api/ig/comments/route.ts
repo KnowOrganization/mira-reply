@@ -36,7 +36,7 @@ export async function GET(req: Request) {
     const log = store.history.find(
       (h) =>
         h.kind === "comment" &&
-        h.status === "sent" &&
+        (h.status === "sent" || h.status === "skipped") &&
         (h.commentId
           ? h.commentId === c.id
           : h.inbound === c.text && h.toUserId === c.fromUserId)
@@ -44,13 +44,16 @@ export async function GET(req: Request) {
     const clar = store.clarifications.find(
       (x) => x.commentText === c.text && x.fromUserId === c.fromUserId && x.status === "open"
     );
-    const status: "replied" | "pending" | "needs_info" | "none" = log
-      ? "replied"
-      : clar
-      ? "needs_info"
-      : draft
-      ? "pending"
-      : "none";
+    const status: "replied" | "skipped" | "pending" | "needs_info" | "none" =
+      log?.status === "sent"
+        ? "replied"
+        : log?.status === "skipped"
+        ? "skipped"
+        : clar
+        ? "needs_info"
+        : draft
+        ? "pending"
+        : "none";
     const isOwn =
       c.isOwn ||
       c.fromUserId === ownId ||
@@ -59,8 +62,12 @@ export async function GET(req: Request) {
       ...c,
       isOwn,
       status,
+      skipReason: log?.status === "skipped" ? log.reason : undefined,
       draftText: draft?.draftText,
-      ownReply: log ? { text: log.outbound, ts: log.sentAt } : undefined,
+      ownReply:
+        log?.status === "sent"
+          ? { text: log.outbound, ts: log.sentAt }
+          : undefined,
       isSuperfan: (store.commenters[c.fromUserId]?.commentCount ?? 0) >= 4,
     };
   });

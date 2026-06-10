@@ -17,6 +17,9 @@ export async function embed(text: string): Promise<number[] | null> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: EMBED_MODEL, prompt: input }),
+      // hard cap — embed should be <100ms in steady state. 5s catches a cold
+      // model load; anything longer = degrade to keyword path.
+      signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) {
       embedAvailable = false;

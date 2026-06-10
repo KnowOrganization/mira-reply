@@ -17,12 +17,13 @@ import {
   Sun,
   Moon,
   Brain as BrainIcon,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MiraLogo } from "./MiraLogo";
 import type { Thread } from "@/lib/types";
 
-type View = "dashboard" | "chat" | "comments" | "brain" | "settings";
+type View = "dashboard" | "chat" | "comments" | "brain" | "settings" | "automations";
 
 type Props = {
   threads: Thread[];
@@ -170,6 +171,13 @@ export function Sidebar({
           active={view === "brain"}
           collapsed={collapsed}
           onClick={() => onSelectView("brain")}
+        />
+        <NavItem
+          icon={<Zap size={16} />}
+          label="Automations"
+          active={view === "automations"}
+          collapsed={collapsed}
+          onClick={() => onSelectView("automations")}
         />
       </nav>
 

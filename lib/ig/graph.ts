@@ -32,11 +32,66 @@ export async function getRecentMedia(token: string, limit = 10) {
   );
 }
 
-export async function getMediaComments(mediaId: string, token: string) {
-  return call(
-    `/${mediaId}/comments?fields=id,text,from,timestamp,replies{id,text,from,timestamp}`,
-    token
-  );
+const MEDIA_FIELDS =
+  "id,caption,media_type,timestamp,permalink,thumbnail_url,media_url";
+
+/**
+ * Fetch the account's ENTIRE media catalogue, following Instagram's
+ * pagination cursor. `/me/media` returns one page at a time — without
+ * walking `paging.next` only the newest posts are ever seen.
+ *
+ * `maxPages` caps the walk so a huge account can't stall a watcher tick.
+ */
+export async function getAllMedia(
+  token: string,
+  maxPages = 20
+): Promise<{ data: Json[] }> {
+  const out: Json[] = [];
+  let next: string | undefined =
+    `${BASE}/me/media?fields=${MEDIA_FIELDS}&limit=50`;
+  let pages = 0;
+  while (next && pages < maxPages) {
+    const page = (await call(next, token)) as {
+      data?: Json[];
+      paging?: { next?: string };
+    };
+    if (page.data?.length) out.push(...page.data);
+    next = page.paging?.next;
+    pages++;
+  }
+  return { data: out };
+}
+
+const COMMENT_FIELDS =
+  "id,text,from,timestamp,replies{id,text,from,timestamp}";
+
+/**
+ * Fetch EVERY comment on a post, following the pagination cursor. Without
+ * walking `paging.next` only the newest ~50 comments are returned — older
+ * comments on a busy post would never be seen.
+ *
+ * `maxPages` caps the walk (10 × 50 = 500 comments) so one viral post can't
+ * stall a watcher tick.
+ */
+export async function getMediaComments(
+  mediaId: string,
+  token: string,
+  maxPages = 10
+): Promise<{ data: Json[] }> {
+  const out: Json[] = [];
+  let next: string | undefined =
+    `${BASE}/${mediaId}/comments?fields=${COMMENT_FIELDS}&limit=50`;
+  let pages = 0;
+  while (next && pages < maxPages) {
+    const page = (await call(next, token)) as {
+      data?: Json[];
+      paging?: { next?: string };
+    };
+    if (page.data?.length) out.push(...page.data);
+    next = page.paging?.next;
+    pages++;
+  }
+  return { data: out };
 }
 
 export async function replyToComment(commentId: string, message: string, token: string) {
@@ -48,6 +103,66 @@ export async function replyToComment(commentId: string, message: string, token: 
 
 export async function getCommentInfo(commentId: string, token: string) {
   return call(`/${commentId}?fields=id,text,username,timestamp,from`, token);
+}
+
+/**
+ * Photo tags — every media on which this IG account has been tagged by
+ * another user. Available without webhook subscription.
+ */
+export async function getTaggedMedia(
+  token: string,
+  igUserId: string,
+  maxPages = 5
+): Promise<{ data: Json[] }> {
+  const fields =
+    "id,caption,media_type,permalink,thumbnail_url,media_url,timestamp,username,like_count,comments_count";
+  const out: Json[] = [];
+  let next: string | undefined =
+    `${BASE}/${igUserId}/tags?fields=${fields}&limit=50`;
+  let pages = 0;
+  while (next && pages < maxPages) {
+    const page = (await call(next, token)) as {
+      data?: Json[];
+      paging?: { next?: string };
+    };
+    if (page.data?.length) out.push(...page.data);
+    next = page.paging?.next;
+    pages++;
+  }
+  return { data: out };
+}
+
+/**
+ * Caption-mention payload — IG only exposes the mentioned media through this
+ * scoped endpoint, valid for a short window after the `mentions` webhook fires.
+ */
+export async function getMentionedMedia(
+  igUserId: string,
+  mediaId: string,
+  token: string
+) {
+  const fields =
+    "id,caption,media_type,permalink,thumbnail_url,media_url,timestamp,username";
+  return call(
+    `/${igUserId}?fields=mentioned_media.media_id(${mediaId}){${fields}}`,
+    token
+  );
+}
+
+/**
+ * Comment-mention payload — same scoped endpoint, but resolves a single
+ * comment by id (caller already knows the comment id from the webhook).
+ */
+export async function getMentionedComment(
+  igUserId: string,
+  commentId: string,
+  token: string
+) {
+  const fields = "id,text,timestamp,username,media{id,permalink,caption}";
+  return call(
+    `/${igUserId}?fields=mentioned_comment.comment_id(${commentId}){${fields}}`,
+    token
+  );
 }
 
 /** Hide a comment from public view (spam / troll shield). */
@@ -87,17 +202,255 @@ async function postMessage(
   return body as Json;
 }
 
+/** Validate text before any send — throws if empty or too long. */
+function validateMessageText(text: string): string {
+  const t = text?.trim();
+  if (!t) throw new Error("message text is empty");
+  if (t.length > 1000) throw new Error(`message too long: ${t.length} chars (max 1000)`);
+  return t;
+}
+
 export async function sendDM(
   igUserId: string,
   recipientId: string,
   text: string,
   token: string
 ) {
+  const clean = validateMessageText(text);
   return postMessage(
     igUserId,
-    { recipient: { id: recipientId }, message: { text } },
+    { recipient: { id: recipientId }, message: { text: clean } },
     token
   );
+}
+
+/**
+ * Send a private reply to a comment with quick_reply buttons.
+ * Uses comment_id recipient so Instagram shows the "about your comment" context footer.
+ */
+export async function sendCommentPrivateReplyWithButtons(
+  igUserId: string,
+  commentId: string,
+  text: string,
+  buttons: { label: string; payload?: string }[],
+  token: string
+) {
+  const clean = validateMessageText(text);
+  const quickReplies = buttons.slice(0, 13).map((b) => ({
+    content_type: "text",
+    title: b.label.slice(0, 20),
+    payload: b.payload || b.label, // Instagram requires non-empty payload
+  }));
+  return postMessage(
+    igUserId,
+    { recipient: { comment_id: commentId }, message: { text: clean, quick_replies: quickReplies } },
+    token
+  );
+}
+
+/**
+ * Send DM with quick_reply buttons (Instagram Messaging API).
+ * Max 13 buttons, each title max 20 chars.
+ */
+export async function sendDMWithButtons(
+  igUserId: string,
+  recipientId: string,
+  text: string,
+  buttons: { label: string; payload?: string }[],
+  token: string
+) {
+  const clean = validateMessageText(text);
+  const quickReplies = buttons.slice(0, 13).map((b) => ({
+    content_type: "text",
+    title: b.label.slice(0, 20),
+    payload: b.payload || b.label, // Instagram requires non-empty payload
+  }));
+  return postMessage(
+    igUserId,
+    { recipient: { id: recipientId }, message: { text: clean, quick_replies: quickReplies } },
+    token
+  );
+}
+
+/**
+ * Send DM with an image attachment.
+ * Uses the media attachment payload — not supported in private replies.
+ */
+export async function sendDMImage(
+  igUserId: string,
+  recipientId: string,
+  imageUrl: string,
+  token: string
+) {
+  const url = imageUrl?.trim();
+  if (!url) throw new Error("image URL is empty");
+  return postMessage(
+    igUserId,
+    {
+      recipient: { id: recipientId },
+      message: { attachment: { type: "image", payload: { url, is_reusable: true } } },
+    },
+    token
+  );
+}
+
+export type DMMessage = {
+  id: string;
+  text: string;
+  fromUserId: string;
+  fromUsername?: string;
+  ts: number;
+};
+
+/**
+ * Fetch the most recent DM messages across all conversations.
+ * Used by the watcher to detect button clicks and follow confirms without
+ * requiring a registered webhook.
+ * Returns messages newer than sinceMs, max ~50 across recent conversations.
+ */
+export async function getRecentDMMessages(
+  igUserId: string,
+  token: string,
+  sinceMs: number
+): Promise<DMMessage[]> {
+  const res = await call(
+    `/${igUserId}/conversations?fields=messages{message,from,created_time}&limit=10`,
+    token
+  ) as { data?: Array<{ messages?: { data?: Array<{ id: string; message?: string; from?: { id: string; username?: string }; created_time: string }> } }> };
+
+  const results: DMMessage[] = [];
+  for (const conv of res.data ?? []) {
+    for (const m of conv.messages?.data ?? []) {
+      if (!m.message || !m.from) continue;
+      if (m.from.id === igUserId) continue; // skip own messages
+      const ts = new Date(m.created_time).getTime();
+      if (ts <= sinceMs) continue;
+      results.push({
+        id: m.id,
+        text: m.message,
+        fromUserId: m.from.id,
+        fromUsername: m.from.username,
+        ts,
+      });
+    }
+  }
+  return results;
+}
+
+export type ButtonTemplateButton =
+  | { type: "web_url"; title: string; url: string }
+  | { type: "postback"; title: string; payload: string };
+
+/**
+ * Send a DM using Meta's button template — supports web_url + postback buttons.
+ * Postback clicks fire a messaging_postbacks webhook event (instant, no DM created).
+ * Max 3 buttons, title max 20 chars.
+ */
+export async function sendDMWithButtonTemplate(
+  igUserId: string,
+  recipientId: string,
+  text: string,
+  buttons: ButtonTemplateButton[],
+  token: string
+) {
+  const clean = validateMessageText(text);
+  return postMessage(
+    igUserId,
+    {
+      recipient: { id: recipientId },
+      message: {
+        attachment: {
+          type: "template",
+          payload: {
+            template_type: "button",
+            text: clean,
+            buttons: buttons.slice(0, 3).map((b) =>
+              b.type === "web_url"
+                ? { type: "web_url", url: b.url, title: b.title.slice(0, 20) }
+                : { type: "postback", title: b.title.slice(0, 20), payload: b.payload }
+            ),
+          },
+        },
+      },
+    },
+    token
+  );
+}
+
+/**
+ * Send a private reply using Meta's button template — text + buttons in the same
+ * bubble. Uses comment_id recipient so IG shows "about your comment" context.
+ */
+export async function sendCommentPrivateReplyWithButtonTemplate(
+  igUserId: string,
+  commentId: string,
+  text: string,
+  buttons: ButtonTemplateButton[],
+  token: string
+) {
+  const clean = validateMessageText(text);
+  return postMessage(
+    igUserId,
+    {
+      recipient: { comment_id: commentId },
+      message: {
+        attachment: {
+          type: "template",
+          payload: {
+            template_type: "button",
+            text: clean,
+            buttons: buttons.slice(0, 3).map((b) =>
+              b.type === "web_url"
+                ? { type: "web_url", url: b.url, title: b.title.slice(0, 20) }
+                : { type: "postback", title: b.title.slice(0, 20), payload: b.payload }
+            ),
+          },
+        },
+      },
+    },
+    token
+  );
+}
+
+/**
+ * Fetch ALL followers for igUserId, paginating until exhausted or maxPages reached.
+ * Used for the background full-sync in the watcher. Returns {id, username} pairs.
+ */
+export async function fetchAllFollowers(
+  igUserId: string,
+  token: string,
+  maxPages = 200
+): Promise<{ id: string; username?: string }[]> {
+  const results: { id: string; username?: string }[] = [];
+  let url: string | null = `${BASE}/${igUserId}/followers?fields=id,username&limit=100&access_token=${token}`;
+  for (let page = 0; page < maxPages && url; page++) {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    const json = await res.json() as { data?: { id: string; username?: string }[]; paging?: { next?: string } };
+    for (const f of json.data ?? []) results.push(f);
+    url = json.paging?.next ?? null;
+  }
+  return results;
+}
+
+/**
+ * Check whether `userId` is in the first page of recent followers.
+ * Call this only after checking the local followerCache — this covers
+ * people who followed in the last sync window but aren't cached yet.
+ * Returns false on any API error.
+ */
+export async function checkIsRecentFollower(
+  userId: string,
+  igUserId: string,
+  token: string
+): Promise<boolean> {
+  try {
+    const url = `${BASE}/${igUserId}/followers?fields=id&limit=100&access_token=${token}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    const json = await res.json() as { data?: { id: string }[] };
+    return json.data?.some((f) => f.id === userId) ?? false;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -111,9 +464,10 @@ export async function sendCommentPrivateReply(
   text: string,
   token: string
 ) {
+  const clean = validateMessageText(text);
   return postMessage(
     igUserId,
-    { recipient: { comment_id: commentId }, message: { text } },
+    { recipient: { comment_id: commentId }, message: { text: clean } },
     token
   );
 }

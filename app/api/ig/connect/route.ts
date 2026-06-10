@@ -20,11 +20,15 @@ export async function GET(req: NextRequest) {
   })();
   const state = origin ? Buffer.from(origin).toString("base64url") : "";
 
+  const forceNew = req.nextUrl.searchParams.get("switch") === "1";
+
   const url = new URL("https://www.instagram.com/oauth/authorize");
   url.searchParams.set("client_id", ig.appId);
   url.searchParams.set("redirect_uri", redirectUri());
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", ig.scopes.join(","));
   if (state) url.searchParams.set("state", state);
+  // force Instagram to show the login screen instead of auto-using the cached session
+  if (forceNew) url.searchParams.set("auth_type", "reauthenticate");
   return NextResponse.redirect(url.toString());
 }

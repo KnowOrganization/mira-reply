@@ -1,8 +1,9 @@
-import { readStore, patchStore, type CachedComment } from "./store";
-import { getRecentMedia, getMediaComments } from "./graph";
+import { readStore, patchStore, updateStore, type CachedComment } from "./store";
+import { getAllMedia, getMediaComments, getRecentDMMessages, sendCommentPrivateReply, sendDM, fetchAllFollowers } from "./graph";
 import { processInbound } from "./pipeline";
 import { publish } from "./bus";
-import { seenComment, primeSeen, seenSize } from "./seen";
+import { hasSeen, markSeen, primeSeen, seenSize } from "./seen";
+import { matchAutomations, executeAutomation, resumeAutomationAfterButtonClick, resumeAutomationAfterFollow, type AutomationEvent } from "./automation";
 
 const MAX_CACHE = 5000;
 
@@ -22,12 +23,24 @@ type State = {
   ticks: number;
 };
 
-// poll fast — recent media every tick, the full catalogue every 6th tick.
-// Most new comments land on recent posts, so this keeps detection near
-// real-time without hammering the Instagram API.
+// poll fast — the hottest recent posts every tick, the FULL account
+// catalogue every 6th tick. Most new comments land on recent posts, so this
+// keeps detection near real-time without hammering the Instagram API on
+// every tick, while still never missing a comment on an older post.
 const FAST_INTERVAL = 7_000;
-const HOT_MEDIA = 10;
+const HOT_MEDIA = 12;
 const FULL_SWEEP_EVERY = 6;
+// sync full follower list every ~30 min (60 ticks × 7s = 420s ≈ 7min, 240 ticks ≈ 28min)
+const FOLLOWER_SYNC_EVERY = 240;
+// a never-seen comment newer than this still gets a conclusion even if the
+// watermark has moved past it. Older than this = pre-existing backlog, left
+// alone (auto-replying a months-old backlog would be spam + a ban risk).
+const CATCHUP_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+const gDM = globalThis as unknown as { __mira_seen_dms?: Set<string>; __mira_dm_watermark?: number };
+if (!gDM.__mira_seen_dms) gDM.__mira_seen_dms = new Set();
+if (!gDM.__mira_dm_watermark) gDM.__mira_dm_watermark = Date.now() - 5 * 60_000; // check last 5 min on first tick
+const seenDMs = gDM.__mira_seen_dms;
 
 const g = globalThis as unknown as { __mira_watcher?: State };
 if (!g.__mira_watcher) {
@@ -69,6 +82,46 @@ export function watcherStatus() {
   };
 }
 
+async function drainSendQueue() {
+  const store = await readStore();
+  if (!store.account) return;
+  const now = Date.now();
+  const due = (store.sendQueue ?? []).filter((s) => s.releaseAt <= now);
+  if (!due.length) return;
+
+  for (const item of due) {
+    const retryCount = item.retryCount ?? 0;
+    let sent = false;
+    try {
+      if (item.kind === "private_reply") {
+        await sendCommentPrivateReply(
+          store.account.igUserId, item.targetId, item.text, store.account.accessToken
+        );
+      } else {
+        await sendDM(
+          store.account.igUserId, item.recipientId!, item.text, store.account.accessToken
+        );
+      }
+      sent = true;
+      publish({ type: "log", level: "info", msg: `sendQueue: sent scheduled message (${item.id})`, ts: Date.now() });
+    } catch (e) {
+      publish({ type: "log", level: "error", msg: `sendQueue: failed ${item.id} (attempt ${retryCount + 1}): ${String(e)}`, ts: Date.now() });
+    }
+    if (sent || retryCount >= 2) {
+      // remove on success or after 3 attempts
+      await updateStore((s) => ({ ...s, sendQueue: s.sendQueue.filter((q) => q.id !== item.id) }));
+    } else {
+      // increment retry count and reschedule +5 minutes
+      await updateStore((s) => ({
+        ...s,
+        sendQueue: s.sendQueue.map((q) =>
+          q.id === item.id ? { ...q, retryCount: retryCount + 1, releaseAt: Date.now() + 5 * 60_000 } : q
+        ),
+      }));
+    }
+  }
+}
+
 export async function tick() {
   // wait for any in-flight tick to finish, then re-check
   while (s.inFlight) await new Promise((r) => setTimeout(r, 250));
@@ -97,16 +150,32 @@ export async function tick() {
     const watermark = store.pollWatermark || 0;
     let newest = watermark;
 
-    // restore the shared seen set from persisted cache on first run
+    // restore the shared seen set on first run — but ONLY from comments that
+    // were actually concluded (replied / skipped / drafted / clarified) or
+    // are Mira's own. A comment merely *cached* (e.g. by the post-detail
+    // fetch) must stay processable — otherwise a restart buries it as "seen"
+    // forever and it never gets a conclusion.
     if (seenSize() === 0 && store.commentsCache.length > 0) {
-      primeSeen(store.commentsCache.map((c) => c.id));
+      const concluded = new Set<string>();
+      for (const h of store.history)
+        if (h.commentId && (h.status === "sent" || h.status === "skipped"))
+          concluded.add(h.commentId);
+      for (const d of store.pendingDrafts) concluded.add(d.threadOrMediaId);
+      for (const cl of store.clarifications)
+        if (cl.commentId) concluded.add(cl.commentId);
+      const prime = store.commentsCache
+        .filter((c) => c.isOwn || concluded.has(c.id))
+        .map((c) => c.id);
+      if (prime.length) primeSeen(prime);
     }
     const cachedById = new Map(store.commentsCache.map((c) => [c.id, c]));
 
     const newCached: CachedComment[] = [];
     let newCount = 0;
 
-    const media = (await getRecentMedia(token, 25)) as {
+    // the ENTIRE account catalogue — paginated, every post, not just the
+    // newest page. Without this, comments on older posts are never seen.
+    const media = (await getAllMedia(token)) as {
       data?: Array<{
         id: string;
         caption?: string;
@@ -115,12 +184,25 @@ export async function tick() {
         media_url?: string;
       }>;
     };
-    // every tick scans the hottest recent media; a full sweep runs
-    // periodically so comments on older posts are never missed.
+    // every tick scans the hottest recent media; a full sweep over EVERY
+    // post runs periodically so comments on older posts are never missed.
     const full = s.ticks % FULL_SWEEP_EVERY === 0;
     s.ticks++;
     const allMedia = media.data ?? [];
-    const scan = full ? allMedia : allMedia.slice(0, HOT_MEDIA);
+    const baseScan = full ? allMedia : allMedia.slice(0, HOT_MEDIA);
+    // Always include posts watched by active automations — even if they're old/outside hot window
+    const automationPostIds = new Set(
+      (store.automations ?? [])
+        .filter((a) => a.enabled && a.trigger.type === "comment_post")
+        .flatMap((a) => {
+          const triggerNode = a.nodes.find((n) => n.type === "trigger");
+          return a.trigger.postIds?.length
+            ? a.trigger.postIds
+            : (triggerNode?.data.postIds ?? []);
+        })
+    );
+    const baseScanIds = new Set(baseScan.map((m) => m.id));
+    const scan = [...baseScan, ...allMedia.filter((m) => automationPostIds.has(m.id) && !baseScanIds.has(m.id))];
     for (const m of scan) {
       let res: { data?: Raw[] };
       try {
@@ -159,9 +241,14 @@ export async function tick() {
           newCached.push(cb);
         }
 
-        if (seenComment(c.id)) continue;
+        // read-only check — do NOT mark seen yet. Marking only happens once
+        // a comment is actually committed to (processed) or deliberately
+        // abandoned (own / old backlog). Marking before the skip gates would
+        // bury a recent un-processed comment as "seen" forever.
+        if (hasSeen(c.id)) continue;
 
         if (isOwnComment(c.from, c.text)) {
+          markSeen(c.id);
           publish({
             type: "comment",
             commentId: c.id,
@@ -173,7 +260,15 @@ export async function tick() {
           });
           continue;
         }
-        if (ts <= watermark) continue;
+        // the watermark blocks the pre-existing backlog. But a comment we
+        // have genuinely never seen and that is recent still deserves a
+        // conclusion, even if newer comments pushed the watermark past it.
+        if (ts <= watermark && Date.now() - ts > CATCHUP_WINDOW_MS) {
+          markSeen(c.id); // old backlog — mark so it is not re-scanned forever
+          continue;
+        }
+        // committing to process it now — safe to mark seen
+        markSeen(c.id);
         newCount++;
         publish({
           type: "comment",
@@ -184,16 +279,35 @@ export async function tick() {
           text: c.text,
           ts,
         });
-        processInbound({
-          kind: "comment",
-          threadOrMediaId: c.id,
+
+        const evt: AutomationEvent = {
+          type: "comment_post",
+          commentId: c.id,
           fromUserId: c.from.id,
           fromUsername: c.from.username,
           text: c.text,
           postId: m.id,
-        }).catch((e) =>
-          publish({ type: "log", level: "error", msg: `pipeline: ${String(e)}`, ts: Date.now() })
-        );
+        };
+        const matched = matchAutomations(store, evt);
+        if (matched.length > 0) {
+          publish({ type: "log", level: "info", msg: `watcher: ${matched.length} automation(s) matched for comment ${c.id} on post ${m.id}`, ts: Date.now() });
+          for (const auto of matched) {
+            await executeAutomation(auto, evt).catch((e) =>
+              publish({ type: "log", level: "error", msg: `watcher automation [${auto.id}]: ${String(e)}`, ts: Date.now() })
+            );
+          }
+        } else {
+          processInbound({
+            kind: "comment",
+            threadOrMediaId: c.id,
+            fromUserId: c.from.id,
+            fromUsername: c.from.username,
+            text: c.text,
+            postId: m.id,
+          }).catch((e) =>
+            publish({ type: "log", level: "error", msg: `pipeline: ${String(e)}`, ts: Date.now() })
+          );
+        }
       }
     }
 
@@ -210,6 +324,75 @@ export async function tick() {
     if (newCount > 0) {
       publish({ type: "log", level: "info", msg: `watcher: ${newCount} new`, ts: Date.now() });
     }
+
+    // Poll DMs — catch button clicks + follow confirms without needing webhook
+    try {
+      const dmSince = gDM.__mira_dm_watermark!;
+      const newDMs = await getRecentDMMessages(ownId, token, dmSince);
+      let latestDMts = dmSince;
+
+      if (newDMs.length > 0) {
+        publish({ type: "log", level: "info", msg: `watcher: ${newDMs.length} new DM(s) to process`, ts: Date.now() });
+      }
+
+      for (const dm of newDMs) {
+        if (seenDMs.has(dm.id)) continue;
+        seenDMs.add(dm.id);
+        if (dm.ts > latestDMts) latestDMts = dm.ts;
+
+        const freshDMStore = await readStore();
+        const buttonPending = (freshDMStore.automationButtonPending ?? []).find(
+          (p) => p.fromUserId === dm.fromUserId && Date.now() - p.ts < 24 * 60 * 60_000
+        );
+        const followPending = (freshDMStore.automationFollowPending ?? []).find(
+          (p) => p.fromUserId === dm.fromUserId && Date.now() - p.ts < 24 * 60 * 60_000
+        );
+        const FOLLOW_CONFIRM = /\b(send|yes|yep|done|following|followed|ok|okay|sure|ready)\b/i;
+
+        if (buttonPending) {
+          publish({ type: "log", level: "info", msg: `watcher: button-click DM from @${dm.fromUsername ?? dm.fromUserId} — resuming automation`, ts: Date.now() });
+          await resumeAutomationAfterButtonClick(dm.fromUserId, dm.fromUsername).catch((e) =>
+            publish({ type: "log", level: "error", msg: `watcher button resume: ${String(e)}`, ts: Date.now() })
+          );
+        } else if (followPending && FOLLOW_CONFIRM.test(dm.text)) {
+          publish({ type: "log", level: "info", msg: `watcher: follow-confirm DM from @${dm.fromUsername ?? dm.fromUserId} — resuming automation`, ts: Date.now() });
+          await resumeAutomationAfterFollow(dm.fromUserId, dm.fromUsername).catch((e) =>
+            publish({ type: "log", level: "error", msg: `watcher follow resume: ${String(e)}`, ts: Date.now() })
+          );
+        }
+      }
+
+      gDM.__mira_dm_watermark = latestDMts;
+      // cap seen set to avoid unbounded growth
+      if (seenDMs.size > 5000) seenDMs.clear();
+    } catch (e) {
+      publish({ type: "log", level: "warn", msg: `watcher: DM poll failed: ${String(e)}`, ts: Date.now() });
+    }
+
+    // periodically rebuild full follower cache so checkIsFollower works for old followers
+    if (s.ticks % FOLLOWER_SYNC_EVERY === 1) {
+      try {
+        const freshStore = await readStore();
+        if (freshStore.account) {
+          const followers = await fetchAllFollowers(freshStore.account.igUserId, freshStore.account.accessToken);
+          await updateStore((st) => ({
+            ...st,
+            followerCache: followers.map((f) => ({
+              userId: f.id,
+              username: f.username,
+              followedAt: (st.followerCache ?? []).find((c) => c.userId === f.id)?.followedAt ?? Date.now(),
+            })).slice(-10_000),
+          }));
+          publish({ type: "log", level: "info", msg: `watcher: follower cache synced (${followers.length})`, ts: Date.now() });
+        }
+      } catch (e) {
+        publish({ type: "log", level: "warn", msg: `watcher: follower sync failed: ${String(e)}`, ts: Date.now() });
+      }
+    }
+
+    // drain scheduled sendQueue (follow-up messages)
+    await drainSendQueue();
+
     return { newCount, skipped: false };
   } catch (e) {
     publish({ type: "log", level: "error", msg: `watcher tick: ${String(e)}`, ts: Date.now() });

@@ -140,6 +140,7 @@ export type ScheduledSend = {
   text: string;
   releaseAt: number;
   createdAt: number;
+  retryCount?: number; // max 3, then drop
 };
 
 export type Settings = {
@@ -183,6 +184,29 @@ export type IgStore = {
   ownerProfile: OwnerProfile;
   dailyStats: Record<string, DailyStat>;
   sendQueue: ScheduledSend[];
+  // Playground training examples — owner-approved / corrected replies, fed
+  // back into the reply prompt as few-shot guidance.
+  training: TrainingExample[];
+  // @-mentions of this account on others' posts/comments + photo tags.
+  mentions: Mention[];
+  // Followers who have followed us (populated by webhook). Used for direct link delivery.
+  followerCache: FollowerCacheEntry[];
+  // Track which users received a DM for a specific post — prevents re-sending across runs.
+  postDMsSent: { userId: string; postId: string }[];
+  // Users whose DMs are blocked/archived — never retry these.
+  dmBlocked: { userId: string; reason: string; ts: number }[];
+  // Comments waiting for user to follow before receiving the link.
+  linkPending: LinkPending[];
+  // Live activity feed events (max 500, newest first).
+  feedEvents: FeedEvent[];
+  // Automations — visual comment-to-DM flows.
+  automations: Automation[];
+  // Dedup ledger — prevents same automation firing twice for same comment (webhook retries).
+  automationFired: { key: string; ts: number }[];
+  // Follow gate pending — users who need to follow before automation resumes.
+  automationFollowPending: AutomationFollowPending[];
+  // Button pending — users who clicked a button and are waiting for follow check.
+  automationButtonPending: AutomationButtonPending[];
 };
 
 export type CachedComment = {
@@ -227,6 +251,154 @@ export type ReplyLog = {
   reason?: string;
 };
 
+// Cached follower user IDs — populated by follow webhook events.
+export type FollowerCacheEntry = {
+  userId: string;
+  username?: string;
+  followedAt: number;
+};
+
+// Pending link deliveries — waiting for user to follow before we send the link.
+export type LinkPending = {
+  userId: string;
+  username?: string;
+  postId: string;
+  commentId: string;
+  ts: number;
+};
+
+// Feed event — shown in the live activity feed.
+export type FeedEvent = {
+  id: string;
+  kind: "comment_replied" | "dm_sent" | "link_sent" | "follow_pending" | "skipped";
+  username?: string;
+  userId?: string;
+  postTitle?: string;
+  detail?: string;
+  ts: number;
+};
+
+// @dstrails mentioned in someone else's caption / comment, or photo-tagged.
+export type Mention = {
+  id: string; // unique key — kind:mediaId[:commentId]
+  kind: "caption" | "comment" | "tag";
+  mediaId: string;
+  permalink?: string;
+  thumbnailUrl?: string;
+  mediaUrl?: string;
+  mediaCaption?: string;
+  commentId?: string;
+  commentText?: string;
+  fromUserId?: string;
+  fromUsername?: string;
+  mediaType?: string;
+  likeCount?: number;
+  commentsCount?: number;
+  ts: number; // event/media timestamp (ms)
+  seenAt: number; // when this mention first entered the store
+  read: boolean;
+};
+
+// A training example from the Playground — the owner approving or correcting
+// a reply Mira produced. Approved/corrected examples are fed back into every
+// reply prompt as few-shot guidance, so Mira learns the owner's preferences.
+export type TrainingExample = {
+  id: string;
+  comment: string; // the test comment
+  caption: string; // post caption used as context
+  notes: string; // owner notes used as context
+  miraAction: string; // send / draft / clarify / skip
+  miraReply: string; // what Mira produced (reply text, question, or reason)
+  intent: string;
+  verdict: "good" | "bad";
+  // correction — only set when verdict === "bad"
+  correctAction?: "reply" | "ask_owner" | "skip"; // what Mira SHOULD do
+  idealReply?: string; // the exact follower-facing reply (correctAction "reply")
+  askQuestion?: string; // what Mira should ask the owner (correctAction "ask_owner")
+  note?: string; // owner's reasoning / rule — guidance only, NEVER sent
+  embedding?: number[]; // semantic vector of `comment` — for paraphrase match
+  createdAt: number;
+};
+
+// ── Automation types ───────────────────────────────────────────────────────
+
+export type AutomationTriggerType = "comment_post" | "dm" | "live_comment" | "story_reply";
+
+export type AutomationTrigger = {
+  type: AutomationTriggerType;
+  keywords?: string[]; // empty = match all
+  postIds?: string[];  // empty = all posts
+};
+
+export type AutomationNodeType =
+  | "trigger"
+  | "post_filter"
+  | "opening_message"
+  | "text_message"
+  | "card_message"
+  | "image_message"
+  | "ask_follow"
+  | "follow_gate"
+  | "lead_form"
+  | "followup_message";
+
+export type AutomationFollowPending = {
+  automationId: string;
+  commentId: string;
+  fromUserId: string;
+  fromUsername?: string;
+  remainingNodeIds: string[];
+  ts: number;
+};
+
+export type AutomationButtonPending = {
+  automationId: string;
+  commentId: string;
+  fromUserId: string;
+  fromUsername?: string;
+  remainingNodeIds: string[]; // nodes after the button-gated message
+  ts: number;
+};
+
+export type AutomationNodeData = {
+  text?: string;
+  buttons?: { label: string; payload: string }[];
+  imageUrl?: string;
+  title?: string;
+  subtitle?: string;
+  delayMinutes?: number;
+  question?: string;
+  enabled?: boolean;
+  postIds?: string[]; // trigger node: restrict to specific post IDs
+};
+
+export type AutomationNode = {
+  id: string;
+  type: AutomationNodeType;
+  position: { x: number; y: number };
+  data: AutomationNodeData;
+};
+
+export type AutomationEdge = {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+};
+
+export type Automation = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  trigger: AutomationTrigger;
+  nodes: AutomationNode[];
+  edges: AutomationEdge[];
+  stats: { triggered: number; completed: number; failed: number; lastTriggered?: number };
+  createdAt: number;
+  updatedAt: number;
+};
+
 // ── defaults ───────────────────────────────────────────────────────────────
 const defaultSettings: Settings = {
   replyMode: (process.env.MIRA_REPLY_MODE as Settings["replyMode"]) || "balanced",
@@ -269,6 +441,17 @@ function freshStore(): IgStore {
     ownerProfile: { ...defaultOwnerProfile },
     dailyStats: {},
     sendQueue: [],
+    training: [],
+    mentions: [],
+    followerCache: [],
+    postDMsSent: [],
+    dmBlocked: [],
+    linkPending: [],
+    feedEvents: [],
+    automations: [],
+    automationFired: [],
+    automationFollowPending: [],
+    automationButtonPending: [],
   };
 }
 
