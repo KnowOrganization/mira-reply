@@ -207,6 +207,9 @@ export type IgStore = {
   automationFollowPending: AutomationFollowPending[];
   // Button pending — users who clicked a button and are waiting for follow check.
   automationButtonPending: AutomationButtonPending[];
+  // Retry pending — automations parked mid-flow by an Instagram rate-limit (613),
+  // to be re-run from their remaining nodes once `notBefore` passes.
+  automationRetryPending: AutomationRetryPending[];
 };
 
 export type CachedComment = {
@@ -360,6 +363,18 @@ export type AutomationButtonPending = {
   ts: number;
 };
 
+export type AutomationRetryPending = {
+  automationId: string;
+  commentId: string;
+  fromUserId: string;
+  fromUsername?: string;
+  postId?: string;
+  remainingNodeIds: string[]; // nodes still to run (current node included) when rate-limited
+  notBefore: number;          // don't retry before this ts (backoff)
+  attempts: number;
+  ts: number;
+};
+
 export type AutomationNodeData = {
   text?: string;
   buttons?: { label: string; payload: string }[];
@@ -452,6 +467,7 @@ function freshStore(): IgStore {
     automationFired: [],
     automationFollowPending: [],
     automationButtonPending: [],
+    automationRetryPending: [],
   };
 }
 

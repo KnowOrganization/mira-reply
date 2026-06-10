@@ -1,8 +1,28 @@
-import type { Automation, IgStore, AutomationButtonPending } from "./store";
+import type { Automation, IgStore, AutomationButtonPending, AutomationRetryPending } from "./store";
 import { readStore, updateStore } from "./store";
-import { tryDM, tryPrivateReply, tryPrivateReplyWithButtons, tryDMWithButtons, tryDMWithButtonTemplate, tryDMImage } from "./dm";
+import {
+  tryDM as _tryDM,
+  tryPrivateReply,
+  tryPrivateReplyWithButtons as _tryPrivateReplyWithButtons,
+  tryDMWithButtons as _tryDMWithButtons,
+  tryDMWithButtonTemplate as _tryDMWithButtonTemplate,
+  tryDMImage as _tryDMImage,
+} from "./dm";
+import type { SendResult, SendOpts } from "./dm";
+import type { ButtonTemplateButton } from "./graph";
 import { publish } from "./bus";
 import { checkFollowStatus } from "./followCheck";
+
+// Every send from an automation is an in-funnel message to an already-engaged
+// user, so it bypasses the cold-DM 1-per-24h gate. Shadowing the imported names
+// with same-named wrappers means all existing call sites route through here
+// unchanged — generic to any graph, no per-call edits.
+const FUNNEL: SendOpts = { skipRateGate: true };
+const tryDM = (id: string, text: string) => _tryDM(id, text, FUNNEL);
+const tryDMImage = (id: string, url: string) => _tryDMImage(id, url, FUNNEL);
+const tryDMWithButtons = (id: string, text: string, b: { label: string; payload?: string }[]) => _tryDMWithButtons(id, text, b, FUNNEL);
+const tryDMWithButtonTemplate = (id: string, text: string, b: ButtonTemplateButton[]) => _tryDMWithButtonTemplate(id, text, b, FUNNEL);
+const tryPrivateReplyWithButtons = (commentId: string, id: string, text: string, b: { label: string; payload?: string }[]) => _tryPrivateReplyWithButtons(commentId, id, text, b, FUNNEL);
 
 export type AutomationEvent = {
   type: "comment_post" | "dm" | "live_comment" | "story_reply";
@@ -27,6 +47,34 @@ function keywordMatches(text: string, keyword: string): boolean {
   } catch {
     return text.toLowerCase().includes(keyword.toLowerCase());
   }
+}
+
+// Cross-path resume lock: the same button tap can reach us via BOTH the webhook
+// (postback) and the 1s DM poll. Each is a different event, so id-dedup misses
+// them. This collapses any resume for one user within a short window into one.
+const resumeLock = new Set<string>();
+function acquireResumeLock(userId: string): boolean {
+  if (resumeLock.has(userId)) return false;
+  resumeLock.add(userId);
+  setTimeout(() => resumeLock.delete(userId), 8_000);
+  return true;
+}
+
+/** All nodes reachable from `startIds` via edges, in BFS order. Used when a gate
+ *  pauses the flow — we must park the ENTIRE downstream chain, not just the gate's
+ *  immediate children, or later nodes (e.g. the final message) never run on resume. */
+function downstreamFrom(startIds: string[], nextNodes: Map<string, string[]>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const q = [...startIds];
+  while (q.length) {
+    const id = q.shift()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    q.push(...(nextNodes.get(id) ?? []));
+  }
+  return out;
 }
 
 /** Returns enabled automations whose trigger matches this event. */
@@ -83,33 +131,39 @@ export function matchAutomations(store: IgStore, event: AutomationEvent): Automa
 export async function executeAutomation(
   automation: Automation,
   event: AutomationEvent,
-  options: { dryRun?: boolean } = {}
+  options: { dryRun?: boolean; resumeFrom?: string[] } = {}
 ): Promise<DryRunStep[]> {
-  const { dryRun = false } = options;
+  const { dryRun = false, resumeFrom } = options;
   const steps: DryRunStep[] = [];
 
-  // Fix 12 — dedup: skip if this automation already fired for this comment within 1h
-  if (!dryRun) {
+  // Fix 12 — dedup: skip if this automation already fired for this comment within 1h.
+  // Resume runs (rate-limit retry) skip dedup/trigger-count — they continue an
+  // already-counted flow from its remaining nodes.
+  if (!dryRun && !resumeFrom) {
     const dedupKey = `${automation.id}:${event.commentId}`;
-    const store = await readStore();
-    const alreadyFired = (store.automationFired ?? []).some(
-      (f) => f.key === dedupKey && Date.now() - f.ts < 60 * 60_000
-    );
-    if (alreadyFired) return steps;
-
-    // Record dedup + increment triggered at start
-    await updateStore((s) => ({
-      ...s,
-      automationFired: [
-        ...(s.automationFired ?? []).filter((f) => Date.now() - f.ts < 2 * 60 * 60_000),
-        { key: dedupKey, ts: Date.now() },
-      ].slice(-2000),
-      automations: s.automations.map((a) =>
-        a.id === automation.id
-          ? { ...a, stats: { ...a.stats, triggered: (a.stats?.triggered ?? 0) + 1, lastTriggered: Date.now() } }
-          : a
-      ),
-    }));
+    // ATOMIC check-and-set — realtime loop + 7s tick can both reach here for the
+    // same comment; the serialized updateStore guarantees exactly one proceeds.
+    let proceed = false;
+    await updateStore((s) => {
+      const alreadyFired = (s.automationFired ?? []).some(
+        (f) => f.key === dedupKey && Date.now() - f.ts < 60 * 60_000
+      );
+      if (alreadyFired) return s;
+      proceed = true;
+      return {
+        ...s,
+        automationFired: [
+          ...(s.automationFired ?? []).filter((f) => Date.now() - f.ts < 2 * 60 * 60_000),
+          { key: dedupKey, ts: Date.now() },
+        ].slice(-2000),
+        automations: s.automations.map((a) =>
+          a.id === automation.id
+            ? { ...a, stats: { ...a.stats, triggered: (a.stats?.triggered ?? 0) + 1, lastTriggered: Date.now() } }
+            : a
+        ),
+      };
+    });
+    if (!proceed) return steps;
   }
 
   const nextNodes = new Map<string, string[]>();
@@ -123,11 +177,14 @@ export async function executeAutomation(
   const triggerNode = automation.nodes.find((n) => n.type === "trigger");
   if (!triggerNode) return steps;
 
-  const bfsQueue = [triggerNode.id];
+  const bfsQueue = resumeFrom?.length ? [...resumeFrom] : [triggerNode.id];
   const visited = new Set<string>();
   let sentCount = 0;
   let failCount = 0;
   let gated = false; // set true by follow_gate when user not following
+  let rateLimited = false; // set true when a send hits an Instagram 613/429
+  // Records whether any send in a node hit a rate-limit so we can park-and-retry.
+  const track = (r: SendResult): SendResult => { if (r.rateLimited) rateLimited = true; return r; };
 
   while (bfsQueue.length) {
     const nodeId = bfsQueue.shift()!;
@@ -160,18 +217,18 @@ export async function executeAutomation(
         steps.push({ nodeType: node.type, action: hasButtons ? "private_reply_with_buttons + button_gate" : "private_reply", text: msg });
         if (!dryRun) {
           if (hasButtons) {
-            const pr = await tryPrivateReplyWithButtons(event.commentId, event.fromUserId, msg, d.buttons!);
+            const pr = track(await tryPrivateReplyWithButtons(event.commentId, event.fromUserId, msg, d.buttons!));
             if (pr.ok) sentCount++; else failCount++;
           } else {
-            const pr = await tryPrivateReply(event.commentId, event.fromUserId, msg);
+            const pr = track(await tryPrivateReply(event.commentId, event.fromUserId, msg));
             if (pr.ok) { sentCount++; } else {
-              const dm = await tryDM(event.fromUserId, msg);
+              const dm = track(await tryDM(event.fromUserId, msg));
               if (dm.ok) sentCount++; else failCount++;
             }
           }
           // Button present — stop BFS, wait for user to click (DM arrives)
           if (hasButtons) {
-            const remainingIds = [...(nextNodes.get(nodeId) ?? []), ...bfsQueue];
+            const remainingIds = downstreamFrom([...(nextNodes.get(nodeId) ?? []), ...bfsQueue], nextNodes);
             await updateStore((s) => ({
               ...s,
               automationButtonPending: [
@@ -202,7 +259,7 @@ export async function executeAutomation(
         if (imgUrl) {
           steps.push({ nodeType: "card_message", action: "dm_image", text: imgUrl });
           if (!dryRun) {
-            const img = await tryDMImage(event.fromUserId, imgUrl);
+            const img = track(await tryDMImage(event.fromUserId, imgUrl));
             if (img.ok) sentCount++;
           }
         }
@@ -210,11 +267,11 @@ export async function executeAutomation(
           const hasButtons = (d.buttons?.length ?? 0) > 0;
           steps.push({ nodeType: "card_message", action: "private_reply", text: textParts });
           if (!dryRun) {
-            const pr = await tryPrivateReply(event.commentId, event.fromUserId, textParts);
+            const pr = track(await tryPrivateReply(event.commentId, event.fromUserId, textParts));
             if (pr.ok) { sentCount++; } else {
-              const dm = hasButtons
+              const dm = track(hasButtons
                 ? await tryDMWithButtons(event.fromUserId, textParts, d.buttons!)
-                : await tryDM(event.fromUserId, textParts);
+                : await tryDM(event.fromUserId, textParts));
               if (dm.ok) sentCount++; else failCount++;
             }
           }
@@ -227,9 +284,9 @@ export async function executeAutomation(
         if (!url) break;
         steps.push({ nodeType: "image_message", action: "private_reply → dm_image_fallback", text: url });
         if (!dryRun) {
-          const pr = await tryPrivateReply(event.commentId, event.fromUserId, url);
+          const pr = track(await tryPrivateReply(event.commentId, event.fromUserId, url));
           if (pr.ok) { sentCount++; } else {
-            const dm = await tryDMImage(event.fromUserId, url);
+            const dm = track(await tryDMImage(event.fromUserId, url));
             if (dm.ok) sentCount++; else failCount++;
           }
         }
@@ -263,11 +320,11 @@ export async function executeAutomation(
             { type: "web_url" as const, title: "Visit Profile", url: `https://www.instagram.com/${uname}` },
             { type: "postback" as const, title: "I'm following ✓", payload: "done" },
           ];
-          const dm = await tryDMWithButtonTemplate(event.fromUserId, notFollowingMsg, templateButtons);
+          const dm = track(await tryDMWithButtonTemplate(event.fromUserId, notFollowingMsg, templateButtons));
           if (dm.ok) sentCount++; else failCount++;
 
-          // Collect remaining node ids for resumption
-          const remainingIds = [...bfsQueue, ...Array.from(nextNodes.get(nodeId) ?? [])];
+          // Collect remaining node ids for resumption (full downstream chain)
+          const remainingIds = downstreamFrom([...Array.from(nextNodes.get(nodeId) ?? []), ...bfsQueue], nextNodes);
 
           await updateStore((s) => ({
             ...s,
@@ -294,18 +351,27 @@ export async function executeAutomation(
         const store = await readStore();
         const acct = store.account;
         const uname = acct?.username ?? "us";
+        // Live check — if they already follow, skip the ask and continue the graph.
+        if (!dryRun && acct) {
+          const already = await checkFollowStatus(event.fromUserId, acct.accessToken);
+          if (already) {
+            steps.push({ nodeType: "ask_follow", action: "skipped_already_following", text: "" });
+            break;
+          }
+        }
         const template = d.text?.trim() || `Follow @[username] to get exclusive updates 🙏`;
         const msg = template.replace(/\[username\]/gi, uname);
         steps.push({ nodeType: "ask_follow", action: "dm_button_template", text: msg });
         if (!dryRun) {
+          const confirmLabel = d.buttons?.[0]?.label?.trim() || "I'm following ✓";
           const templateButtons = [
             { type: "web_url" as const, title: "Visit Profile", url: `https://www.instagram.com/${uname}` },
-            { type: "postback" as const, title: "I'm following ✓", payload: "done" },
+            { type: "postback" as const, title: confirmLabel, payload: "done" },
           ];
-          const dm = await tryDMWithButtonTemplate(event.fromUserId, msg, templateButtons);
+          const dm = track(await tryDMWithButtonTemplate(event.fromUserId, msg, templateButtons));
           if (dm.ok) sentCount++; else failCount++;
-          // Gate BFS — park remaining nodes until user confirms follow
-          const remainingIds = [...bfsQueue];
+          // Gate BFS — park remaining nodes (full downstream chain) until user confirms follow
+          const remainingIds = downstreamFrom([...(nextNodes.get(nodeId) ?? []), ...bfsQueue], nextNodes);
           await updateStore((s) => ({
             ...s,
             automationFollowPending: [
@@ -332,9 +398,9 @@ export async function executeAutomation(
         if (!q) break;
         steps.push({ nodeType: "lead_form", action: "private_reply", text: q });
         if (!dryRun) {
-          const pr = await tryPrivateReply(event.commentId, event.fromUserId, q);
+          const pr = track(await tryPrivateReply(event.commentId, event.fromUserId, q));
           if (pr.ok) { sentCount++; } else {
-            const dm = await tryDM(event.fromUserId, q);
+            const dm = track(await tryDM(event.fromUserId, q));
             if (dm.ok) sentCount++; else failCount++;
           }
         }
@@ -367,6 +433,15 @@ export async function executeAutomation(
         }
         break;
       }
+    }
+
+    // Rate-limited (613/429) mid-flow — park current node + everything still
+    // queued, retry after backoff. Generic: any graph, any node, never dropped.
+    if (!dryRun && rateLimited) {
+      const remaining = [nodeId, ...(nextNodes.get(nodeId) ?? []), ...bfsQueue];
+      await parkAutomationRetry(automation.id, event, remaining);
+      publish({ type: "log", level: "warn", msg: `automation "${automation.name}": rate-limited — parked ${remaining.length} node(s) for retry`, ts: Date.now() });
+      break;
     }
 
     bfsQueue.push(...(nextNodes.get(nodeId) ?? []));
@@ -413,6 +488,7 @@ export async function resumeAutomationAfterButtonClick(
   userId: string,
   username?: string
 ): Promise<void> {
+  if (!acquireResumeLock(userId)) return; // collapse webhook + DM-poll duplicate triggers
   // Atomic claim — updateStore uses a serialized write queue, so only one
   // concurrent caller wins. Second caller sees empty claimed and returns early.
   let claimed: AutomationButtonPending[] = [];
@@ -422,9 +498,18 @@ export async function resumeAutomationAfterButtonClick(
       (p) => p.fromUserId === userId && Date.now() - p.ts < 24 * 60 * 60_000
     );
     if (!matches.length) return s;
-    claimed = matches;
+    // dedup: at most ONE pending per automation (keep latest) — a user with
+    // several stale openings must not trigger several duplicate resumes.
+    const byAuto = new Map<string, AutomationButtonPending>();
+    for (const p of matches) { const e = byAuto.get(p.automationId); if (!e || p.ts > e.ts) byAuto.set(p.automationId, p); }
+    claimed = [...byAuto.values()];
     claimedStore = s;
-    return { ...s, automationButtonPending: (s.automationButtonPending ?? []).filter((p) => p.fromUserId !== userId) };
+    // clear ALL of this user's button-pending (and any follow-pending) so one tap
+    // can't double-fire across stale entries / both resume paths.
+    return {
+      ...s,
+      automationButtonPending: (s.automationButtonPending ?? []).filter((p) => p.fromUserId !== userId),
+    };
   });
   if (!claimed.length) return;
   const store = claimedStore!;
@@ -462,29 +547,23 @@ export async function resumeAutomationAfterButtonClick(
         case "text_message":
         case "opening_message": {
           const msg = d.text?.trim(); if (!msg) break;
-          const pr = await tryPrivateReply(p.commentId, userId, msg);
-          if (!pr.ok) await tryDM(userId, msg);
+          await tryDM(userId, msg); // open window → plain DM (no comment-anchor header)
           break;
         }
         case "image_message": {
           const url = d.imageUrl?.trim(); if (!url) break;
-          const pr = await tryPrivateReply(p.commentId, userId, url);
-          if (!pr.ok) await tryDMImage(userId, url);
+          await tryDMImage(userId, url);
           break;
         }
         case "card_message": {
           const textParts = [d.title?.trim(), d.subtitle?.trim()].filter(Boolean).join("\n\n");
           if (d.imageUrl?.trim()) await tryDMImage(userId, d.imageUrl.trim());
-          if (textParts) {
-            const pr = await tryPrivateReply(p.commentId, userId, textParts);
-            if (!pr.ok) await tryDM(userId, textParts);
-          }
+          if (textParts) await tryDM(userId, textParts);
           break;
         }
         case "lead_form": {
           const q = d.question?.trim(); if (!q) break;
-          const pr = await tryPrivateReply(p.commentId, userId, q);
-          if (!pr.ok) await tryDM(userId, q);
+          await tryDM(userId, q);
           break;
         }
       }
@@ -500,29 +579,23 @@ export async function resumeAutomationAfterButtonClick(
           case "text_message":
           case "opening_message": {
             const msg = d.text?.trim(); if (!msg) break;
-            const pr = await tryPrivateReply(p.commentId, userId, msg);
-            if (!pr.ok) await tryDM(userId, msg);
+            await tryDM(userId, msg); // open window → plain DM (no comment-anchor header)
             break;
           }
           case "image_message": {
             const url = d.imageUrl?.trim(); if (!url) break;
-            const pr = await tryPrivateReply(p.commentId, userId, url);
-            if (!pr.ok) await tryDMImage(userId, url);
+            await tryDMImage(userId, url);
             break;
           }
           case "card_message": {
             const textParts = [d.title?.trim(), d.subtitle?.trim()].filter(Boolean).join("\n\n");
             if (d.imageUrl?.trim()) await tryDMImage(userId, d.imageUrl.trim());
-            if (textParts) {
-              const pr = await tryPrivateReply(p.commentId, userId, textParts);
-              if (!pr.ok) await tryDM(userId, textParts);
-            }
+            if (textParts) await tryDM(userId, textParts);
             break;
           }
           case "lead_form": {
             const q = d.question?.trim(); if (!q) break;
-            const pr = await tryPrivateReply(p.commentId, userId, q);
-            if (!pr.ok) await tryDM(userId, q);
+            await tryDM(userId, q);
             break;
           }
         }
@@ -537,9 +610,10 @@ export async function resumeAutomationAfterButtonClick(
         : `Follow @[username] to get exclusive access 🙏`;
       const template = gateNode?.data.text?.trim() || defaultMsg;
       const msg = template.replace(/\[username\]/gi, account.username);
+      const confirmLabel = gateNode?.data.buttons?.[0]?.label?.trim() || "I'm following ✓";
       const templateButtons = [
         { type: "web_url" as const, title: "Visit Profile", url: `https://www.instagram.com/${account.username}` },
-        { type: "postback" as const, title: "I'm following ✓", payload: "done" },
+        { type: "postback" as const, title: confirmLabel, payload: "done" },
       ];
       await tryDMWithButtonTemplate(userId, msg, templateButtons);
 
@@ -573,6 +647,7 @@ export async function resumeAutomationAfterFollow(
   userId: string,
   username?: string
 ): Promise<void> {
+  if (!acquireResumeLock(userId)) return; // collapse webhook + DM-poll duplicate triggers
   // Atomic claim — prevents webhook + watcher DM poll both processing the same follow confirm
   let claimed: import("./store").AutomationFollowPending[] = [];
   let claimedStore: import("./store").IgStore | null = null;
@@ -581,7 +656,10 @@ export async function resumeAutomationAfterFollow(
       (p) => p.fromUserId === userId && Date.now() - p.ts < 24 * 60 * 60_000
     );
     if (!matches.length) return s;
-    claimed = matches;
+    // dedup: one pending per automation (keep latest) — no duplicate resumes.
+    const byAuto = new Map<string, import("./store").AutomationFollowPending>();
+    for (const p of matches) { const e = byAuto.get(p.automationId); if (!e || p.ts > e.ts) byAuto.set(p.automationId, p); }
+    claimed = [...byAuto.values()];
     claimedStore = s;
     return { ...s, automationFollowPending: (s.automationFollowPending ?? []).filter((p) => p.fromUserId !== userId) };
   });
@@ -621,9 +699,7 @@ export async function resumeAutomationAfterFollow(
 
     // Following confirmed — execute remaining nodes
     const successMsg = `You're in! 🎉 Sending it now…`;
-    await tryPrivateReply(p.commentId, userId, successMsg).catch(() =>
-      tryDM(userId, successMsg)
-    );
+    await tryDM(userId, successMsg);
 
     // Execute remaining nodes in order
     for (const nodeId of p.remainingNodeIds) {
@@ -635,29 +711,23 @@ export async function resumeAutomationAfterFollow(
         case "text_message":
         case "opening_message": {
           const msg = d.text?.trim(); if (!msg) break;
-          const pr = await tryPrivateReply(p.commentId, userId, msg);
-          if (!pr.ok) await tryDM(userId, msg);
+          await tryDM(userId, msg); // open window → plain DM (no comment-anchor header)
           break;
         }
         case "image_message": {
           const url = d.imageUrl?.trim(); if (!url) break;
-          const pr = await tryPrivateReply(p.commentId, userId, url);
-          if (!pr.ok) await tryDMImage(userId, url);
+          await tryDMImage(userId, url);
           break;
         }
         case "card_message": {
           const textParts = [d.title?.trim(), d.subtitle?.trim()].filter(Boolean).join("\n\n");
           if (d.imageUrl?.trim()) await tryDMImage(userId, d.imageUrl.trim());
-          if (textParts) {
-            const pr = await tryPrivateReply(p.commentId, userId, textParts);
-            if (!pr.ok) await tryDM(userId, textParts);
-          }
+          if (textParts) await tryDM(userId, textParts);
           break;
         }
         case "lead_form": {
           const q = d.question?.trim(); if (!q) break;
-          const pr = await tryPrivateReply(p.commentId, userId, q);
-          if (!pr.ok) await tryDM(userId, q);
+          await tryDM(userId, q);
           break;
         }
         case "followup_message": {
@@ -688,4 +758,71 @@ export async function resumeAutomationAfterFollow(
     });
   }
 
+}
+
+/* ---------- rate-limit retry (613) ---------- */
+
+const RETRY_BACKOFF_MS = 15 * 60_000;
+
+/** Park an automation that was rate-limited mid-flow, to resume from its
+ *  remaining nodes once the backoff window clears. One entry per user+automation. */
+async function parkAutomationRetry(
+  automationId: string,
+  event: AutomationEvent,
+  remainingNodeIds: string[]
+): Promise<void> {
+  await updateStore((s) => ({
+    ...s,
+    automationRetryPending: [
+      ...(s.automationRetryPending ?? []).filter(
+        (p) => !(p.automationId === automationId && p.fromUserId === event.fromUserId)
+      ),
+      {
+        automationId,
+        commentId: event.commentId,
+        fromUserId: event.fromUserId,
+        fromUsername: event.fromUsername,
+        postId: event.postId,
+        remainingNodeIds,
+        notBefore: Date.now() + RETRY_BACKOFF_MS,
+        attempts: 1,
+        ts: Date.now(),
+      } satisfies AutomationRetryPending,
+    ].slice(-500),
+  }));
+}
+
+/** Drain due rate-limit retries — re-run each parked automation from its
+ *  remaining nodes via executeAutomation's resumeFrom path (full reuse, no
+ *  duplicated node logic). Called from the watcher tick. */
+export async function drainAutomationRetries(): Promise<void> {
+  const now = Date.now();
+  let due: AutomationRetryPending[] = [];
+  let snap: IgStore | null = null;
+  await updateStore((s) => {
+    const ready = (s.automationRetryPending ?? []).filter((p) => p.notBefore <= now);
+    if (!ready.length) return s;
+    due = ready;
+    snap = s;
+    return { ...s, automationRetryPending: (s.automationRetryPending ?? []).filter((p) => p.notBefore > now) };
+  });
+  if (!due.length || !snap) return;
+  const store: IgStore = snap;
+
+  for (const p of due) {
+    const automation = (store.automations ?? []).find((a) => a.id === p.automationId);
+    if (!automation?.enabled) continue;
+    const event: AutomationEvent = {
+      type: automation.trigger.type,
+      commentId: p.commentId,
+      fromUserId: p.fromUserId,
+      fromUsername: p.fromUsername,
+      text: "",
+      postId: p.postId,
+    };
+    publish({ type: "log", level: "info", msg: `automation "${automation.name}": retrying ${p.remainingNodeIds.length} parked node(s) for @${p.fromUsername ?? p.fromUserId}`, ts: Date.now() });
+    await executeAutomation(automation, event, { resumeFrom: p.remainingNodeIds }).catch((e) =>
+      publish({ type: "log", level: "error", msg: `automation retry [${p.automationId}]: ${String(e)}`, ts: Date.now() })
+    );
+  }
 }

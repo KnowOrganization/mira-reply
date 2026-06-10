@@ -1,6 +1,7 @@
 import { readStore } from "./store";
 import { insertLog } from "./db";
 import { publish } from "./bus";
+import { isRateLimitError } from "./graph";
 
 export type QueueItem = {
   id: string;
@@ -16,11 +17,15 @@ export type QueueItem = {
 const BASE = "https://graph.instagram.com/v23.0";
 const MAX_PER_HOUR = 190;
 const DRAIN_INTERVAL_MS = 500;
+// On a 613/429 the whole endpoint is throttled — pause the queue (don't burn the
+// item's retry budget) and keep the message so nothing is dropped.
+const RATE_LIMIT_BACKOFF_MS = 15 * 60_000;
 
 class MessageQueue {
   private items: QueueItem[] = [];
   private sentThisHour = 0;
   private hourStart = Date.now();
+  private backoffUntil = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
 
   start() {
@@ -38,6 +43,7 @@ class MessageQueue {
 
   private async drain() {
     const now = Date.now();
+    if (now < this.backoffUntil) return; // throttled by Instagram — wait it out
     if (now - this.hourStart > 3_600_000) { this.sentThisHour = 0; this.hourStart = now; }
     if (this.sentThisHour >= MAX_PER_HOUR) return;
 
@@ -67,6 +73,14 @@ class MessageQueue {
       publish({ type: "log", level: "info", msg: `queue: sent ${item.type} (${item.id})`, ts: Date.now() });
     } catch (e) {
       const err = String(e);
+      // Rate-limit (613/429): pause the whole queue and KEEP the item (no retry
+      // budget spent, never dropped) — retry once the backoff window clears.
+      if (isRateLimitError(e)) {
+        this.backoffUntil = Date.now() + RATE_LIMIT_BACKOFF_MS;
+        this.items.unshift(item);
+        publish({ type: "log", level: "warn", msg: `queue: rate-limited — backing off ${Math.round(RATE_LIMIT_BACKOFF_MS / 60000)}m (${item.id})`, ts: Date.now() });
+        return;
+      }
       if (item.retries < 3) {
         item.retries++;
         item.notBefore = Date.now() + Math.pow(5, item.retries) * 1000;

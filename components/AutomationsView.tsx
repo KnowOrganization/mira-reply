@@ -838,12 +838,29 @@ function AskFollowNode({ data, onUpdate, onDelete, canDelete, dragMode, windowOp
         <textarea
           value={data.text ?? ""}
           onChange={(e) => onUpdate({ text: e.target.value })}
-          placeholder="Follow @[username] to get exclusive updates 🙏"
+          placeholder="Follow @[username] then tap the button below 👇"
           rows={2}
           style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(245,158,11,0.18)", borderRadius: 8, padding: "7px 9px", fontSize: 11, color: "#ccc", outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.5 }}
         />
         <div style={{ fontSize: 9.5, color: "#3a3a4a", lineHeight: 1.4 }}>
           Use <span style={{ color: "#f59e0b", fontFamily: "monospace" }}>[username]</span> as placeholder — replaced with your IG handle at send time.
+        </div>
+        {/* Confirm button — user taps this (postback), never types. Always paired
+            with an auto-added "Visit Profile" link at send time. */}
+        <div>
+          <div style={{ fontSize: 9.5, color: "#3a3a4a", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 5 }}>Confirm button</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 8, padding: "5px 9px" }}>
+            <span style={{ fontSize: 12 }}>✓</span>
+            <input
+              value={data.buttons?.[0]?.label ?? ""}
+              onChange={(e) => onUpdate({ buttons: [{ label: e.target.value, payload: "done" }] })}
+              placeholder="I'm following ✓"
+              style={{ flex: 1, background: "transparent", border: "none", fontSize: 11, color: "#f59e0b", outline: "none", fontWeight: 600 }}
+            />
+          </div>
+          <div style={{ fontSize: 9.5, color: "#3a3a4a", lineHeight: 1.4, marginTop: 4 }}>
+            User taps this to confirm — no typing. Defaults to <span style={{ color: "#f59e0b" }}>I&apos;m following ✓</span>.
+          </div>
         </div>
         {windowOpen === false && (
           <div style={{ display: "flex", alignItems: "flex-start", gap: 6, background: "rgba(251,146,60,0.07)", border: "1px solid rgba(251,146,60,0.2)", borderRadius: 8, padding: "7px 10px", fontSize: 10.5, color: "#fb923c", lineHeight: 1.4 }}>

@@ -25,6 +25,38 @@ async function call(path: string, token: string, init?: RequestInit) {
   return body as Json;
 }
 
+/**
+ * True if an error thrown by `call()` (or any send) is an Instagram rate-limit /
+ * throttle, vs. a normal validation/permission error. `call()` throws an Error
+ * whose message embeds the HTTP status + the JSON body, so we match on both.
+ * 613 = "calls to this api have exceeded the rate limit"; 4/17/32 = app/user
+ * request-count limits; HTTP 429 = generic too-many-requests.
+ */
+export function isRateLimitError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e ?? "");
+  if (/\b429\b/.test(msg)) return true;
+  // match "code":613 / "code": 613 and the related throttle codes
+  return /"code"\s*:\s*(613|4|17|32)\b/.test(msg);
+}
+
+/**
+ * Refresh a long-lived Instagram token, extending it another 60 days.
+ * Instagram requires the token be >24h old and not yet expired — refresh
+ * well before the 60-day expiry or the account silently stops working.
+ * Endpoint is unversioned: https://graph.instagram.com/refresh_access_token
+ */
+export async function refreshLongLivedToken(
+  token: string
+): Promise<{ access_token: string; expires_in: number }> {
+  const root = BASE.replace(/\/v[\d.]+$/, ""); // strip /v23.0 — refresh is unversioned
+  const body = (await call(
+    `${root}/refresh_access_token?grant_type=ig_refresh_token`,
+    token
+  )) as { access_token?: string; expires_in?: number };
+  if (!body.access_token) throw new Error(`token refresh failed: ${JSON.stringify(body)}`);
+  return { access_token: body.access_token, expires_in: body.expires_in ?? 60 * 24 * 3600 };
+}
+
 export async function getRecentMedia(token: string, limit = 10) {
   return call(
     `/me/media?fields=id,caption,media_type,timestamp,permalink&limit=${limit}`,

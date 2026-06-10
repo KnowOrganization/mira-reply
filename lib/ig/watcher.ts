@@ -1,9 +1,9 @@
 import { readStore, patchStore, updateStore, type CachedComment } from "./store";
-import { getAllMedia, getMediaComments, getRecentDMMessages, sendCommentPrivateReply, sendDM, fetchAllFollowers } from "./graph";
+import { getAllMedia, getMediaComments, getRecentDMMessages, sendCommentPrivateReply, sendDM, fetchAllFollowers, refreshLongLivedToken, isRateLimitError } from "./graph";
 import { processInbound } from "./pipeline";
 import { publish } from "./bus";
 import { hasSeen, markSeen, primeSeen, seenSize } from "./seen";
-import { matchAutomations, executeAutomation, resumeAutomationAfterButtonClick, resumeAutomationAfterFollow, type AutomationEvent } from "./automation";
+import { matchAutomations, executeAutomation, resumeAutomationAfterButtonClick, resumeAutomationAfterFollow, drainAutomationRetries, type AutomationEvent } from "./automation";
 
 const MAX_CACHE = 5000;
 
@@ -32,6 +32,12 @@ const HOT_MEDIA = 12;
 const FULL_SWEEP_EVERY = 6;
 // sync full follower list every ~30 min (60 ticks × 7s = 420s ≈ 7min, 240 ticks ≈ 28min)
 const FOLLOWER_SYNC_EVERY = 240;
+
+// keep the 60-day long-lived IG token alive — check ~every 28 min, refresh
+// when under 7 days remain. Without this the token expires and every Graph
+// API call silently fails until manual reconnect.
+const TOKEN_REFRESH_CHECK_EVERY = 240;
+const TOKEN_REFRESH_THRESHOLD_MS = 7 * 24 * 3600_000;
 // a never-seen comment newer than this still gets a conclusion even if the
 // watermark has moved past it. Older than this = pre-existing backlog, left
 // alone (auto-replying a months-old backlog would be spam + a ban risk).
@@ -55,6 +61,11 @@ if (!g.__mira_watcher) {
 const s = g.__mira_watcher;
 
 export function ensureWatcher() {
+  // per-second real-time automation loop (independent of the 7s general tick)
+  if (!rtG.__mira_rt_timer) {
+    rtG.__mira_rt_timer = setInterval(() => { void realtimeTick(); }, REALTIME_INTERVAL);
+    void realtimeTick();
+  }
   if (s.timer) return { running: true, intervalMs: s.intervalMs, startedAt: s.startedAt };
   s.startedAt = Date.now();
   s.timer = setInterval(() => {
@@ -69,6 +80,10 @@ export function stopWatcher() {
   if (s.timer) {
     clearInterval(s.timer);
     s.timer = null;
+  }
+  if (rtG.__mira_rt_timer) {
+    clearInterval(rtG.__mira_rt_timer);
+    rtG.__mira_rt_timer = null;
   }
   return { running: false };
 }
@@ -119,6 +134,162 @@ async function drainSendQueue() {
         ),
       }));
     }
+  }
+}
+
+// Poll DMs (button clicks + follow confirms) — runs in the 1s loop so a tap
+// resumes almost instantly instead of waiting for the 7s tick.
+let dmPollInFlight = false;
+async function pollDMs(ownId: string, token: string) {
+  if (dmPollInFlight) return;
+  dmPollInFlight = true;
+  try {
+    const dmSince = gDM.__mira_dm_watermark!;
+    const newDMs = await getRecentDMMessages(ownId, token, dmSince);
+    let latestDMts = dmSince;
+    if (newDMs.length > 0) {
+      publish({ type: "log", level: "info", msg: `watcher: ${newDMs.length} new DM(s) to process`, ts: Date.now() });
+    }
+    for (const dm of newDMs) {
+      if (seenDMs.has(dm.id)) continue;
+      seenDMs.add(dm.id);
+      if (dm.ts > latestDMts) latestDMts = dm.ts;
+
+      const freshDMStore = await readStore();
+      const buttonPending = (freshDMStore.automationButtonPending ?? []).find(
+        (p) => p.fromUserId === dm.fromUserId && Date.now() - p.ts < 24 * 60 * 60_000
+      );
+      const followPending = (freshDMStore.automationFollowPending ?? []).find(
+        (p) => p.fromUserId === dm.fromUserId && Date.now() - p.ts < 24 * 60 * 60_000
+      );
+      const FOLLOW_CONFIRM = /\b(send|yes|yep|done|following|followed|ok|okay|sure|ready)\b/i;
+
+      if (buttonPending) {
+        publish({ type: "log", level: "info", msg: `watcher: button-click DM from @${dm.fromUsername ?? dm.fromUserId} — resuming automation`, ts: Date.now() });
+        await resumeAutomationAfterButtonClick(dm.fromUserId, dm.fromUsername).catch((e) =>
+          publish({ type: "log", level: "error", msg: `watcher button resume: ${String(e)}`, ts: Date.now() })
+        );
+      } else if (followPending && FOLLOW_CONFIRM.test(dm.text)) {
+        publish({ type: "log", level: "info", msg: `watcher: follow-confirm DM from @${dm.fromUsername ?? dm.fromUserId} — resuming automation`, ts: Date.now() });
+        await resumeAutomationAfterFollow(dm.fromUserId, dm.fromUsername).catch((e) =>
+          publish({ type: "log", level: "error", msg: `watcher follow resume: ${String(e)}`, ts: Date.now() })
+        );
+      }
+    }
+    gDM.__mira_dm_watermark = latestDMts;
+    if (seenDMs.size > 5000) seenDMs.clear();
+  } catch (e) {
+    publish({ type: "log", level: "warn", msg: `watcher: DM poll failed: ${String(e)}`, ts: Date.now() });
+  } finally {
+    dmPollInFlight = false;
+  }
+}
+
+/* ---------- real-time automation loop (per-second) ---------- */
+// Polls ONLY posts that have an active comment-automation, every ~1s, so a
+// matching comment fires its DM almost instantly — without hammering the whole
+// media catalogue. The 7s tick still handles the pipeline + caching + DM resumes.
+const REALTIME_INTERVAL = 1000;
+const RT_BACKOFF_MS = 60_000;
+const rtG = globalThis as unknown as {
+  __mira_rt_timer?: ReturnType<typeof setInterval> | null;
+  __mira_rt_inflight?: boolean;
+  __mira_rt_backoff?: number;
+  __mira_rt_seen?: Set<string>;
+  __mira_rt_start?: number;
+};
+if (!rtG.__mira_rt_seen) rtG.__mira_rt_seen = new Set();
+const rtSeen = rtG.__mira_rt_seen; // comments already evaluated by the fast loop (separate from global `seen`)
+
+async function realtimeTick() {
+  if (rtG.__mira_rt_inflight) return;
+  if (Date.now() < (rtG.__mira_rt_backoff ?? 0)) return;
+  // Backlog guard: only act on comments posted AFTER the loop started. Without
+  // this, a fresh start (empty `seen`) would fire the automation for every
+  // pre-existing comment on the post — a mass-DM flood.
+  if (!rtG.__mira_rt_start) rtG.__mira_rt_start = Date.now();
+  const startAt = rtG.__mira_rt_start;
+  rtG.__mira_rt_inflight = true;
+  try {
+    const store = await readStore();
+    if (!store.account) return;
+    const token = store.account.accessToken;
+    const ownId = store.account.igUserId;
+    const ownName = (store.account.username ?? "").toLowerCase();
+
+    // poll DMs every ~1s → button taps / follow confirms resume almost instantly
+    await pollDMs(ownId, token);
+
+    const autos = (store.automations ?? []).filter(
+      (a) => a.enabled && (a.trigger.type === "comment_post" || a.trigger.type === "live_comment")
+    );
+    if (!autos.length) return;
+
+    // posts to watch = explicit trigger postIds; if any automation targets all
+    // posts, add the few most-recent media so "all posts" still polls fast.
+    const targeted = new Set<string>();
+    let allPosts = false;
+    for (const a of autos) {
+      const tNode = a.nodes.find((n) => n.type === "trigger");
+      const ids = a.trigger.postIds?.length ? a.trigger.postIds : (tNode?.data.postIds ?? []);
+      if (ids.length) ids.forEach((id) => targeted.add(id));
+      else allPosts = true;
+    }
+    if (allPosts) {
+      Object.values(store.posts)
+        .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))
+        .slice(0, 6)
+        .forEach((p) => targeted.add(p.id));
+    }
+    if (!targeted.size) return;
+
+    for (const mid of targeted) {
+      let res: { data?: Raw[] };
+      try {
+        res = (await getMediaComments(mid, token)) as { data?: Raw[] };
+      } catch (e) {
+        if (isRateLimitError(e)) { rtG.__mira_rt_backoff = Date.now() + RT_BACKOFF_MS; return; }
+        continue;
+      }
+      const flat: Raw[] = [];
+      for (const c of res.data ?? []) { flat.push(c); for (const r of c.replies?.data ?? []) flat.push(r); }
+
+      for (const c of flat) {
+        if (!c.from || rtSeen.has(c.id) || hasSeen(c.id)) continue;
+        // skip backlog — only comments posted after the loop started
+        const cts = new Date(c.timestamp).getTime();
+        if (Number.isNaN(cts) || cts < startAt) { rtSeen.add(c.id); continue; }
+        const isOwn = c.from.id === ownId || (!!ownName && c.from.username?.toLowerCase() === ownName);
+        if (isOwn) { rtSeen.add(c.id); markSeen(c.id); continue; }
+
+        const evt: AutomationEvent = {
+          type: "comment_post",
+          commentId: c.id,
+          fromUserId: c.from.id,
+          fromUsername: c.from.username,
+          text: c.text,
+          postId: mid,
+        };
+        const matched = matchAutomations(store, evt);
+        // Only claim (markSeen) comments we actually act on. Non-matching comments
+        // stay unseen so the 7s tick can still route them to the Mira pipeline;
+        // rtSeen stops us re-evaluating them every second in the meantime.
+        rtSeen.add(c.id);
+        if (rtSeen.size > 10_000) rtSeen.clear();
+        if (!matched.length) continue;
+        markSeen(c.id);
+        publish({ type: "log", level: "info", msg: `realtime: ${matched.length} automation(s) matched for comment ${c.id} on ${mid}`, ts: Date.now() });
+        for (const auto of matched) {
+          await executeAutomation(auto, evt).catch((e) =>
+            publish({ type: "log", level: "error", msg: `realtime automation [${auto.id}]: ${String(e)}`, ts: Date.now() })
+          );
+        }
+      }
+    }
+  } catch (e) {
+    publish({ type: "log", level: "warn", msg: `realtime tick: ${String(e)}`, ts: Date.now() });
+  } finally {
+    rtG.__mira_rt_inflight = false;
   }
 }
 
@@ -325,49 +496,7 @@ export async function tick() {
       publish({ type: "log", level: "info", msg: `watcher: ${newCount} new`, ts: Date.now() });
     }
 
-    // Poll DMs — catch button clicks + follow confirms without needing webhook
-    try {
-      const dmSince = gDM.__mira_dm_watermark!;
-      const newDMs = await getRecentDMMessages(ownId, token, dmSince);
-      let latestDMts = dmSince;
-
-      if (newDMs.length > 0) {
-        publish({ type: "log", level: "info", msg: `watcher: ${newDMs.length} new DM(s) to process`, ts: Date.now() });
-      }
-
-      for (const dm of newDMs) {
-        if (seenDMs.has(dm.id)) continue;
-        seenDMs.add(dm.id);
-        if (dm.ts > latestDMts) latestDMts = dm.ts;
-
-        const freshDMStore = await readStore();
-        const buttonPending = (freshDMStore.automationButtonPending ?? []).find(
-          (p) => p.fromUserId === dm.fromUserId && Date.now() - p.ts < 24 * 60 * 60_000
-        );
-        const followPending = (freshDMStore.automationFollowPending ?? []).find(
-          (p) => p.fromUserId === dm.fromUserId && Date.now() - p.ts < 24 * 60 * 60_000
-        );
-        const FOLLOW_CONFIRM = /\b(send|yes|yep|done|following|followed|ok|okay|sure|ready)\b/i;
-
-        if (buttonPending) {
-          publish({ type: "log", level: "info", msg: `watcher: button-click DM from @${dm.fromUsername ?? dm.fromUserId} — resuming automation`, ts: Date.now() });
-          await resumeAutomationAfterButtonClick(dm.fromUserId, dm.fromUsername).catch((e) =>
-            publish({ type: "log", level: "error", msg: `watcher button resume: ${String(e)}`, ts: Date.now() })
-          );
-        } else if (followPending && FOLLOW_CONFIRM.test(dm.text)) {
-          publish({ type: "log", level: "info", msg: `watcher: follow-confirm DM from @${dm.fromUsername ?? dm.fromUserId} — resuming automation`, ts: Date.now() });
-          await resumeAutomationAfterFollow(dm.fromUserId, dm.fromUsername).catch((e) =>
-            publish({ type: "log", level: "error", msg: `watcher follow resume: ${String(e)}`, ts: Date.now() })
-          );
-        }
-      }
-
-      gDM.__mira_dm_watermark = latestDMts;
-      // cap seen set to avoid unbounded growth
-      if (seenDMs.size > 5000) seenDMs.clear();
-    } catch (e) {
-      publish({ type: "log", level: "warn", msg: `watcher: DM poll failed: ${String(e)}`, ts: Date.now() });
-    }
+    // DM polling now runs in the 1s real-time loop (pollDMs) for instant resume.
 
     // periodically rebuild full follower cache so checkIsFollower works for old followers
     if (s.ticks % FOLLOWER_SYNC_EVERY === 1) {
@@ -390,8 +519,38 @@ export async function tick() {
       }
     }
 
+    // keep the long-lived IG token alive — refresh well before its 60-day expiry
+    if (s.ticks % TOKEN_REFRESH_CHECK_EVERY === 1) {
+      try {
+        const fresh = await readStore();
+        const acct = fresh.account;
+        if (acct?.accessToken && acct.tokenExpiresAt) {
+          const msLeft = acct.tokenExpiresAt - Date.now();
+          const ageMs = Date.now() - (acct.connectedAt ?? 0);
+          // Instagram only refreshes tokens >24h old and not yet expired
+          if (msLeft < TOKEN_REFRESH_THRESHOLD_MS && msLeft > 0 && ageMs > 24 * 3600_000) {
+            const refreshed = await refreshLongLivedToken(acct.accessToken);
+            await patchStore({
+              account: {
+                ...acct,
+                accessToken: refreshed.access_token,
+                tokenExpiresAt: Date.now() + refreshed.expires_in * 1000,
+              },
+              lastToken: refreshed.access_token,
+            });
+            publish({ type: "log", level: "info", msg: `watcher: IG token refreshed (+${Math.round(refreshed.expires_in / 86400)}d)`, ts: Date.now() });
+          }
+        }
+      } catch (e) {
+        publish({ type: "log", level: "warn", msg: `watcher: token refresh failed: ${String(e)}`, ts: Date.now() });
+      }
+    }
+
     // drain scheduled sendQueue (follow-up messages)
     await drainSendQueue();
+
+    // retry automations parked by a rate-limit (613) once their backoff clears
+    await drainAutomationRetries();
 
     return { newCount, skipped: false };
   } catch (e) {

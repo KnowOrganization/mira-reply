@@ -1,8 +1,17 @@
 import { readStore, updateStore } from "./store";
-import { sendDM, sendDMWithButtons, sendDMImage, sendCommentPrivateReply, sendCommentPrivateReplyWithButtons, sendDMWithButtonTemplate, sendCommentPrivateReplyWithButtonTemplate } from "./graph";
+import { sendDM, sendDMWithButtons, sendDMImage, sendCommentPrivateReply, sendCommentPrivateReplyWithButtons, sendDMWithButtonTemplate, sendCommentPrivateReplyWithButtonTemplate, isRateLimitError } from "./graph";
 import type { ButtonTemplateButton } from "./graph";
 
 const ONE_DAY = 24 * 60 * 60 * 1000;
+
+/** Result of a send attempt. `rateLimited` distinguishes an Instagram throttle
+ *  (613/429) from a normal failure, so callers can park-and-retry instead of dropping. */
+export type SendResult = { ok: boolean; reason?: string; rateLimited?: boolean };
+
+/** Automation funnel sends pass { skipRateGate: true } — the user is already
+ *  engaged (commented / tapped a button), so the cold-DM 1-per-24h gate must
+ *  not block follow-up steps. Cold pipeline DMs omit it and keep the gate. */
+export type SendOpts = { skipRateGate?: boolean };
 
 export async function canDM(
   recipientId: string
@@ -27,33 +36,39 @@ async function logDM(recipientId: string) {
 
 export async function tryDM(
   recipientId: string,
-  text: string
-): Promise<{ ok: boolean; reason?: string }> {
+  text: string,
+  opts?: SendOpts
+): Promise<SendResult> {
   if (!text?.trim()) return { ok: false, reason: "empty message" };
   const s = await readStore();
   if (!s.account) return { ok: false, reason: "not connected" };
-  const gate = await canDM(recipientId);
-  if (!gate.ok) return gate;
+  if (!opts?.skipRateGate) {
+    const gate = await canDM(recipientId);
+    if (!gate.ok) return gate;
+  }
   try {
     await sendDM(s.account.igUserId, recipientId, text, s.account.accessToken);
     await logDM(recipientId);
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "dm failed" };
+    return { ok: false, reason: e instanceof Error ? e.message : "dm failed", rateLimited: isRateLimitError(e) };
   }
 }
 
 export async function tryDMWithButtons(
   recipientId: string,
   text: string,
-  buttons: { label: string; payload?: string }[]
-): Promise<{ ok: boolean; reason?: string }> {
+  buttons: { label: string; payload?: string }[],
+  opts?: SendOpts
+): Promise<SendResult> {
   if (!text?.trim()) return { ok: false, reason: "empty message" };
-  if (!buttons.length) return tryDM(recipientId, text);
+  if (!buttons.length) return tryDM(recipientId, text, opts);
   const s = await readStore();
   if (!s.account) return { ok: false, reason: "not connected" };
-  const gate = await canDM(recipientId);
-  if (!gate.ok) return gate;
+  if (!opts?.skipRateGate) {
+    const gate = await canDM(recipientId);
+    if (!gate.ok) return gate;
+  }
   try {
     await sendDMWithButtons(s.account.igUserId, recipientId, text, buttons, s.account.accessToken);
     await logDM(recipientId);
@@ -65,20 +80,23 @@ export async function tryDMWithButtons(
       await logDM(recipientId);
       return { ok: true };
     } catch (e2) {
-      return { ok: false, reason: e2 instanceof Error ? e2.message : "dm with buttons failed" };
+      return { ok: false, reason: e2 instanceof Error ? e2.message : "dm with buttons failed", rateLimited: isRateLimitError(e2) || isRateLimitError(e) };
     }
   }
 }
 
 export async function tryDMImage(
   recipientId: string,
-  imageUrl: string
-): Promise<{ ok: boolean; reason?: string }> {
+  imageUrl: string,
+  opts?: SendOpts
+): Promise<SendResult> {
   if (!imageUrl?.trim()) return { ok: false, reason: "empty image URL" };
   const s = await readStore();
   if (!s.account) return { ok: false, reason: "not connected" };
-  const gate = await canDM(recipientId);
-  if (!gate.ok) return gate;
+  if (!opts?.skipRateGate) {
+    const gate = await canDM(recipientId);
+    if (!gate.ok) return gate;
+  }
   try {
     await sendDMImage(s.account.igUserId, recipientId, imageUrl, s.account.accessToken);
     await logDM(recipientId);
@@ -90,7 +108,7 @@ export async function tryDMImage(
       await logDM(recipientId);
       return { ok: true };
     } catch (e2) {
-      return { ok: false, reason: e2 instanceof Error ? e2.message : "image dm failed" };
+      return { ok: false, reason: e2 instanceof Error ? e2.message : "image dm failed", rateLimited: isRateLimitError(e2) || isRateLimitError(e) };
     }
   }
 }
@@ -104,7 +122,7 @@ export async function tryPrivateReply(
   commentId: string,
   recipientId: string,
   text: string
-): Promise<{ ok: boolean; reason?: string }> {
+): Promise<SendResult> {
   if (!text?.trim()) return { ok: false, reason: "empty message" };
   const s = await readStore();
   if (!s.account) return { ok: false, reason: "not connected" };
@@ -121,6 +139,7 @@ export async function tryPrivateReply(
     return {
       ok: false,
       reason: e instanceof Error ? e.message : "private reply failed",
+      rateLimited: isRateLimitError(e),
     };
   }
 }
@@ -132,23 +151,30 @@ export async function tryPrivateReply(
 export async function tryDMWithButtonTemplate(
   recipientId: string,
   text: string,
-  buttons: ButtonTemplateButton[]
-): Promise<{ ok: boolean; reason?: string }> {
+  buttons: ButtonTemplateButton[],
+  opts?: SendOpts
+): Promise<SendResult> {
   if (!text?.trim()) return { ok: false, reason: "empty message" };
   const s = await readStore();
   if (!s.account) return { ok: false, reason: "not connected" };
-  const gate = await canDM(recipientId);
-  if (!gate.ok) return gate;
+  if (!opts?.skipRateGate) {
+    const gate = await canDM(recipientId);
+    if (!gate.ok) return gate;
+  }
   try {
     await sendDMWithButtonTemplate(s.account.igUserId, recipientId, text, buttons, s.account.accessToken);
     await logDM(recipientId);
     return { ok: true };
-  } catch {
+  } catch (e) {
+    // a real rate-limit must not silently degrade — surface it so callers can park/retry
+    if (isRateLimitError(e)) {
+      return { ok: false, reason: e instanceof Error ? e.message : "rate limited", rateLimited: true };
+    }
     // fallback: quick_replies (postback detection degrades to DM poll)
     const quickButtons = buttons
       .filter((b) => b.type === "postback")
       .map((b) => ({ label: b.title, payload: b.type === "postback" ? b.payload : b.title }));
-    return tryDMWithButtons(recipientId, text, quickButtons.length ? quickButtons : [{ label: "Done", payload: "done" }]);
+    return tryDMWithButtons(recipientId, text, quickButtons.length ? quickButtons : [{ label: "Done", payload: "done" }], opts);
   }
 }
 
@@ -162,8 +188,9 @@ export async function tryPrivateReplyWithButtons(
   commentId: string,
   recipientId: string,
   text: string,
-  buttons: { label: string; payload?: string }[]
-): Promise<{ ok: boolean; reason?: string }> {
+  buttons: { label: string; payload?: string }[],
+  opts?: SendOpts
+): Promise<SendResult> {
   if (!text?.trim()) return { ok: false, reason: "empty message" };
   if (!buttons.length) return tryPrivateReply(commentId, recipientId, text);
   const s = await readStore();
@@ -195,7 +222,7 @@ export async function tryPrivateReplyWithButtons(
       );
       return { ok: true };
     } catch {
-      return tryDMWithButtons(recipientId, text, buttons);
+      return tryDMWithButtons(recipientId, text, buttons, opts);
     }
   }
 }
