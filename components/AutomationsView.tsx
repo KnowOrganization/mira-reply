@@ -348,7 +348,6 @@ const NODE_DEFAULTS: Partial<Record<string, string>> = {
   opening_message: "Hey! 👋 Thanks for commenting — sending you the details right now!",
   text_message: "Here's what you asked for 👇\n[paste your link or content here]\n\nLet me know if you need anything! 😊",
   ask_follow: "Hey! 👋 To get exclusive access, follow @[username] first 💜\n\nOnce you do, reply \"done\" and I'll send it right over!",
-  follow_gate: "Oops! 😅 This is for our community only 💜\n\nFollow @[username] to unlock it!\n\nOnce you've followed, reply \"done\" 👇",
   follow_gate: "Hey! 👋 This content is for our community 💜\n\nFollow @[username] to unlock it — once you do, reply \"done\" and I'll send it right over! 🙏",
   lead_form: "What's the best email to send this to? 📩",
   followup_message: "Hey! 👋 Just checking in — did you get a chance to look at what I sent?",

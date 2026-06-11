@@ -67,6 +67,19 @@ CREATE TABLE IF NOT EXISTS feed_events (
   ts         bigint NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_feed_account_ts ON feed_events(account_id, ts DESC);
+
+CREATE TABLE IF NOT EXISTS webhook_events (
+  id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id   text NOT NULL,
+  field        text NOT NULL,
+  event_key    text NOT NULL,
+  payload      jsonb NOT NULL DEFAULT '{}',
+  received_at  bigint NOT NULL DEFAULT 0,
+  processed_at bigint,
+  error        text
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_events_key ON webhook_events(event_key);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_account ON webhook_events(account_id, received_at);
 `;
 
 /** Idempotent schema init — safe to call on every boot. */

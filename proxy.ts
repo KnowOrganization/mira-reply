@@ -27,7 +27,6 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // runtime nodejs so we can use the BetterAuth instance (Drizzle + node pg)
-  runtime: "nodejs",
+  // Proxy always runs on Node.js in Next 16 — `runtime` key here is forbidden.
   matcher: ["/api/ig/:path*", "/api/chat/:path*", "/api/playground/:path*"],
 };

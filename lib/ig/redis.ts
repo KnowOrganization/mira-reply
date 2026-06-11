@@ -43,10 +43,31 @@ export async function isClaimed(key: string): Promise<boolean> {
   return (await redis.exists(key)) === 1;
 }
 
+/**
+ * Owned claim — claimOnce that a retry of the SAME owner can re-enter. The
+ * first claim stores `owner`; a re-claim by the same owner (a BullMQ retry of
+ * the same job after a mid-processing crash) returns true, anyone else false.
+ * Without this, claim-then-crash would permanently bury the event.
+ */
+export async function claimOwned(key: string, owner: string, ttlSeconds: number): Promise<boolean> {
+  const res = await redis.set(key, owner, "EX", ttlSeconds, "NX");
+  if (res === "OK") return true;
+  return (await redis.get(key)) === owner;
+}
+
 // ── key builders (account-scoped) ───────────────────────────────────────────
 export const k = {
   seen: (acct: string, commentId: string) => `seen:${acct}:${commentId}`,
   fired: (acct: string, automationId: string, commentId: string) => `fired:${acct}:${automationId}:${commentId}`,
   resumeLock: (acct: string, userId: string) => `lock:resume:${acct}:${userId}`,
   dmWatermark: (acct: string) => `dmwm:${acct}`,
+  commentWatermark: (acct: string) => `cwm:${acct}`,
+  lastWebhookAt: (acct: string) => `whlast:${acct}`,
+  outboundHour: (acct: string, hourWindow: number) => `outhr:${acct}:${hourWindow}`,
+  counters: (acct: string) => `ctr:${acct}`,
 };
+
+/** Bump an observability counter (hash field per metric, one hash per account). */
+export function bumpCounter(acct: string, metric: string, by = 1): void {
+  redis.hincrby(k.counters(acct), metric, by).catch(() => {});
+}

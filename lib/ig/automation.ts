@@ -1,7 +1,7 @@
 import type { Automation, IgStore } from "./store";
-// followup_message still schedules via the file-store sendQueue (rare node;
-// its drainer is the watcher). Everything else is off the file store now.
-import { updateStore } from "./store";
+// followup_message schedules via the durable BullMQ outbound queue (delayed
+// job) — survives restarts, drained by the worker.
+import { enqueueOutbound } from "./ingestQueue";
 import {
   tryDM as _tryDM,
   tryPrivateReply,
@@ -392,22 +392,14 @@ export async function executeAutomation(
         const delayMs = d.delayMinutes * 60_000;
         steps.push({ nodeType: "followup_message", action: `scheduled_send +${d.delayMinutes}m`, text: msg });
         if (!dryRun) {
-          await updateStore((s) => ({
-            ...s,
-            sendQueue: [
-              ...s.sendQueue,
-              {
-                id: `auto_${automation.id}_${event.commentId}_fu`,
-                kind: "private_reply" as const,
-                targetId: event.commentId,
-                recipientId: event.fromUserId,
-                text: msg,
-                releaseAt: Date.now() + delayMs,
-                createdAt: Date.now(),
-                retryCount: 0,
-              },
-            ],
-          }));
+          await enqueueOutbound({
+            accountId,
+            id: `auto_${automation.id}_${event.commentId}_fu`,
+            type: event.commentId ? "private_reply" : "dm",
+            recipient: event.commentId ? { comment_id: event.commentId } : { id: event.fromUserId },
+            message: { text: msg },
+            igsid: event.fromUserId,
+          }, delayMs);
           sentCount++;
         }
         break;
@@ -658,19 +650,14 @@ export async function resumeAutomationAfterFollow(
         }
         case "followup_message": {
           const msg = d.text?.trim(); if (!msg || !d.delayMinutes) break;
-          await updateStore((s) => ({
-            ...s,
-            sendQueue: [...s.sendQueue, {
-              id: `auto_resume_${p.automationId}_${userId}_fu`,
-              kind: "private_reply" as const,
-              targetId: p.commentId,
-              recipientId: userId,
-              text: msg,
-              releaseAt: Date.now() + d.delayMinutes! * 60_000,
-              createdAt: Date.now(),
-              retryCount: 0,
-            }],
-          }));
+          await enqueueOutbound({
+            accountId: acct,
+            id: `auto_resume_${p.automationId}_${userId}_fu`,
+            type: p.commentId ? "private_reply" : "dm",
+            recipient: p.commentId ? { comment_id: p.commentId } : { id: userId },
+            message: { text: msg },
+            igsid: userId,
+          }, d.delayMinutes! * 60_000);
           break;
         }
       }

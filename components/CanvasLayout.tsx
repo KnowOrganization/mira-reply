@@ -155,12 +155,12 @@ export function CanvasLayout() {
     <div className="h-screen w-screen flex overflow-hidden" style={{ background: "#07070f" }}>
 
       {/* ── sidebar — hidden in automations (it has its own left panel) ── */}
-      <aside style={{ display: view === "automations" ? "none" : undefined,
+      <aside style={{
         width: 220,
         flexShrink: 0,
         background: "#0a0a16",
         borderRight: "1px solid rgba(255,255,255,0.04)",
-        display: "flex",
+        display: view === "automations" ? "none" : "flex",
         flexDirection: "column",
         overflow: "hidden",
       }}>

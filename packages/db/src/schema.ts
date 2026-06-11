@@ -52,6 +52,25 @@ export const accounts = pgTable("accounts", {
   updatedAt: ms("updated_at").notNull().default(0),
 });
 
+// ── raw webhook event log (append-only, replayable) ─────────────────────────
+// Every Meta webhook event lands here BEFORE any processing. The receiver
+// returns 5xx to Meta unless the row + queue job are durably written, so Meta
+// keeps retrying for 36h. event_key is the natural idempotency key (comment id
+// / message mid / …) — duplicate deliveries hit ON CONFLICT DO NOTHING.
+export const webhookEvents = pgTable("webhook_events", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  accountId: text("account_id").notNull(),
+  field: text("field").notNull(), // comments | messages | postback | follows | mentions
+  eventKey: text("event_key").notNull(),
+  payload: jsonb("payload").notNull().default({}),
+  receivedAt: ms("received_at").notNull().default(0),
+  processedAt: ms("processed_at"),
+  error: text("error"),
+}, (t) => [
+  uniqueIndex("uq_webhook_events_key").on(t.eventKey),
+  index("idx_webhook_events_account").on(t.accountId, t.receivedAt),
+]);
+
 // ── automations (visual node-graph flows) ───────────────────────────────────
 export const automations = pgTable("automations", {
   id: text("id").primaryKey(),
@@ -318,6 +337,7 @@ export const commentsCache = pgTable("comments_cache", {
 
 export type Schema = {
   accounts: typeof accounts; automations: typeof automations;
+  webhookEvents: typeof webhookEvents;
   pendingResume: typeof pendingResume; feedEvents: typeof feedEvents;
   postConfigs: typeof postConfigs; processedComments: typeof processedComments;
   userStates: typeof userStates; messageLog: typeof messageLog;

@@ -17,10 +17,9 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@shaiz/db"],
   allowedDevOrigins: ["*.trycloudflare.com"],
   async rewrites() {
-    // afterFiles runs AFTER the filesystem, so any /api/ig/* route that still
-    // has a Next file (only the Meta `webhook` now) is served by Next; everything
-    // else falls through to the Bun/Elysia backend. /api/auth/* (BetterAuth) is
-    // a Next file too and isn't matched here. This is the Phase-E catch-all.
+    // afterFiles runs AFTER the filesystem — every /api/ig/* route (including
+    // the Meta webhook, now an Elysia route) falls through to the Bun backend.
+    // /api/auth/* (BetterAuth) is a Next file and isn't matched here.
     return {
       afterFiles: [
         { source: "/api/ig/:path*", destination: `${API_URL}/api/ig/:path*` },

@@ -14,6 +14,7 @@ import { inboxRoute } from "./routes/inbox";
 import { analyticsRoute } from "./routes/analytics";
 import { llmRoute } from "./routes/llm";
 import { controlRoute } from "./routes/control";
+import { webhookRoute } from "./routes/webhook";
 
 const PORT = Number(process.env.API_PORT || 4000);
 
@@ -38,6 +39,8 @@ export const app = new Elysia()
   .use(analyticsRoute)
   .use(llmRoute)
   .use(controlRoute)
+  // public Meta endpoint (signature-verified, not session-authed)
+  .use(webhookRoute)
   // bind loopback only — the API is reached via the Next rewrite proxy, never
   // directly from the network (defense in depth; each route also requires auth).
   .listen({ port: PORT, hostname: "127.0.0.1" });

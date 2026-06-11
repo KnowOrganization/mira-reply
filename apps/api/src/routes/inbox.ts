@@ -23,7 +23,7 @@ import { sendDraft, reprocessClarification } from "@/lib/ig/pipeline";
 import { serveLinkForPost } from "@/lib/ig/links";
 import { getTaggedMedia } from "@/lib/ig/graph";
 import { publish } from "@/lib/ig/bus";
-import { tick } from "@/lib/ig/watcher";
+import { reconcileAccount } from "@/lib/ig/reconcile";
 
 const TOPICS: FactTopic[] = ["gear", "location", "song", "personal", "shop", "general"];
 
@@ -239,7 +239,7 @@ export const inboxRoute = new Elysia()
     let live: { ok: boolean; newCount: number; error?: string } | null = null;
     if (refresh) {
       const r = (await Promise.race([
-        tick(),
+        reconcileAccount(a.ctx.accountId).then((x) => ({ newCount: x.enqueued })),
         new Promise((res) =>
           setTimeout(() => res({ newCount: 0, error: "timed out" }), 25_000)
         ),

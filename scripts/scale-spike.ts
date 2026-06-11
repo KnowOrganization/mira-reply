@@ -13,12 +13,14 @@ async function main() {
   const t0 = Date.now();
   const jobs = Array.from({ length: N }, (_, i) => {
     const acct = `spike_acct_${i % M}`;
+    const cid = `spk_${Date.now()}_${i}`;
     const job: IngestJob = {
       accountId: acct,
       kind: "comment",
-      event: { type: "comment_post", commentId: `spk_${Date.now()}_${i}`, fromUserId: `u_${i}`, text: "link", postId: "p1" },
+      eventKey: `c_${cid}`,
+      data: { commentId: cid, fromId: `u_${i}`, text: "link", mediaId: "p1", tsMs: Date.now() },
     };
-    return { name: "event", data: job, opts: { jobId: `${job.accountId}__${job.event.commentId}` } };
+    return { name: "comment", data: job, opts: { jobId: `${job.accountId}__${job.eventKey}` } };
   });
   // chunked bulk add
   for (let i = 0; i < jobs.length; i += 500) await ingestQueue.addBulk(jobs.slice(i, i + 500));
