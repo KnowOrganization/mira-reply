@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { loadSettings, saveSettings, DEFAULT_SETTINGS } from "@/lib/storage";
 import type { Settings } from "@/lib/types";
 import { KnowledgeEditor } from "@/components/Knowledge";
+import { useIgSettings, usePatchIgSettings } from "@/lib/api/hooks";
 
 type IgSettings = {
   replyMode: "shadow" | "assisted" | "balanced" | "auto";
@@ -38,16 +39,11 @@ export function SettingsView({
   onChange: (s: Settings) => void;
 }) {
   const [chat, setChat] = useState(settings);
-  const [ig, setIg] = useState<IgSettings | null>(null);
 
   useEffect(() => setChat(settings), [settings]);
 
-  useEffect(() => {
-    fetch("/api/ig/settings")
-      .then((r) => r.json())
-      .then((d) => setIg(d))
-      .catch(() => {});
-  }, []);
+  const { data: ig } = useIgSettings<IgSettings>();
+  const patchIgSettings = usePatchIgSettings();
 
   function saveChat() {
     onChange(chat);
@@ -55,14 +51,8 @@ export function SettingsView({
     toast.success("Chat settings saved.");
   }
 
-  async function patchIg(patch: Partial<IgSettings>) {
-    const next = { ...(ig as IgSettings), ...patch };
-    setIg(next);
-    await fetch("/api/ig/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
+  function patchIg(patch: Partial<IgSettings>) {
+    patchIgSettings.mutate(patch);
   }
 
   return (

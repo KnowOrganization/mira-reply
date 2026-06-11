@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { useBrain, useBrainAction } from "@/lib/api/hooks";
 import {
   Sparkles,
   MessageSquareText,
@@ -38,28 +39,29 @@ const INTERVIEW: { topic: string; q: string }[] = [
 
 const TOPIC = Object.fromEntries(BRAIN_TOPICS.map((t) => [t.key, t]));
 
+type BrainResp = {
+  facts?: Fact[];
+  total?: number;
+  byTopic?: Record<string, number>;
+  account?: { username?: string };
+};
+
 export function Brain() {
-  const [facts, setFacts] = useState<Fact[]>([]);
-  const [total, setTotal] = useState(0);
-  const [byTopic, setByTopic] = useState<Record<string, number>>({});
-  const [handle, setHandle] = useState("");
   const [mode, setMode] = useState<"interview" | "paste" | "facts">("interview");
   const [selected, setSelected] = useState<Fact | null>(null);
 
-  const load = useCallback(async () => {
-    const r = await fetch("/api/ig/brain")
-      .then((r) => r.json())
-      .catch(() => null);
-    if (!r) return;
-    setFacts(r.facts || []);
-    setTotal(r.total || 0);
-    setByTopic(r.byTopic || {});
-    setHandle(r.account?.username || "");
-  }, []);
+  const { data, refetch } = useBrain<BrainResp>();
+  const deleteAction = useBrainAction();
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const facts = data?.facts || [];
+  const total = data?.total || 0;
+  const byTopic = data?.byTopic || {};
+  const handle = data?.account?.username || "";
+
+  // children call this after a write — refetch and resolve once fresh data lands
+  const load = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
 
   const filledAreas = useMemo(
     () => BRAIN_TOPICS.filter((t) => (byTopic[t.key] || 0) > 0).length,
@@ -146,11 +148,7 @@ export function Brain() {
                 <NodeDetail
                   fact={selected}
                   onDelete={async () => {
-                    await fetch("/api/ig/brain", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ action: "delete", id: selected.id }),
-                    }).catch(() => {});
+                    await deleteAction.mutateAsync({ action: "delete", id: selected.id }).catch(() => {});
                     setSelected(null);
                     await load();
                     toast.success("Removed from the brain");
@@ -262,6 +260,7 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
   );
   const [building, setBuilding] = useState(false);
   const [done, setDone] = useState<number | null>(null);
+  const extractAction = useBrainAction<{ created?: unknown[] }>();
 
   const answeredCount = answers.filter((a) => a.trim()).length;
 
@@ -274,13 +273,7 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
       .join("\n\n");
     let learned = 0;
     if (text) {
-      const r = await fetch("/api/ig/brain", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "extract", text }),
-      })
-        .then((r) => r.json())
-        .catch(() => null);
+      const r = await extractAction.mutateAsync({ action: "extract", text }).catch(() => null);
       learned = r?.created?.length || 0;
       if (learned)
         toast.success(`Learned ${learned} fact${learned === 1 ? "" : "s"}`);
@@ -491,17 +484,12 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
 function Paste({ onSaved }: { onSaved: () => Promise<void> }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const extractAction = useBrainAction<{ created?: unknown[] }>();
 
   async function extract() {
     if (!text.trim() || busy) return;
     setBusy(true);
-    const r = await fetch("/api/ig/brain", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "extract", text: text.trim() }),
-    })
-      .then((r) => r.json())
-      .catch(() => null);
+    const r = await extractAction.mutateAsync({ action: "extract", text: text.trim() }).catch(() => null);
     setBusy(false);
     if (r?.created?.length) {
       toast.success(`Learned ${r.created.length} fact(s)`);
@@ -555,13 +543,10 @@ function FactsList({
   onPick: (f: Fact) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const deleteAction = useBrainAction();
 
   async function del(id: string) {
-    await fetch("/api/ig/brain", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "delete", id }),
-    }).catch(() => {});
+    await deleteAction.mutateAsync({ action: "delete", id }).catch(() => {});
     await onChanged();
   }
 
@@ -650,21 +635,15 @@ function AddFactForm({ onAdded }: { onAdded: () => Promise<void> }) {
   const [a, setA] = useState("");
   const [topic, setTopic] = useState("general");
   const [busy, setBusy] = useState(false);
+  const addAction = useBrainAction();
   const ok = q.trim() && a.trim();
 
   async function add() {
     if (!ok || busy) return;
     setBusy(true);
-    await fetch("/api/ig/brain", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "add",
-        question: q.trim(),
-        answer: a.trim(),
-        topic,
-      }),
-    }).catch(() => {});
+    await addAction
+      .mutateAsync({ action: "add", question: q.trim(), answer: a.trim(), topic })
+      .catch(() => {});
     setBusy(false);
     toast.success("Added to the brain");
     await onAdded();

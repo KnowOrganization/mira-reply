@@ -10,6 +10,8 @@ import {
 import type { Mention } from "@/lib/ig/store";
 import { processInbound } from "@/lib/ig/pipeline";
 import { matchAutomations, executeAutomation, resumeAutomationAfterFollow, resumeAutomationAfterButtonClick, type AutomationEvent } from "@/lib/ig/automation";
+import { enqueueIngest } from "@/lib/ig/ingestQueue";
+import { listAutomations } from "@/lib/ig/accountsRepo";
 import { publish } from "@/lib/ig/bus";
 import { seenComment } from "@/lib/ig/seen";
 import { tryDM, tryPrivateReply } from "@/lib/ig/dm";
@@ -43,7 +45,12 @@ function verifySignature(raw: string, sigHeader: string | null) {
   if (!sigHeader || !ig.appSecret) return false;
   const sig = sigHeader.replace(/^sha256=/, "");
   const expected = crypto.createHmac("sha256", ig.appSecret).update(raw).digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  // timingSafeEqual throws RangeError on length mismatch — guard it (a short/
+  // malformed signature header must return false, not crash the handler).
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 type WebhookPayload = {
@@ -214,16 +221,16 @@ export async function POST(req: NextRequest) {
           let handledByNewAutomation = false;
           if (cmedia && token) {
             try {
-              const config = getPostConfigByPostId(cmedia);
+              const config = await getPostConfigByPostId(cmedia);
               const ownId = store.account?.igUserId;
-              if (config && cfrom !== ownId && !isCommentProcessed(cid)) {
+              if (config && cfrom !== ownId && !await isCommentProcessed(cid)) {
                 const kws: string[] = config.keywords;
                 const matches = kws.length === 0 || kws.some((k) => ctext.toLowerCase().includes(k.toLowerCase()));
                 if (matches) {
                   handledByNewAutomation = true;
-                  markCommentProcessed(cid, cfrom, config.id);
-                  upsertUserState({ igsid: cfrom, post_id: config.id, comment_id: cid, state: "awaiting_tap", payload: null });
-                  insertLog({ direction: "in", event_type: "comment", igsid: cfrom, post_id: config.id, payload: JSON.stringify({ commentId: cid, text: ctext }), status: "matched", error: null });
+                  await markCommentProcessed(cid, cfrom, config.id);
+                  await upsertUserState({ igsid: cfrom, post_id: config.id, comment_id: cid, state: "awaiting_tap", payload: null });
+                  await insertLog({ direction: "in", event_type: "comment", igsid: cfrom, post_id: config.id, payload: JSON.stringify({ commentId: cid, text: ctext }), status: "matched", error: null });
                   // Private reply with button — opens 24h messaging window
                   messageQueue.enqueue({
                     id: `pr_${cid}`,
@@ -253,15 +260,16 @@ export async function POST(req: NextRequest) {
           // ── Legacy automation + Mira pipeline (only if new automation didn't handle it) ──
           if (!handledByNewAutomation) {
             const evt: AutomationEvent = { type: "comment_post", commentId: cid, fromUserId: cfrom, fromUsername, text: ctext, postId: cmedia };
-            const matched = matchAutomations(store, evt);
-            if (matched.length > 0) {
-              (async () => {
-                for (const auto of matched) {
-                  await executeAutomation(auto, evt).catch((e) =>
-                    publish({ type: "log", level: "error", msg: `automation: ${String(e)}`, ts: Date.now() })
-                  );
-                }
-              })();
+            // Match against the authoritative Postgres automations (same source the
+            // worker uses), then ENQUEUE for durable execution off the request path —
+            // a comment burst becomes fast enqueues; the worker pool drains them.
+            const acctId = store.account?.igUserId;
+            const pgAutos = acctId ? await listAutomations(acctId) : [];
+            const matched = matchAutomations({ ...store, automations: pgAutos }, evt);
+            if (matched.length > 0 && acctId) {
+              enqueueIngest({ accountId: acctId, kind: "comment", event: evt }).catch((e) =>
+                publish({ type: "log", level: "error", msg: `enqueue: ${String(e)}`, ts: Date.now() })
+              );
             } else {
               processInbound({
                 kind: "comment",
@@ -450,7 +458,7 @@ export async function POST(req: NextRequest) {
         const fromId = m.sender.id;
         const pbPayload = m.postback.payload;
         publish({ type: "log", level: "info", msg: `postback from ${fromId}: "${pbPayload}"`, ts: Date.now() });
-        insertLog({ direction: "in", event_type: "postback", igsid: fromId, post_id: null, payload: JSON.stringify({ payload: pbPayload, title: m.postback.title }), status: "received", error: null });
+        await insertLog({ direction: "in", event_type: "postback", igsid: fromId, post_id: null, payload: JSON.stringify({ payload: pbPayload, title: m.postback.title }), status: "received", error: null });
 
         // ── New automation postbacks (GET_LINK_ / RECHECK_FOLLOW_) ──────
         const getLink = pbPayload.match(/^GET_LINK_(.+)$/);
@@ -461,14 +469,14 @@ export async function POST(req: NextRequest) {
           void (async () => {
             try {
               const { getPostConfigById } = await import("@/lib/ig/db");
-              const config = getPostConfigById(postConfigId);
+              const config = await getPostConfigById(postConfigId);
               if (!config) return;
-              const userState = getUserState(fromId, postConfigId);
+              const userState = await getUserState(fromId, postConfigId);
               if (userState?.state === "delivered") return; // already sent, ignore
 
               if (!config.follow_gate) {
                 // No follow gate — deliver link immediately
-                setUserStateDelivered(fromId, postConfigId);
+                await setUserStateDelivered(fromId, postConfigId);
                 enqueueLink(fromId, postConfigId, config, token);
                 return;
               }
@@ -477,10 +485,10 @@ export async function POST(req: NextRequest) {
               publish({ type: "log", level: "info", msg: `follow check @${fromId}: ${isFollowing}`, ts: Date.now() });
 
               if (isFollowing) {
-                setUserStateDelivered(fromId, postConfigId);
+                await setUserStateDelivered(fromId, postConfigId);
                 enqueueLink(fromId, postConfigId, config, token);
               } else {
-                upsertUserState({ igsid: fromId, post_id: postConfigId, comment_id: userState?.comment_id ?? "", state: "awaiting_follow", payload: pbPayload });
+                await upsertUserState({ igsid: fromId, post_id: postConfigId, comment_id: userState?.comment_id ?? "", state: "awaiting_follow", payload: pbPayload });
                 const acct = store.account;
                 const uname = acct?.username ?? "";
                 messageQueue.enqueue({
@@ -511,25 +519,14 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        // ── Legacy automation postbacks ──────────────────────────────────
-        const pbStore = await readStore();
-        const followPending = (pbStore.automationFollowPending ?? []).find(
-          (p) => p.fromUserId === fromId && Date.now() - p.ts < 24 * 60 * 60_000
-        );
-        if (followPending && /^done$/i.test(pbPayload)) {
-          resumeAutomationAfterFollow(fromId, followPending.fromUsername).catch((e) =>
-            publish({ type: "log", level: "error", msg: `postback follow resume: ${String(e)}`, ts: Date.now() })
-          );
-          continue;
+        // ── Legacy automation postbacks — resume from Postgres-parked state.
+        // The atomic claimPending inside each resume fn is the gate (returns
+        // false when nothing is parked), so no file-store pre-check is needed.
+        if (/^done$/i.test(pbPayload)) {
+          const r = await resumeAutomationAfterFollow(fromId).catch(() => false);
+          if (r) continue;
         }
-        const buttonPending = (pbStore.automationButtonPending ?? []).find(
-          (p) => p.fromUserId === fromId && Date.now() - p.ts < 24 * 60 * 60_000
-        );
-        if (buttonPending) {
-          resumeAutomationAfterButtonClick(fromId, buttonPending.fromUsername).catch((e) =>
-            publish({ type: "log", level: "error", msg: `postback button resume: ${String(e)}`, ts: Date.now() })
-          );
-        }
+        await resumeAutomationAfterButtonClick(fromId).catch(() => false);
         continue;
       }
 
@@ -545,16 +542,16 @@ export async function POST(req: NextRequest) {
 
         const fromId = m.sender.id;
 
-        // ── button-gate resume — highest priority ─────────────────────────
+        // ── button-gate resume — highest priority. claimPending (atomic) is the
+        // gate: if this user has a parked button flow it claims + resumes and we
+        // skip the pipeline; otherwise it returns false and we fall through.
         const freshStore2 = await readStore();
-        const buttonPending = (freshStore2.automationButtonPending ?? []).find(
-          (p) => p.fromUserId === fromId && Date.now() - p.ts < 24 * 60 * 60_000
-        );
-        if (buttonPending) {
-          publish({ type: "log", level: "info", msg: `dm: button-click from @${buttonPending.fromUsername ?? fromId} — resuming automation ${buttonPending.automationId}`, ts: Date.now() });
-          resumeAutomationAfterButtonClick(fromId, buttonPending.fromUsername).catch((e) =>
-            publish({ type: "log", level: "error", msg: `automation button resume: ${String(e)}`, ts: Date.now() })
-          );
+        const resumedButton = await resumeAutomationAfterButtonClick(fromId).catch((e) => {
+          publish({ type: "log", level: "error", msg: `automation button resume: ${String(e)}`, ts: Date.now() });
+          return false;
+        });
+        if (resumedButton) {
+          publish({ type: "log", level: "info", msg: `dm: button-click resume for @${fromId}`, ts: Date.now() });
           // don't fall through to pipeline/DM-trigger matching
         } else {
         // check if this is a follow-confirm DM reply

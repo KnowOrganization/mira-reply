@@ -16,6 +16,16 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import type { Automation, AutomationNodeType, AutomationNodeData, AutomationNode } from "@/lib/ig/store";
+import { api } from "@/lib/api/client";
+import {
+  usePosts,
+  useSyncPosts,
+  useAutomations,
+  useCreateAutomation,
+  usePatchAutomation,
+  useDeleteAutomation,
+  useTestAutomation,
+} from "@/lib/api/hooks";
 
 // ── types ──────────────────────────────────────────────────────────────────
 
@@ -658,14 +668,14 @@ function PostFilterNode({ data, onUpdate, onDelete, canDelete, dragMode }: NodeC
   const confirmedIds: string[] = data.postIds ?? [];
   const noneSelected = confirmedIds.length === 0;
 
-  // Load thumbnails on mount so compact strip renders without opening modal
+  // Load thumbnails on mount so compact strip renders without opening modal.
+  // Gated on having confirmed ids — matches the original mount fetch.
+  const mountPostsQ = usePosts<{ posts?: PostSummary[] }>({ enabled: confirmedIds.length > 0 });
   useEffect(() => {
-    if (confirmedIds.length === 0) return;
-    fetch("/api/ig/posts")
-      .then((r) => r.json())
-      .then((d) => setPosts(d.posts ?? []))
-      .catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (mountPostsQ.data?.posts) setPosts(mountPostsQ.data.posts);
+  }, [mountPostsQ.data]);
+
+  const syncPosts = useSyncPosts();
 
   function openModal() {
     setDraft([...confirmedIds]);
@@ -673,9 +683,9 @@ function PostFilterNode({ data, onUpdate, onDelete, canDelete, dragMode }: NodeC
     if (posts.length === 0) {
       setLoading(true);
       (async () => {
-        try { await fetch("/api/ig/posts/sync", { method: "POST" }); } catch {}
+        try { await syncPosts.mutateAsync(); } catch {}
         try {
-          const d = await fetch("/api/ig/posts").then((r) => r.json());
+          const d = await api.get<{ posts?: PostSummary[] }>("/api/ig/posts");
           setPosts(d.posts ?? []);
         } catch {}
         setLoading(false);
@@ -1379,6 +1389,7 @@ function AutomationCanvas({ automation, onSave }: { automation: Automation; onSa
   const [testText, setTestText] = useState("");
   const [testRunning, setTestRunning] = useState(false);
   const [testSteps, setTestSteps] = useState<{ nodeType: string; action: string; text: string }[] | null>(null);
+  const testAutomation = useTestAutomation();
 
   // Fix 6 — beforeunload when dirty
   useEffect(() => {
@@ -1426,13 +1437,8 @@ function AutomationCanvas({ automation, onSave }: { automation: Automation; onSa
     setTestRunning(true);
     setTestSteps(null);
     try {
-      const r = await fetch(`/api/ig/automations/${automation.id}/test`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: testText }),
-      });
-      const d = await r.json();
-      setTestSteps(d.steps ?? []);
+      const d = await testAutomation.mutateAsync({ id: automation.id, text: testText });
+      setTestSteps((d.steps as { nodeType: string; action: string; text: string }[]) ?? []);
     } catch {
       toast.error("Test failed");
     }
@@ -1699,63 +1705,52 @@ function AutomationCanvas({ automation, onSave }: { automation: Automation; onSa
 // ── AutomationsView ────────────────────────────────────────────────────────
 
 export function AutomationsView({ onBack }: { onBack?: () => void }) {
-  const [automations, setAutomations] = useState<Automation[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
   const [editingName, setEditingName] = useState<string | null>(null);
   const [nameVal, setNameVal] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null); // Fix 5
 
-  async function load(silent = false) {
-    if (!silent) setLoading(true);
-    try {
-      const r = await fetch("/api/ig/automations");
-      const d = await r.json();
-      setAutomations(d.automations ?? []);
-      if (!selected && d.automations?.length) setSelected(d.automations[0].id);
-    } catch {}
-    if (!silent) setLoading(false);
-  }
+  // poll every 30s to refresh per-automation stats (matches old silent reload)
+  const automationsQ = useAutomations({ refetchInterval: 30_000 });
+  const automations = automationsQ.data?.automations ?? [];
+  const loading = automationsQ.isLoading;
 
+  const createMut = useCreateAutomation();
+  const patchMut = usePatchAutomation();
+  const deleteMut = useDeleteAutomation();
+  const creating = createMut.isPending;
+
+  // default-select the first automation once the list loads
   useEffect(() => {
-    load();
-    // Fix 8 — refresh stats every 30s
-    const interval = setInterval(() => load(true), 30_000);
-    return () => clearInterval(interval);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!selected && automations.length) setSelected(automations[0].id);
+  }, [selected, automations]);
 
   async function createNew() {
-    setCreating(true);
     try {
-      const r = await fetch("/api/ig/automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "New Automation" }) });
-      const d = await r.json();
-      setAutomations((prev) => [...prev, d.automation]);
+      const d = await createMut.mutateAsync();
       setSelected(d.automation.id);
     } catch {}
-    setCreating(false);
   }
 
   async function toggleEnabled(id: string, enabled: boolean) {
-    await fetch(`/api/ig/automations/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }) });
-    setAutomations((prev) => prev.map((a) => a.id === id ? { ...a, enabled } : a));
+    await patchMut.mutateAsync({ id, patch: { enabled } });
   }
 
   async function deleteAuto(id: string) {
-    await fetch(`/api/ig/automations/${id}`, { method: "DELETE" });
-    setAutomations((prev) => { const next = prev.filter((a) => a.id !== id); if (selected === id) setSelected(next[0]?.id ?? null); return next; });
+    await deleteMut.mutateAsync(id);
+    if (selected === id) {
+      const next = automations.filter((a) => a.id !== id);
+      setSelected(next[0]?.id ?? null);
+    }
   }
 
   async function saveAuto(patch: Partial<Automation>) {
     if (!selected) return;
-    const r = await fetch(`/api/ig/automations/${selected}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
-    const d = await r.json();
-    setAutomations((prev) => prev.map((a) => a.id === selected ? d.automation : a));
+    await patchMut.mutateAsync({ id: selected, patch });
   }
 
   async function saveName(id: string, name: string) {
-    await fetch(`/api/ig/automations/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
-    setAutomations((prev) => prev.map((a) => a.id === id ? { ...a, name } : a));
+    await patchMut.mutateAsync({ id, patch: { name } });
     setEditingName(null);
   }
 

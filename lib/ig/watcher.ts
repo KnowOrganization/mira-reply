@@ -61,6 +61,11 @@ if (!g.__mira_watcher) {
 const s = g.__mira_watcher;
 
 export function ensureWatcher() {
+  // Honour the safe-mode kill-switch everywhere, not just at module load — so a
+  // /poll or /watcher call can't spin up the live IG loops when disabled.
+  if (process.env.MIRA_WATCHER_DISABLED === "1") {
+    return { running: false, disabled: true, intervalMs: s.intervalMs, startedAt: 0 };
+  }
   // per-second real-time automation loop (independent of the 7s general tick)
   if (!rtG.__mira_rt_timer) {
     rtG.__mira_rt_timer = setInterval(() => { void realtimeTick(); }, REALTIME_INTERVAL);
@@ -155,22 +160,15 @@ async function pollDMs(ownId: string, token: string) {
       seenDMs.add(dm.id);
       if (dm.ts > latestDMts) latestDMts = dm.ts;
 
-      const freshDMStore = await readStore();
-      const buttonPending = (freshDMStore.automationButtonPending ?? []).find(
-        (p) => p.fromUserId === dm.fromUserId && Date.now() - p.ts < 24 * 60 * 60_000
-      );
-      const followPending = (freshDMStore.automationFollowPending ?? []).find(
-        (p) => p.fromUserId === dm.fromUserId && Date.now() - p.ts < 24 * 60 * 60_000
-      );
+      // Resume state lives in Postgres now — the atomic claimPending inside each
+      // resume fn is the gate (returns false when nothing parked). Try button
+      // first; if it didn't claim and the DM looks like a follow-confirm, try follow.
       const FOLLOW_CONFIRM = /\b(send|yes|yep|done|following|followed|ok|okay|sure|ready)\b/i;
-
-      if (buttonPending) {
-        publish({ type: "log", level: "info", msg: `watcher: button-click DM from @${dm.fromUsername ?? dm.fromUserId} — resuming automation`, ts: Date.now() });
-        await resumeAutomationAfterButtonClick(dm.fromUserId, dm.fromUsername).catch((e) =>
-          publish({ type: "log", level: "error", msg: `watcher button resume: ${String(e)}`, ts: Date.now() })
-        );
-      } else if (followPending && FOLLOW_CONFIRM.test(dm.text)) {
-        publish({ type: "log", level: "info", msg: `watcher: follow-confirm DM from @${dm.fromUsername ?? dm.fromUserId} — resuming automation`, ts: Date.now() });
+      const resumedBtn = await resumeAutomationAfterButtonClick(dm.fromUserId, dm.fromUsername).catch((e) => {
+        publish({ type: "log", level: "error", msg: `watcher button resume: ${String(e)}`, ts: Date.now() });
+        return false;
+      });
+      if (!resumedBtn && FOLLOW_CONFIRM.test(dm.text)) {
         await resumeAutomationAfterFollow(dm.fromUserId, dm.fromUsername).catch((e) =>
           publish({ type: "log", level: "error", msg: `watcher follow resume: ${String(e)}`, ts: Date.now() })
         );
@@ -561,8 +559,14 @@ export async function tick() {
   }
 }
 
-// auto-start on module load if token exists (lazy)
+// auto-start on module load if token exists (lazy).
+// MIRA_WATCHER_DISABLED=1 hard-stops this — used to boot the UI safely without
+// the live IG loops (which send real DMs via automations, ungated by replyMode).
 void (async () => {
+  if (process.env.MIRA_WATCHER_DISABLED === "1") {
+    console.log("[watcher] disabled via MIRA_WATCHER_DISABLED — no live IG loops");
+    return;
+  }
   try {
     const st = await readStore();
     if (st.account) ensureWatcher();

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Toaster } from "sonner";
+import { Providers } from "@/components/Providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -23,7 +24,7 @@ export default function RootLayout({
         />
       </head>
       <body className="h-screen overflow-hidden">
-        {children}
+        <Providers>{children}</Providers>
         <Toaster
           position="bottom-right"
           theme="system"

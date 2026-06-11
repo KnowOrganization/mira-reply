@@ -19,9 +19,11 @@ import {
   Brain as BrainIcon,
   Zap,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { MiraLogo } from "./MiraLogo";
 import type { Thread } from "@/lib/types";
+import { useStatus, useClarifications, useDisconnect, qk, type IgStatus } from "@/lib/api/hooks";
 
 type View = "dashboard" | "chat" | "comments" | "brain" | "settings" | "automations";
 
@@ -47,46 +49,34 @@ export function Sidebar({
   onSelectView,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
-  const [account, setAccount] = useState<{ username: string } | null>(null);
-  const [pendingCount, setPendingCount] = useState(0);
-  const [openClar, setOpenClar] = useState(0);
+  const qc = useQueryClient();
 
+  const { data: status } = useStatus<IgStatus>({ refetchInterval: 30_000 });
+  const { data: clarData } = useClarifications<{ open?: unknown[] }>({ refetchInterval: 30_000 });
+  const disconnectMut = useDisconnect();
+
+  const account = status?.account ? { username: status.account.username } : null;
+  const pendingCount = status?.pendingCount ?? 0;
+  const openClar = (clarData?.open ?? []).length;
+
+  // SSE-driven freshness — refetch status + clarifications on each relevant event
   useEffect(() => {
-    const fetchStatus = () => {
-      fetch("/api/ig/status")
-        .then((r) => r.json())
-        .then((d) => {
-          setAccount(d.account ? { username: d.account.username } : null);
-          setPendingCount(d.pendingCount ?? 0);
-        })
-        .catch(() => {});
-      fetch("/api/ig/clarifications")
-        .then((r) => r.json())
-        .then((d) => setOpenClar((d.open ?? []).length))
-        .catch(() => {});
-    };
-    fetchStatus();
-    const t = setInterval(fetchStatus, 30_000);
     const es = new EventSource("/api/ig/stream");
     es.onmessage = (e) => {
       try {
         const ev = JSON.parse(e.data);
-        if (ev.type === "draft" || ev.type === "sent") fetchStatus();
+        if (ev.type === "draft" || ev.type === "sent") {
+          qc.invalidateQueries({ queryKey: qk.status });
+          qc.invalidateQueries({ queryKey: qk.clarifications });
+        }
       } catch {}
     };
-    return () => {
-      clearInterval(t);
-      es.close();
-    };
-  }, []);
+    return () => es.close();
+  }, [qc]);
 
   async function logout() {
     if (!confirm("Log out of Instagram?")) return;
-    try {
-      await fetch("/api/ig/disconnect", { method: "POST" });
-    } catch {
-      /* ignore */
-    }
+    await disconnectMut.mutateAsync().catch(() => {});
     window.location.href = "/";
   }
 

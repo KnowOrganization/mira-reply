@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, Loader2, ExternalLink, Plus, Trash2, ChevronDown, ChevronUp, Link as LinkIcon } from "lucide-react";
 import { toast } from "sonner";
+import { api } from "@/lib/api/client";
+import { usePosts, usePatchPost, qk } from "@/lib/api/hooks";
 
 // ── types ─────────────────────────────────────────────────────────────────
 
@@ -41,24 +44,24 @@ const LINK_TYPES = ["location", "song", "gear", "shop", "other"] as const;
 // ── PostCanvas ────────────────────────────────────────────────────────────
 
 export function PostCanvas() {
-  const [posts, setPosts]           = useState<Post[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const qc = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const r = await fetch("/api/ig/posts");
-      const d = await r.json() as { posts?: Post[] };
-      const sorted = (d.posts || []).sort((a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-      setPosts(sorted);
-      if (sorted.length > 0 && !expandedId) setExpandedId(sorted[0].id);
-    } catch {}
-    setLoading(false);
-  }, [expandedId]);
+  const { data, isLoading: loading } = usePosts<{ posts?: Post[] }>();
+  const posts = useMemo(
+    () =>
+      (data?.posts || [])
+        .slice()
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    [data]
+  );
 
-  useEffect(() => { load(); }, []);
+  // auto-expand the most recent post once, on first load
+  useEffect(() => {
+    if (posts.length > 0 && !expandedId) setExpandedId(posts[0].id);
+  }, [posts, expandedId]);
+
+  const refresh = () => qc.invalidateQueries({ queryKey: qk.posts });
 
   if (loading) {
     return (
@@ -85,7 +88,7 @@ export function PostCanvas() {
           post={post}
           expanded={expandedId === post.id}
           onToggle={() => setExpandedId((id) => id === post.id ? null : post.id)}
-          onRefresh={load}
+          onRefresh={refresh}
         />
       ))}
     </div>
@@ -106,10 +109,12 @@ function PostCard({
   onRefresh: () => void;
 }) {
   const [notes, setNotes]               = useState(post.notes || "");
-  const [savingNotes, setSavingNotes]   = useState(false);
-  const [addingLink, setAddingLink]     = useState(false);
   const [replyBusy, setReplyBusy]       = useState(false);
+  const [addingLink, setAddingLink]     = useState(false);
   const [replyResult, setReplyResult]   = useState<string | null>(null);
+
+  const patchPost = usePatchPost();
+  const savingNotes = patchPost.isPending;
 
   useEffect(() => { setNotes(post.notes || ""); }, [post.id, post.notes]);
 
@@ -118,22 +123,12 @@ function PostCard({
   const hasLink = post.links.length > 0;
 
   async function saveNotes() {
-    setSavingNotes(true);
-    await fetch(`/api/ig/posts/${post.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes }),
-    }).catch(() => {});
-    setSavingNotes(false);
+    await patchPost.mutateAsync({ id: post.id, patch: { notes } }).catch(() => {});
     toast.success("Notes saved");
   }
 
   async function removeLink(linkId: string) {
-    await fetch(`/api/ig/posts/${post.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ removeLink: linkId }),
-    }).catch(() => {});
+    await patchPost.mutateAsync({ id: post.id, patch: { removeLink: linkId } }).catch(() => {});
     onRefresh();
   }
 
@@ -141,8 +136,9 @@ function PostCard({
     setReplyBusy(true);
     setReplyResult(null);
     try {
-      const r = await fetch(`/api/ig/posts/${post.id}/reply-all`, { method: "POST" });
-      const j = await r.json() as { processed?: number; replied?: number; skipped?: number; dmSent?: number; error?: string };
+      const j = await api.post<{ processed?: number; replied?: number; skipped?: number; dmSent?: number; error?: string }>(
+        `/api/ig/posts/${post.id}/reply-all`
+      );
       if (j.error) { toast.error(j.error); setReplyResult(j.error); }
       else {
         const msg = `${j.dmSent ?? 0} DMs sent · ${j.replied ?? 0} replied · ${j.skipped ?? 0} skipped`;
@@ -157,7 +153,7 @@ function PostCard({
   }
 
   async function stopReplyAll() {
-    await fetch(`/api/ig/posts/${post.id}/reply-all/stop`, { method: "POST" }).catch(() => {});
+    await api.post(`/api/ig/posts/${post.id}/reply-all/stop`).catch(() => {});
     toast("Stopping...");
   }
 
@@ -293,11 +289,7 @@ function PostCard({
                 {addingLink && (
                   <AddLinkForm
                     onAdd={async (l) => {
-                      await fetch(`/api/ig/posts/${post.id}`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ addLink: l }),
-                      });
+                      await patchPost.mutateAsync({ id: post.id, patch: { addLink: l } });
                       setAddingLink(false);
                       onRefresh();
                       toast.success("Link added");

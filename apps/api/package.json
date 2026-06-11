@@ -1,0 +1,16 @@
+{
+  "name": "@shaiz/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --env-file=../../.env.local --watch src/index.ts",
+    "start": "bun --env-file=../../.env.local src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@shaiz/db": "workspace:*",
+    "@elysiajs/cors": "^1.2.0",
+    "elysia": "^1.2.10"
+  }
+}

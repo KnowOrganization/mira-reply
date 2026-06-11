@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { Plus, Trash2, Pencil, Check, X, Link2, Loader2, Sparkles } from "lucide-react";
+import { useKnowledge, useAddKnowledge, useDeleteKnowledge, usePatchKnowledge } from "@/lib/api/hooks";
 
 type Topic = "gear" | "location" | "song" | "personal" | "shop" | "general";
 
@@ -23,59 +24,32 @@ type Fact = {
 const TOPICS: Topic[] = ["gear", "location", "song", "personal", "shop", "general"];
 
 export function KnowledgeEditor() {
-  const [facts, setFacts] = useState<Fact[]>([]);
-  const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [a, setA] = useState("");
   const [topic, setTopic] = useState<Topic>("general");
-  const [busy, setBusy] = useState(false);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const r = await fetch("/api/ig/knowledge").then((r) => r.json());
-      setFacts(r.facts ?? []);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => {
-    load();
-  }, []);
+  const { data, isLoading: loading } = useKnowledge<{ facts?: Fact[] }>();
+  const facts = data?.facts ?? [];
+  const addFact = useAddKnowledge();
+  const deleteFact = useDeleteKnowledge();
+  const patchFact = usePatchKnowledge();
+  const busy = addFact.isPending;
 
   async function add() {
     if (!q.trim() || !a.trim() || busy) return;
-    setBusy(true);
-    try {
-      await fetch("/api/ig/knowledge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q.trim(), answer: a.trim(), topic, scope: "account" }),
-      });
-      setQ("");
-      setA("");
-      setTopic("general");
-      toast.success("Mira learned it.");
-      load();
-    } finally {
-      setBusy(false);
-    }
+    await addFact.mutateAsync({ question: q.trim(), answer: a.trim(), topic, scope: "account" });
+    setQ("");
+    setA("");
+    setTopic("general");
+    toast.success("Mira learned it.");
   }
 
-  async function remove(id: string) {
-    setFacts((f) => f.filter((x) => x.id !== id));
-    await fetch(`/api/ig/knowledge/${id}`, { method: "DELETE" });
+  function remove(id: string) {
+    deleteFact.mutate(id);
   }
 
   async function save(id: string, patch: Partial<Fact>) {
-    await fetch(`/api/ig/knowledge/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    load();
+    await patchFact.mutateAsync({ id, patch });
   }
 
   const reused = facts.reduce((n, f) => n + f.hitCount, 0);

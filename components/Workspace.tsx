@@ -7,9 +7,32 @@ import {
   useRef,
   useState,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { MiraFeed } from "./MiraFeed";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { api } from "@/lib/api/client";
+import {
+  useComments,
+  useDrafts,
+  useClarifications,
+  useDashboard,
+  useStatus,
+  useWatcher,
+  usePosts,
+  useMentions,
+  useBrainStats,
+  useSetMode,
+  useSyncPosts,
+  useRefreshMentions,
+  useMarkMentionRead,
+  useDraftAction,
+  useClarificationAction,
+  useReprocess,
+  usePatchPost,
+  qk,
+  type IgStatus,
+} from "@/lib/api/hooks";
 import {
   Sparkles,
   ExternalLink,
@@ -199,105 +222,88 @@ function Avatar({ name, size = 32 }: { name: string; size?: number }) {
 }
 
 // ── main ─────────────────────────────────────────────────────────────────
+type DashResp = {
+  today?: { comments?: number; autoReplied?: number };
+  knowledge?: { top?: { q?: string } };
+  themes?: Record<string, number>;
+};
+type BrainStats = {
+  stats: { tool: string; count: number; errorRate: number; p50: number; p95: number; open: boolean }[];
+  tools: { name: string; description: string }[];
+};
+
 export function Workspace() {
-  const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [clars, setClars] = useState<Clar[]>([]);
-  const [postList, setPostList] = useState<Post[]>([]);
-  const [rows, setRows] = useState<Row[]>([]);
-  const [rowInfo, setRowInfo] = useState<
-    Record<string, { caption: string; thumb?: string; permalink?: string; comments: number }>
-  >({});
-  const [names, setNames] = useState<Record<string, string>>({});
-  const [stats, setStats] = useState<{
-    newToday: number;
-    autoSent: number;
-    topTheme: string | null;
-  }>({ newToday: 0, autoSent: 0, topTheme: null });
-  const [mode, setModeState] = useState<string>("balanced");
-  const [shiftStart, setShiftStart] = useState<number>(0);
-  const [account, setAccount] = useState<string>("");
+  const qc = useQueryClient();
   const [pane, setPane] = useState<"inbox" | "posts" | "mentions">("inbox");
   const [tab, setTab] = useState<"all" | "low" | "asks">("all");
   const [selId, setSelId] = useState<string | null>(null);
   const [selPost, setSelPost] = useState<string | null>(null);
-  const [mentions, setMentions] = useState<Mention[]>([]);
   const [selMention, setSelMention] = useState<string | null>(null);
-  const [refreshingMentions, setRefreshingMentions] = useState(false);
   const [brainOpen, setBrainOpen] = useState(false);
-  const [brainStats, setBrainStats] = useState<{
-    stats: { tool: string; count: number; errorRate: number; p50: number; p95: number; open: boolean }[];
-    tools: { name: string; description: string }[];
-  }>({ stats: [], tools: [] });
-  const [syncing, setSyncing] = useState(false);
   const [postLoading, setPostLoading] = useState(false);
   const [, force] = useState(0);
 
-  const load = useCallback(async () => {
-    try {
-      const [cRes, dRes, clRes, dashRes, stRes, wRes, pRes, mRes] = await Promise.all([
-        fetch("/api/ig/comments").then((r) => r.json()).catch(() => ({})),
-        fetch("/api/ig/drafts").then((r) => r.json()).catch(() => ({})),
-        fetch("/api/ig/clarifications").then((r) => r.json()).catch(() => ({})),
-        fetch("/api/ig/dashboard").then((r) => r.json()).catch(() => ({})),
-        fetch("/api/ig/status").then((r) => r.json()).catch(() => ({})),
-        fetch("/api/ig/watcher").then((r) => r.json()).catch(() => ({})),
-        fetch("/api/ig/posts").then((r) => r.json()).catch(() => ({})),
-        fetch("/api/ig/mentions").then((r) => r.json()).catch(() => ({})),
-      ]);
+  // ── reads — each was a leg of the old Promise.all; the watcher keeps these
+  // caches fresh, and refetchInterval mirrors the previous 20s poll. ──
+  const commentsQ = useComments<{ rows?: Row[] }>(false, { refetchInterval: 20_000 });
+  const draftsQ = useDrafts<{ pending?: Draft[] }>({ refetchInterval: 20_000 });
+  const clarsQ = useClarifications<{ open?: Clar[] }>({ refetchInterval: 20_000 });
+  const dashQ = useDashboard<DashResp>({ refetchInterval: 20_000 });
+  const statusQ = useStatus<IgStatus>({ refetchInterval: 20_000 });
+  const watcherQ = useWatcher<{ startedAt?: number }>({ refetchInterval: 20_000 });
+  const postsQ = usePosts<{ posts?: Post[] }>({ refetchInterval: 20_000 });
+  const mentionsQ = useMentions<{ mentions?: Mention[] }>({ refetchInterval: 20_000 });
+  const brainStatsQ = useBrainStats<BrainStats>({
+    enabled: brainOpen,
+    refetchInterval: brainOpen ? 3_000 : false,
+  });
 
-      const rows: Row[] = cRes.rows || [];
-      const info: Record<
-        string,
-        { caption: string; thumb?: string; permalink?: string; comments: number }
-      > = {};
-      const nMap: Record<string, string> = {};
-      for (const r of rows) {
-        if (!info[r.postId])
-          info[r.postId] = {
-            caption: r.postCaption || "",
-            thumb: r.postThumb,
-            permalink: r.postPermalink,
-            comments: 0,
-          };
-        info[r.postId].comments++;
-        if (r.fromUsername) nMap[r.fromUserId] = r.fromUsername;
-      }
-      const pend: Draft[] = (dRes.pending || []).filter(
-        (d: Draft) => d.kind === "comment"
-      );
-      const open: Clar[] = clRes.open || [];
-      for (const d of pend) if (d.fromUsername) nMap[d.fromUserId] = d.fromUsername;
-      for (const c of open) if (c.fromUsername) nMap[c.fromUserId] = c.fromUsername;
+  const rows = useMemo<Row[]>(() => commentsQ.data?.rows ?? [], [commentsQ.data]);
+  const drafts = useMemo<Draft[]>(
+    () => (draftsQ.data?.pending ?? []).filter((d) => d.kind === "comment"),
+    [draftsQ.data]
+  );
+  const clars = useMemo<Clar[]>(() => clarsQ.data?.open ?? [], [clarsQ.data]);
+  const postList = useMemo<Post[]>(() => postsQ.data?.posts ?? [], [postsQ.data]);
+  const mentions = useMemo<Mention[]>(() => mentionsQ.data?.mentions ?? [], [mentionsQ.data]);
+  const brainStats: BrainStats = brainStatsQ.data ?? { stats: [], tools: [] };
 
-      setRowInfo(info);
-      setRows(rows);
-      setNames(nMap);
-      setDrafts(pend);
-      setClars(open);
-      setPostList(pRes.posts || []);
-      setMentions(mRes.mentions || []);
-      setStats({
-        newToday: dashRes?.today?.comments ?? 0,
-        autoSent: dashRes?.today?.autoReplied ?? 0,
-        topTheme:
-          dashRes?.knowledge?.top?.q ||
-          Object.keys(dashRes?.themes || {})[0] ||
-          null,
-      });
-      if (stRes?.replyMode) setModeState(stRes.replyMode);
-      if (stRes?.account?.username) setAccount(stRes.account.username);
-      if (wRes?.startedAt) setShiftStart(wRes.startedAt);
-    } catch {
-      /* ignore */
+  // post → {caption,thumb,permalink,comments} index + userId → username map,
+  // both derived from comment rows + queue items (same logic as before).
+  const { rowInfo, names } = useMemo(() => {
+    const info: Record<string, { caption: string; thumb?: string; permalink?: string; comments: number }> = {};
+    const nMap: Record<string, string> = {};
+    for (const r of rows) {
+      if (!info[r.postId])
+        info[r.postId] = { caption: r.postCaption || "", thumb: r.postThumb, permalink: r.postPermalink, comments: 0 };
+      info[r.postId].comments++;
+      if (r.fromUsername) nMap[r.fromUserId] = r.fromUsername;
     }
-  }, []);
+    for (const d of drafts) if (d.fromUsername) nMap[d.fromUserId] = d.fromUsername;
+    for (const c of clars) if (c.fromUsername) nMap[c.fromUserId] = c.fromUsername;
+    return { rowInfo: info, names: nMap };
+  }, [rows, drafts, clars]);
 
+  const stats = useMemo(() => {
+    const dash = dashQ.data;
+    return {
+      newToday: dash?.today?.comments ?? 0,
+      autoSent: dash?.today?.autoReplied ?? 0,
+      topTheme: dash?.knowledge?.top?.q || Object.keys(dash?.themes || {})[0] || null,
+    };
+  }, [dashQ.data]);
+
+  const mode = statusQ.data?.replyMode || "balanced";
+  const account = statusQ.data?.account?.username || "";
+  const shiftStart = watcherQ.data?.startedAt ?? 0;
+
+  // children call reload() after a write — refetch every workspace query
+  const reload = useCallback(async () => {
+    await qc.invalidateQueries({ queryKey: ["ig"] });
+  }, [qc]);
+
+  // SSE-driven freshness (debounced) + a 30s tick to re-render relative times
   useEffect(() => {
-    load();
-    const t = setInterval(load, 20_000);
-    const bt = setInterval(() => {
-      if (brainOpen) loadBrainStats();
-    }, 3_000);
     const tick = setInterval(() => force((n) => n + 1), 30_000);
     const es = new EventSource("/api/ig/stream");
     let deb: ReturnType<typeof setTimeout>;
@@ -306,17 +312,15 @@ export function Workspace() {
         const ev = JSON.parse(e.data);
         if (["comment", "draft", "sent", "log"].includes(ev.type)) {
           clearTimeout(deb);
-          deb = setTimeout(load, 200);
+          deb = setTimeout(() => reload(), 200);
         }
       } catch {}
     };
     return () => {
-      clearInterval(t);
-      clearInterval(bt);
       clearInterval(tick);
       es.close();
     };
-  }, [load, brainOpen]);
+  }, [reload]);
 
   // keep the OPEN post live — the watcher only sweeps older posts every few
   // ticks, so while a post detail is showing, poll THAT post's comments
@@ -325,14 +329,14 @@ export function Workspace() {
     if (pane !== "posts" || !selPost) return;
     const iv = setInterval(async () => {
       try {
-        await fetch(`/api/ig/posts/${selPost}/comments`);
-        await load();
+        await api.get(`/api/ig/posts/${selPost}/comments`);
+        await reload();
       } catch {
         /* ignore — next tick retries */
       }
     }, 12_000);
     return () => clearInterval(iv);
-  }, [pane, selPost, load]);
+  }, [pane, selPost, reload]);
 
   // post info — prefer the full post record, fall back to comment-row data
   const postInfo = useCallback(
@@ -419,54 +423,36 @@ export function Workspace() {
     return () => window.removeEventListener("keydown", onKey);
   }, [move, pane]);
 
-  async function setMode(m: string) {
-    setModeState(m);
-    await fetch("/api/ig/mode", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: m }),
-    }).catch(() => {});
+  const setModeMut = useSetMode();
+  const syncMut = useSyncPosts();
+  const refreshMentionsMut = useRefreshMentions();
+  const markReadMut = useMarkMentionRead();
+  const syncing = syncMut.isPending;
+  const refreshingMentions = refreshMentionsMut.isPending;
+
+  function setMode(m: string) {
+    setModeMut.mutate(m);
   }
 
   async function sync() {
-    setSyncing(true);
-    await fetch("/api/ig/posts/sync", { method: "POST" }).catch(() => {});
-    await load();
-    setSyncing(false);
+    await syncMut.mutateAsync().catch(() => {});
+    await reload();
     toast.success("Synced from Instagram");
   }
 
   async function refreshMentions() {
-    setRefreshingMentions(true);
     try {
-      const r = await fetch("/api/ig/mentions", { method: "POST" }).then((x) =>
-        x.json()
-      );
+      const r = await refreshMentionsMut.mutateAsync();
       if (r?.error) toast.error(r.error);
       else toast.success(`+${r.added ?? 0} mentions`);
     } catch {
       toast.error("Mention refresh failed");
     }
-    await load();
-    setRefreshingMentions(false);
+    await reload();
   }
 
-  async function loadBrainStats() {
-    try {
-      const r = await fetch("/api/ig/brain-stats").then((x) => x.json());
-      setBrainStats(r);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  async function markMentionRead(id: string) {
-    setMentions((ms) => ms.map((m) => (m.id === id ? { ...m, read: true } : m)));
-    await fetch("/api/ig/mentions", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, read: true }),
-    }).catch(() => {});
+  function markMentionRead(id: string) {
+    markReadMut.mutate(id);
   }
 
   // open a post → live-fetch THAT post's comments on demand, so the detail
@@ -476,11 +462,11 @@ export function Workspace() {
     setSelPost(id);
     setPostLoading(true);
     try {
-      await fetch(`/api/ig/posts/${id}/comments`);
+      await api.get(`/api/ig/posts/${id}/comments`);
     } catch {
       /* ignore — any already-cached comments still render */
     }
-    await load();
+    await reload();
     setPostLoading(false);
   }
 
@@ -499,11 +485,7 @@ export function Workspace() {
         syncing={syncing}
         onSync={sync}
         brainOpen={brainOpen}
-        onToggleBrain={() => {
-          const next = !brainOpen;
-          setBrainOpen(next);
-          if (next) loadBrainStats();
-        }}
+        onToggleBrain={() => setBrainOpen((v) => !v)}
       />
       <BrainPanel
         open={brainOpen}
@@ -543,7 +525,7 @@ export function Workspace() {
             postInfo={postInfo}
             onNext={() => move(1)}
             onOpenPost={openPost}
-            reload={load}
+            reload={reload}
           />
         ) : pane === "mentions" ? (
           <MentionStage
@@ -567,7 +549,7 @@ export function Workspace() {
               (r) => r.postId === activePost?.id && !r.isOwn
             )}
             loading={postLoading}
-            reload={load}
+            reload={reload}
           />
         )}
         <ShiftFeed
@@ -623,7 +605,7 @@ function TopStrip({
           </span>
           <button
             onClick={async () => {
-              await fetch("/api/ig/disconnect", { method: "POST" });
+              await api.post("/api/ig/disconnect");
               window.location.href = "/api/ig/connect?switch=1";
             }}
             className="text-[10.5px] px-2 py-0.5 rounded-lg"
@@ -1417,31 +1399,21 @@ function DraftStage({
   const [text, setText] = useState(draft.draftText);
   const [busy, setBusy] = useState<null | "send" | "rewrite">(null);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const draftAction = useDraftAction();
+  const reprocessMut = useReprocess();
 
   async function approve() {
     if (busy || !text.trim()) return;
     setBusy("send");
-    await fetch(`/api/ig/drafts/${draft.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "approve", text }),
-    }).catch(() => {});
+    await draftAction.mutateAsync({ id: draft.id, body: { action: "approve", text } }).catch(() => {});
     await reload();
     setBusy(null);
   }
   async function rewrite() {
     if (busy) return;
     setBusy("rewrite");
-    await fetch(`/api/ig/drafts/${draft.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "reject" }),
-    }).catch(() => {});
-    await fetch("/api/ig/reprocess", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commentId: draft.threadOrMediaId }),
-    }).catch(() => {});
+    await draftAction.mutateAsync({ id: draft.id, body: { action: "reject" } }).catch(() => {});
+    await reprocessMut.mutateAsync(draft.threadOrMediaId).catch(() => {});
     await new Promise((r) => setTimeout(r, 1400));
     await reload();
     setBusy(null);
@@ -1552,15 +1524,12 @@ function ClarStage({
 }) {
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
+  const clarAction = useClarificationAction();
 
   async function submit() {
     if (busy || !answer.trim()) return;
     setBusy(true);
-    await fetch(`/api/ig/clarifications/${clar.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "answer", answer: answer.trim() }),
-    }).catch(() => {});
+    await clarAction.mutateAsync({ id: clar.id, body: { action: "answer", answer: answer.trim() } }).catch(() => {});
     await new Promise((r) => setTimeout(r, 1200));
     await reload();
     setBusy(false);
@@ -1568,11 +1537,7 @@ function ClarStage({
   async function dismiss() {
     if (busy) return;
     setBusy(true);
-    await fetch(`/api/ig/clarifications/${clar.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "skip" }),
-    }).catch(() => {});
+    await clarAction.mutateAsync({ id: clar.id, body: { action: "skip" } }).catch(() => {});
     await reload();
     setBusy(false);
   }
@@ -1710,9 +1675,10 @@ function PostStage({
   const [addOpen, setAddOpen] = useState(false);
   const [replyAllBusy, setReplyAllBusy] = useState(false);
   const [replyAllResult, setReplyAllResult] = useState<string | null>(null);
+  const patchPost = usePatchPost();
 
   async function stopReplyAll() {
-    await fetch(`/api/ig/posts/${post?.id}/reply-all/stop`, { method: "POST" }).catch(() => {});
+    await api.post(`/api/ig/posts/${post?.id}/reply-all/stop`).catch(() => {});
   }
   const [commentPage, setCommentPage] = useState(0);
   const COMMENTS_PER_PAGE = 10;
@@ -1747,11 +1713,7 @@ function PostStage({
   async function save() {
     if (!post) return;
     setBusy(true);
-    await fetch(`/api/ig/posts/${post.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes }),
-    }).catch(() => {});
+    await patchPost.mutateAsync({ id: post.id, patch: { notes } }).catch(() => {});
     setBusy(false);
     toast.success("Notes saved");
     await reload();
@@ -1759,22 +1721,20 @@ function PostStage({
   async function fetchInsights() {
     if (!post) return;
     setInsBusy(true);
-    const r = await fetch(`/api/ig/posts/${post.id}/insights`)
-      .then((r) => r.json())
-      .catch(() => ({}));
+    const r = await api
+      .get<{ insights?: Insights }>(`/api/ig/posts/${post.id}/insights`)
+      .catch(() => ({} as { insights?: Insights }));
     setInsights(r.insights);
     setInsBusy(false);
   }
   async function extract() {
     if (!post || !paragraph.trim()) return;
     setExtracting(true);
-    const r = await fetch(`/api/ig/posts/${post.id}/extract`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paragraph: paragraph.trim() }),
-    })
-      .then((r) => r.json())
-      .catch(() => ({}));
+    const r = await api
+      .post<{ post?: unknown; extracted?: { links?: unknown[] } }>(`/api/ig/posts/${post.id}/extract`, {
+        paragraph: paragraph.trim(),
+      })
+      .catch(() => ({} as { post?: unknown; extracted?: { links?: unknown[] } }));
     setExtracting(false);
     setParaOpen(false);
     setParagraph("");
@@ -1785,22 +1745,14 @@ function PostStage({
   }
   async function addLink(l: { label: string; url: string; type: string }) {
     if (!post) return;
-    await fetch(`/api/ig/posts/${post.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ addLink: l }),
-    }).catch(() => {});
+    await patchPost.mutateAsync({ id: post.id, patch: { addLink: l } }).catch(() => {});
     setAddOpen(false);
     toast.success("Link added");
     await reload();
   }
   async function removeLink(id: string) {
     if (!post) return;
-    await fetch(`/api/ig/posts/${post.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ removeLink: id }),
-    }).catch(() => {});
+    await patchPost.mutateAsync({ id: post.id, patch: { removeLink: id } }).catch(() => {});
     await reload();
   }
 
@@ -1809,8 +1761,9 @@ function PostStage({
     setReplyAllBusy(true);
     setReplyAllResult(null);
     try {
-      const r = await fetch(`/api/ig/posts/${post.id}/reply-all`, { method: "POST" });
-      const j = (await r.json()) as { processed?: number; replied?: number; skipped?: number; error?: string };
+      const j = await api.post<{ processed?: number; replied?: number; skipped?: number; error?: string }>(
+        `/api/ig/posts/${post.id}/reply-all`
+      );
       if (j.error) {
         setReplyAllResult(`Error: ${j.error}`);
         toast.error(j.error);
@@ -2434,14 +2387,11 @@ function MiniClar({
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const clarAction = useClarificationAction();
   async function answer() {
     if (!text.trim() || busy) return;
     setBusy(true);
-    await fetch(`/api/ig/clarifications/${clar.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "answer", answer: text.trim() }),
-    }).catch(() => {});
+    await clarAction.mutateAsync({ id: clar.id, body: { action: "answer", answer: text.trim() } }).catch(() => {});
     await new Promise((r) => setTimeout(r, 1000));
     await reload();
     setBusy(false);

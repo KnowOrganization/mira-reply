@@ -58,6 +58,8 @@ export function ConnectGate() {
     const h = 760;
     const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
     const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
+    // Same-origin navigation → the BetterAuth session cookie is sent automatically,
+    // so the backend reads the user from it (no token in the URL).
     const connectUrl = forceSwitch ? "/api/ig/connect?switch=1" : "/api/ig/connect";
     const popup = window.open(
       connectUrl,

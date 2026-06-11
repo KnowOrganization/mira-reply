@@ -1,8 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { api } from "@/lib/api/client";
+import {
+  useStatus,
+  useComments,
+  useDrafts,
+  useClarifications,
+  useDigest,
+  usePost,
+  usePatchPost,
+  useWatcher,
+  useWatcherAction,
+  useDraftAction,
+  useClarificationAction,
+  useSetMode,
+  useReprocess,
+  useDisconnect,
+  qk,
+} from "@/lib/api/hooks";
 import {
   RefreshCw,
   Loader2,
@@ -127,79 +146,62 @@ const MODES: { id: ReplyMode; hint: string }[] = [
 
 // ── master Comments page ─────────────────────────────────────────────────
 export function Comments() {
-  const [status, setStatus] = useState<Status | null>(null);
-  const [rows, setRows] = useState<CommentRow[]>([]);
-  const [pending, setPending] = useState<PendingDraft[]>([]);
-  const [clars, setClars] = useState<Clarification[]>([]);
-  const [digest, setDigest] = useState<Digest | null>(null);
+  const qc = useQueryClient();
   const [feed, setFeed] = useState<{ id: string; ts: number; who: string; text: string }[]>([]);
-  const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Tab>("all");
   const [search, setSearch] = useState("");
-  const [watching, setWatching] = useState(false);
-  const [liveError, setLiveError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [linksOpen, setLinksOpen] = useState<Set<string>>(new Set());
   const searchRef = useRef<HTMLInputElement>(null);
-  const loadingRef = useRef(false);
 
-  // refresh=true does a live Instagram pull (slow). Cache reads are instant —
-  // the background watcher keeps the cache fresh, so the UI never blocks.
-  const loadCore = useCallback(async (refresh = false) => {
-    if (loadingRef.current) return; // no pile-up
-    loadingRef.current = true;
-    setLoading(true);
-    const getJSON = async (url: string) => {
-      try {
-        const r = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-        return await r.json();
-      } catch {
-        return null;
-      }
-    };
-    try {
-      const [c, d, cl, dg] = await Promise.all([
-        getJSON("/api/ig/comments" + (refresh ? "?refresh=1" : "")),
-        getJSON("/api/ig/drafts"),
-        getJSON("/api/ig/clarifications"),
-        getJSON("/api/ig/digest"),
-      ]);
-      if (c && Array.isArray(c.rows)) setRows(c.rows);
-      if (d && Array.isArray(d.pending)) setPending(d.pending);
-      if (cl && Array.isArray(cl.open)) setClars(cl.open);
-      if (dg && typeof dg.inbox === "number") setDigest(dg);
-      if (c && c.live) {
-        setLiveError(c.live.ok ? null : c.live.error || "Instagram fetch failed");
-      }
-    } finally {
-      loadingRef.current = false;
-      setLoading(false);
-    }
-  }, []);
+  // ── reads — the background watcher keeps these caches fresh; cache reads are
+  // instant, so the UI never blocks. Periodic refetch mirrors the old 20s poll.
+  const statusQ = useStatus<Status>();
+  const status = statusQ.data ?? null;
+  const commentsQ = useComments<{ rows?: CommentRow[]; live?: { ok: boolean; error?: string } }>(false, {
+    refetchInterval: 20_000,
+  });
+  const draftsQ = useDrafts<{ pending?: PendingDraft[] }>({ refetchInterval: 20_000 });
+  const clarsQ = useClarifications<{ open?: Clarification[] }>({ refetchInterval: 20_000 });
+  const digestQ = useDigest<Digest>({ refetchInterval: 20_000 });
+  const watcherQ = useWatcher<{ running?: boolean }>({ refetchInterval: 30_000 });
 
-  const loadStatus = useCallback(async () => {
+  const rows = useMemo(() => commentsQ.data?.rows ?? [], [commentsQ.data]);
+  const pending = useMemo(() => draftsQ.data?.pending ?? [], [draftsQ.data]);
+  const clars = useMemo(() => clarsQ.data?.open ?? [], [clarsQ.data]);
+  const digest = digestQ.data && typeof digestQ.data.inbox === "number" ? digestQ.data : null;
+  const watching = !!watcherQ.data?.running;
+  const live = commentsQ.data?.live;
+  const liveError = live ? (live.ok ? null : live.error || "Instagram fetch failed") : null;
+
+  // re-read all cached queries (cheap, no live IG tick)
+  const reloadCache = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ["ig", "comments"] });
+    qc.invalidateQueries({ queryKey: qk.drafts });
+    qc.invalidateQueries({ queryKey: qk.clarifications });
+    qc.invalidateQueries({ queryKey: qk.digest });
+  }, [qc]);
+
+  // refresh=true does a live Instagram pull (slow): hit the refresh endpoint,
+  // then re-read the now-updated caches.
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshLive = useCallback(async () => {
+    setRefreshing(true);
     try {
-      const s = await fetch("/api/ig/status").then((r) => r.json());
-      setStatus(s);
+      await api.get("/api/ig/comments?refresh=1");
     } catch {
-      /* ignore */
+      /* ignore — cache re-read below still reflects whatever landed */
     }
-  }, []);
+    reloadCache();
+    setRefreshing(false);
+  }, [reloadCache]);
 
+  const loading = refreshing || commentsQ.isFetching;
+
+  // start the watcher once on mount + SSE-driven freshness
+  const watcherAction = useWatcherAction();
   useEffect(() => {
-    loadStatus();
-    loadCore(false); // instant paint from cache — watcher keeps it fresh
-    fetch("/api/ig/watcher", { method: "POST" })
-      .then((r) => r.json())
-      .then((d) => setWatching(!!d.running))
-      .catch(() => {});
-
-    const statusTimer = setInterval(() => {
-      fetch("/api/ig/watcher").then((r) => r.json()).then((d) => setWatching(!!d.running)).catch(() => {});
-    }, 30_000);
-    // periodic cache re-read — no live tick, so it's instant and never stalls
-    const refreshTimer = setInterval(() => loadCore(false), 20_000);
-
+    watcherAction.mutate(undefined);
     const es = new EventSource("/api/ig/stream");
     es.onmessage = (e) => {
       try {
@@ -216,20 +218,16 @@ export function Comments() {
               ...f.filter((x) => x.id !== `c-${ev.commentId}`),
             ].slice(0, 50)
           );
-          loadCore(false);
+          reloadCache();
         }
-        if (ev.type === "draft" || ev.type === "sent") loadCore(false);
+        if (ev.type === "draft" || ev.type === "sent") reloadCache();
       } catch {
         /* ignore malformed event */
       }
     };
-
-    return () => {
-      es.close();
-      clearInterval(statusTimer);
-      clearInterval(refreshTimer);
-    };
-  }, [loadCore, loadStatus]);
+    return () => es.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadCache]);
 
   // global "/" focuses search
   useEffect(() => {
@@ -391,75 +389,49 @@ export function Comments() {
   }, [filtered]);
 
   // ── actions ──
+  const draftAction = useDraftAction();
+  const clarAction = useClarificationAction();
+  const setModeMut = useSetMode();
+  const reprocessMut = useReprocess();
+  const disconnectMut = useDisconnect();
+
   async function approve(d: PendingDraft, text: string) {
-    await fetch(`/api/ig/drafts/${d.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "approve", text }),
-    });
+    await draftAction.mutateAsync({ id: d.id, body: { action: "approve", text } });
     toast.success("Reply sent.");
-    loadCore(false);
+    reloadCache();
   }
   async function reject(d: PendingDraft) {
-    await fetch(`/api/ig/drafts/${d.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "reject" }),
-    });
-    loadCore(false);
+    await draftAction.mutateAsync({ id: d.id, body: { action: "reject" } });
+    reloadCache();
   }
   async function answerClar(c: Clarification, answer: string) {
-    await fetch(`/api/ig/clarifications/${c.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "answer", answer }),
-    });
+    await clarAction.mutateAsync({ id: c.id, body: { action: "answer", answer } });
     toast.success("Answered. Mira is drafting…");
-    loadCore(false);
-    setTimeout(() => loadCore(false), 1800);
+    reloadCache();
+    setTimeout(reloadCache, 1800);
   }
   async function skipClar(c: Clarification) {
-    await fetch(`/api/ig/clarifications/${c.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "skip" }),
-    });
-    loadCore(false);
+    await clarAction.mutateAsync({ id: c.id, body: { action: "skip" } });
+    reloadCache();
   }
   async function setMode(mode: ReplyMode) {
-    await fetch("/api/ig/mode", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode }),
-    });
-    setStatus((s) => (s ? { ...s, replyMode: mode } : s));
+    await setModeMut.mutateAsync(mode);
     toast.success(`Mode: ${mode}`);
   }
   async function toggleWatcher() {
-    const action = watching ? "stop" : "start";
-    const r = await fetch("/api/ig/watcher", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
-    }).then((r) => r.json());
-    setWatching(!!r.running);
+    const r = await watcherAction.mutateAsync(watching ? "stop" : "start");
     toast(`Watcher ${r.running ? "running" : "paused"}`);
   }
   async function disconnect() {
     if (!confirm("Disconnect Instagram?")) return;
-    await fetch("/api/ig/disconnect", { method: "POST" });
-    loadStatus();
+    await disconnectMut.mutateAsync();
     toast("Disconnected.");
   }
   async function reprocess(commentId: string) {
-    await fetch("/api/ig/reprocess", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commentId }),
-    });
+    await reprocessMut.mutateAsync(commentId);
     toast.success("Mira is on it…");
-    setTimeout(() => loadCore(false), 2500);
-    setTimeout(() => loadCore(false), 6000);
+    setTimeout(reloadCache, 2500);
+    setTimeout(reloadCache, 6000);
   }
   const connected = status?.connected;
 
@@ -482,7 +454,7 @@ export function Comments() {
               <IconBtn onClick={toggleWatcher} title={watching ? "Pause watcher" : "Resume watcher"}>
                 {watching ? <Pause size={12} /> : <Play size={12} />}
               </IconBtn>
-              <IconBtn onClick={() => loadCore(true)} disabled={loading} title="Refresh">
+              <IconBtn onClick={() => refreshLive()} disabled={loading} title="Refresh">
                 {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
               </IconBtn>
               <IconBtn onClick={disconnect} title="Disconnect">
@@ -849,40 +821,30 @@ function PostLinksPanel({ postId }: { postId: string }) {
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
   const [type, setType] = useState<PostLink["type"]>("gear");
-  const [busy, setBusy] = useState(false);
 
+  const postQ = usePost<{ post?: { links?: PostLink[] } }>(postId);
+  const patchPost = usePatchPost();
+  const busy = patchPost.isPending;
+
+  // seed local links from the post query (the panel mirrors PATCH responses too)
   useEffect(() => {
-    fetch(`/api/ig/posts/${postId}`)
-      .then((r) => r.json())
-      .then((d) => setLinks(d.post?.links || []))
-      .catch(() => setLinks([]));
-  }, [postId]);
+    if (postQ.data) setLinks(postQ.data.post?.links || []);
+    else if (postQ.isError) setLinks([]);
+  }, [postQ.data, postQ.isError]);
 
   async function add() {
     if (!label.trim() || !url.trim() || busy) return;
-    setBusy(true);
-    try {
-      const d = await fetch(`/api/ig/posts/${postId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          addLink: { label: label.trim(), url: url.trim(), type },
-        }),
-      }).then((r) => r.json());
-      setLinks(d.post?.links || []);
-      setLabel("");
-      setUrl("");
-      toast.success("Link attached — Mira will DM it on request");
-    } finally {
-      setBusy(false);
-    }
+    const d = await patchPost.mutateAsync({
+      id: postId,
+      patch: { addLink: { label: label.trim(), url: url.trim(), type } },
+    }) as { post?: { links?: PostLink[] } };
+    setLinks(d.post?.links || []);
+    setLabel("");
+    setUrl("");
+    toast.success("Link attached — Mira will DM it on request");
   }
   async function remove(id: string) {
-    const d = await fetch(`/api/ig/posts/${postId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ removeLink: id }),
-    }).then((r) => r.json());
+    const d = await patchPost.mutateAsync({ id: postId, patch: { removeLink: id } }) as { post?: { links?: PostLink[] } };
     setLinks(d.post?.links || []);
   }
 
@@ -1270,34 +1232,29 @@ function Stat({
 }
 
 // daily digest — a once-a-day overnight summary, dismissable
+type DigestBannerData = {
+  inbox: number;
+  repliedAuto: number;
+  pending: number;
+  needsInput: number;
+  topTheme: { name: string; count: number } | null;
+};
 function DigestBanner() {
-  const [dg, setDg] = useState<{
-    inbox: number;
-    repliedAuto: number;
-    pending: number;
-    needsInput: number;
-    topTheme: { name: string; count: number } | null;
-  } | null>(null);
-  const [show, setShow] = useState(false);
-
-  useEffect(() => {
+  const [dismissed, setDismissed] = useState(false);
+  // only fetch if it hasn't already been dismissed today
+  const [alreadyShown] = useState(() => {
+    if (typeof window === "undefined") return false;
     const key = "mira.digest." + new Date().toISOString().slice(0, 10);
-    if (localStorage.getItem(key)) return;
-    fetch("/api/ig/digest")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d && typeof d.inbox === "number") {
-          setDg(d);
-          setShow(true);
-        }
-      })
-      .catch(() => {});
-  }, []);
+    return !!localStorage.getItem(key);
+  });
+
+  const { data: dg } = useDigest<DigestBannerData>({ enabled: !alreadyShown && !dismissed });
+  const show = !alreadyShown && !dismissed && !!dg && typeof dg.inbox === "number";
 
   if (!show || !dg) return null;
 
   function dismiss() {
-    setShow(false);
+    setDismissed(true);
     localStorage.setItem(
       "mira.digest." + new Date().toISOString().slice(0, 10),
       "1"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useFeed } from "@/lib/api/hooks";
 
 type FeedEvent = {
   id: string;
@@ -49,28 +50,21 @@ export function MiraFeed() {
   }, []);
 
   // poll server every 5s
+  const { data: feedData } = useFeed<{ events: FeedEvent[] }>({ refetchInterval: 5000 });
+
+  // merge any unseen server events into local state + localStorage
   useEffect(() => {
-    let cancelled = false;
-    async function poll() {
-      try {
-        const res = await fetch("/api/ig/feed");
-        if (!res.ok) return;
-        const { events: fresh } = await res.json() as { events: FeedEvent[] };
-        const newOnes = fresh.filter((e) => !seenIds.current.has(e.id));
-        if (newOnes.length > 0) {
-          newOnes.forEach((e) => seenIds.current.add(e.id));
-          setEvents((prev) => {
-            const merged = [...newOnes, ...prev].slice(0, 500);
-            saveToStorage(merged);
-            return merged;
-          });
-        }
-      } catch {}
-    }
-    poll();
-    const id = setInterval(() => { if (!cancelled) poll(); }, 5000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
+    const fresh = feedData?.events;
+    if (!fresh) return;
+    const newOnes = fresh.filter((e) => !seenIds.current.has(e.id));
+    if (newOnes.length === 0) return;
+    newOnes.forEach((e) => seenIds.current.add(e.id));
+    setEvents((prev) => {
+      const merged = [...newOnes, ...prev].slice(0, 500);
+      saveToStorage(merged);
+      return merged;
+    });
+  }, [feedData]);
 
   // slow loop — advance offset every 3s
   useEffect(() => {

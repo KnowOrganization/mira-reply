@@ -30,8 +30,11 @@ export async function processIngestJob(job: IngestJob): Promise<void> {
   if (!automations.length) return;
 
   const storeLike = { automations } as unknown as IgStore;
+  // MIRA_AUTOMATION_DRYRUN=1 walks the graph + persists dedup/parks but sends no
+  // real DMs — used to load-test the queue path safely.
+  const dryRun = process.env.MIRA_AUTOMATION_DRYRUN === "1";
   const matched = matchAutomations(storeLike, event);
   for (const auto of matched) {
-    await executeAutomation(auto, event).catch(() => {});
+    await executeAutomation(auto, event, { accountId, dryRun }).catch(() => {});
   }
 }

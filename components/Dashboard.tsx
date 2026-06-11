@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { useDashboard } from "@/lib/api/hooks";
 import {
   MessageCircle,
   Send,
@@ -68,20 +69,9 @@ function useCountUp(target: number, ms = 800): number {
 }
 
 export function Dashboard() {
-  const [d, setD] = useState<Dash | null>(null);
-
-  useEffect(() => {
-    const load = () =>
-      fetch("/api/ig/dashboard")
-        .then((r) => r.json())
-        .then((j) => {
-          if (j && typeof j.coverage === "number") setD(j);
-        })
-        .catch(() => {});
-    load();
-    const t = setInterval(load, 60_000);
-    return () => clearInterval(t);
-  }, []);
+  const { data: raw } = useDashboard<Dash>({ refetchInterval: 60_000 });
+  // only accept a fully-shaped dashboard payload (guards transient/empty responses)
+  const d = raw && typeof raw.coverage === "number" ? raw : null;
 
   return (
     <div className="h-full flex flex-col" style={{ background: "var(--bg)" }}>

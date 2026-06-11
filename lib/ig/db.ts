@@ -1,76 +1,16 @@
-import Database from "better-sqlite3";
-import path from "path";
+// Post-config funnel store — now Postgres (Supabase), async. Replaces the old
+// better-sqlite3 local DB (which didn't run under Bun and diverged from the
+// Supabase funnel). Same exported names/types as before, but async. account_id
+// is auto-stamped from the single connected account for the legacy webhook path.
 import { v4 as uuidv4 } from "uuid";
+import { query } from "./pg";
+import { currentAccountId } from "./accountsRepo";
 
-const DB_PATH = process.env.DATABASE_URL ?? path.join(process.cwd(), "data", "shaiz.db");
-
-const gDb = globalThis as unknown as { __shaiz_db?: Database.Database };
-
-function getDb(): Database.Database {
-  if (gDb.__shaiz_db) return gDb.__shaiz_db;
-  const db = new Database(DB_PATH);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  migrate(db);
-  gDb.__shaiz_db = db;
-  return db;
-}
-
-function migrate(db: Database.Database) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS post_configs (
-      id           TEXT PRIMARY KEY,
-      ig_post_id   TEXT UNIQUE NOT NULL,
-      keywords     TEXT NOT NULL DEFAULT '[]',
-      welcome_msg  TEXT NOT NULL DEFAULT '',
-      button_label TEXT NOT NULL DEFAULT 'Send me the link 👇',
-      follow_gate  INTEGER NOT NULL DEFAULT 1,
-      not_following_msg TEXT NOT NULL DEFAULT 'Oops 👀 You''re not following yet!\n\nFollow then tap below ⬇️',
-      link_url     TEXT,
-      link_msg     TEXT,
-      active       INTEGER NOT NULL DEFAULT 1,
-      created_at   INTEGER NOT NULL,
-      updated_at   INTEGER NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS processed_comments (
-      comment_id TEXT PRIMARY KEY,
-      igsid      TEXT NOT NULL,
-      post_id    TEXT NOT NULL,
-      replied_at INTEGER NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS user_states (
-      id         TEXT PRIMARY KEY,
-      igsid      TEXT NOT NULL,
-      post_id    TEXT NOT NULL,
-      comment_id TEXT NOT NULL,
-      state      TEXT NOT NULL CHECK(state IN ('awaiting_tap','awaiting_follow','delivered')),
-      payload    TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      UNIQUE(igsid, post_id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_user_states_igsid ON user_states(igsid);
-
-    CREATE TABLE IF NOT EXISTS message_log (
-      id         TEXT PRIMARY KEY,
-      direction  TEXT NOT NULL CHECK(direction IN ('in','out')),
-      event_type TEXT NOT NULL,
-      igsid      TEXT,
-      post_id    TEXT,
-      payload    TEXT NOT NULL,
-      status     TEXT,
-      error      TEXT,
-      created_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_message_log_created ON message_log(created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_message_log_igsid ON message_log(igsid);
-  `);
+async function acct(): Promise<string> {
+  return (await currentAccountId()) ?? "";
 }
 
 // ── PostConfig ──────────────────────────────────────────────────────────────
-
 export type PostConfig = {
   id: string;
   ig_post_id: string;
@@ -86,138 +26,129 @@ export type PostConfig = {
   updated_at: number;
 };
 
-function rowToConfig(row: Record<string, unknown>): PostConfig {
+type ConfigRow = {
+  id: string; ig_post_id: string; keywords: string[]; welcome_msg: string; button_label: string;
+  follow_gate: boolean; not_following_msg: string; link_url: string | null; link_msg: string | null;
+  active: boolean; created_at: string; updated_at: string;
+};
+function rowToConfig(r: ConfigRow): PostConfig {
   return {
-    ...(row as Omit<PostConfig, "keywords" | "follow_gate" | "active">),
-    keywords: JSON.parse(row.keywords as string),
-    follow_gate: (row.follow_gate as number) === 1,
-    active: (row.active as number) === 1,
+    id: r.id, ig_post_id: r.ig_post_id, keywords: r.keywords ?? [], welcome_msg: r.welcome_msg,
+    button_label: r.button_label, follow_gate: r.follow_gate, not_following_msg: r.not_following_msg,
+    link_url: r.link_url, link_msg: r.link_msg, active: r.active,
+    created_at: Number(r.created_at), updated_at: Number(r.updated_at),
   };
 }
 
-export function getPostConfigs(): PostConfig[] {
-  const db = getDb();
-  return (db.prepare("SELECT * FROM post_configs ORDER BY created_at DESC").all() as Record<string, unknown>[]).map(rowToConfig);
+export async function getPostConfigs(): Promise<PostConfig[]> {
+  const rows = await query<ConfigRow>("SELECT * FROM post_configs ORDER BY created_at DESC");
+  return rows.map(rowToConfig);
 }
 
-export function getPostConfigById(id: string): PostConfig | null {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM post_configs WHERE id = ?").get(id) as Record<string, unknown> | undefined;
-  return row ? rowToConfig(row) : null;
+export async function getPostConfigById(id: string): Promise<PostConfig | null> {
+  const rows = await query<ConfigRow>("SELECT * FROM post_configs WHERE id=$1", [id]);
+  return rows[0] ? rowToConfig(rows[0]) : null;
 }
 
-export function getPostConfigByPostId(igPostId: string): PostConfig | null {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM post_configs WHERE ig_post_id = ? AND active = 1").get(igPostId) as Record<string, unknown> | undefined;
-  return row ? rowToConfig(row) : null;
+export async function getPostConfigByPostId(igPostId: string): Promise<PostConfig | null> {
+  const rows = await query<ConfigRow>("SELECT * FROM post_configs WHERE ig_post_id=$1 AND active=true LIMIT 1", [igPostId]);
+  return rows[0] ? rowToConfig(rows[0]) : null;
 }
 
-export function createPostConfig(data: Omit<PostConfig, "id" | "created_at" | "updated_at">): PostConfig {
-  const db = getDb();
+export async function createPostConfig(data: Omit<PostConfig, "id" | "created_at" | "updated_at">): Promise<PostConfig> {
   const now = Date.now();
   const id = uuidv4();
-  db.prepare(`
-    INSERT INTO post_configs (id, ig_post_id, keywords, welcome_msg, button_label, follow_gate, not_following_msg, link_url, link_msg, active, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, data.ig_post_id, JSON.stringify(data.keywords), data.welcome_msg, data.button_label, data.follow_gate ? 1 : 0, data.not_following_msg, data.link_url, data.link_msg, data.active ? 1 : 0, now, now);
-  return getPostConfigById(id)!;
+  await query(
+    `INSERT INTO post_configs (id, account_id, ig_post_id, keywords, welcome_msg, button_label, follow_gate, not_following_msg, link_url, link_msg, active, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [id, await acct(), data.ig_post_id, JSON.stringify(data.keywords), data.welcome_msg, data.button_label,
+     data.follow_gate, data.not_following_msg, data.link_url, data.link_msg, data.active, now, now]
+  );
+  return (await getPostConfigById(id))!;
 }
 
-export function updatePostConfig(id: string, data: Partial<Omit<PostConfig, "id" | "created_at">>): PostConfig | null {
-  const db = getDb();
-  const existing = getPostConfigById(id);
+export async function updatePostConfig(id: string, data: Partial<Omit<PostConfig, "id" | "created_at">>): Promise<PostConfig | null> {
+  const existing = await getPostConfigById(id);
   if (!existing) return null;
-  const merged = { ...existing, ...data, updated_at: Date.now() };
-  db.prepare(`
-    UPDATE post_configs SET ig_post_id=?, keywords=?, welcome_msg=?, button_label=?, follow_gate=?, not_following_msg=?, link_url=?, link_msg=?, active=?, updated_at=? WHERE id=?
-  `).run(merged.ig_post_id, JSON.stringify(merged.keywords), merged.welcome_msg, merged.button_label, merged.follow_gate ? 1 : 0, merged.not_following_msg, merged.link_url, merged.link_msg, merged.active ? 1 : 0, merged.updated_at, id);
-  return getPostConfigById(id)!;
+  const m = { ...existing, ...data, updated_at: Date.now() };
+  await query(
+    `UPDATE post_configs SET ig_post_id=$2, keywords=$3, welcome_msg=$4, button_label=$5, follow_gate=$6,
+       not_following_msg=$7, link_url=$8, link_msg=$9, active=$10, updated_at=$11 WHERE id=$1`,
+    [id, m.ig_post_id, JSON.stringify(m.keywords), m.welcome_msg, m.button_label, m.follow_gate,
+     m.not_following_msg, m.link_url, m.link_msg, m.active, m.updated_at]
+  );
+  return getPostConfigById(id);
 }
 
-export function deletePostConfig(id: string): boolean {
-  const db = getDb();
-  const result = db.prepare("DELETE FROM post_configs WHERE id = ?").run(id);
-  return result.changes > 0;
+export async function deletePostConfig(id: string): Promise<boolean> {
+  const rows = await query<{ id: string }>("DELETE FROM post_configs WHERE id=$1 RETURNING id", [id]);
+  return rows.length > 0;
 }
 
-// ── ProcessedComments ───────────────────────────────────────────────────────
-
-export function isCommentProcessed(commentId: string): boolean {
-  const db = getDb();
-  return !!db.prepare("SELECT 1 FROM processed_comments WHERE comment_id = ?").get(commentId);
+// ── ProcessedComments ────────────────────────────────────────────────────────
+export async function isCommentProcessed(commentId: string): Promise<boolean> {
+  const rows = await query("SELECT 1 FROM processed_comments WHERE comment_id=$1", [commentId]);
+  return rows.length > 0;
 }
 
-export function markCommentProcessed(commentId: string, igsid: string, postId: string): void {
-  const db = getDb();
-  db.prepare("INSERT OR IGNORE INTO processed_comments (comment_id, igsid, post_id, replied_at) VALUES (?, ?, ?, ?)")
-    .run(commentId, igsid, postId, Date.now());
+export async function markCommentProcessed(commentId: string, igsid: string, postId: string): Promise<void> {
+  await query(
+    `INSERT INTO processed_comments (comment_id, account_id, igsid, post_id, replied_at)
+     VALUES ($1,$2,$3,$4,$5) ON CONFLICT (comment_id) DO NOTHING`,
+    [commentId, await acct(), igsid, postId, Date.now()]
+  );
 }
 
-// ── UserStates ──────────────────────────────────────────────────────────────
-
+// ── UserStates ────────────────────────────────────────────────────────────────
 export type UserState = {
-  id: string;
-  igsid: string;
-  post_id: string;
-  comment_id: string;
+  id: string; igsid: string; post_id: string; comment_id: string;
   state: "awaiting_tap" | "awaiting_follow" | "delivered";
-  payload: string | null;
-  created_at: number;
-  updated_at: number;
+  payload: string | null; created_at: number; updated_at: number;
 };
 
-export function getUserState(igsid: string, postId: string): UserState | null {
-  const db = getDb();
-  return (db.prepare("SELECT * FROM user_states WHERE igsid = ? AND post_id = ?").get(igsid, postId) as UserState | undefined) ?? null;
+export async function getUserState(igsid: string, postId: string): Promise<UserState | null> {
+  const rows = await query<UserState>("SELECT * FROM user_states WHERE igsid=$1 AND post_id=$2", [igsid, postId]);
+  return rows[0] ?? null;
 }
 
-export function upsertUserState(data: Omit<UserState, "id" | "created_at" | "updated_at"> & { id?: string }): void {
-  const db = getDb();
+export async function upsertUserState(data: Omit<UserState, "id" | "created_at" | "updated_at"> & { id?: string }): Promise<void> {
   const now = Date.now();
-  db.prepare(`
-    INSERT INTO user_states (id, igsid, post_id, comment_id, state, payload, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(igsid, post_id) DO UPDATE SET state=excluded.state, payload=excluded.payload, comment_id=excluded.comment_id, updated_at=excluded.updated_at
-  `).run(data.id ?? uuidv4(), data.igsid, data.post_id, data.comment_id, data.state, data.payload ?? null, now, now);
+  await query(
+    `INSERT INTO user_states (id, account_id, igsid, post_id, comment_id, state, payload, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     ON CONFLICT (igsid, post_id) DO UPDATE SET state=EXCLUDED.state, payload=EXCLUDED.payload, comment_id=EXCLUDED.comment_id, updated_at=EXCLUDED.updated_at`,
+    [data.id ?? uuidv4(), await acct(), data.igsid, data.post_id, data.comment_id, data.state,
+     data.payload != null ? JSON.stringify(data.payload) : null, now, now]
+  );
 }
 
-export function setUserStateDelivered(igsid: string, postId: string): void {
-  const db = getDb();
-  db.prepare("UPDATE user_states SET state='delivered', updated_at=? WHERE igsid=? AND post_id=?")
-    .run(Date.now(), igsid, postId);
+export async function setUserStateDelivered(igsid: string, postId: string): Promise<void> {
+  await query("UPDATE user_states SET state='delivered', updated_at=$3 WHERE igsid=$1 AND post_id=$2", [igsid, postId, Date.now()]);
 }
 
-// ── MessageLog ──────────────────────────────────────────────────────────────
-
+// ── MessageLog ────────────────────────────────────────────────────────────────
 export type MessageLogEntry = {
-  id: string;
-  direction: "in" | "out";
-  event_type: string;
-  igsid: string | null;
-  post_id: string | null;
-  payload: string;
-  status: string | null;
-  error: string | null;
-  created_at: number;
+  id: string; direction: "in" | "out"; event_type: string; igsid: string | null;
+  post_id: string | null; payload: string; status: string | null; error: string | null; created_at: number;
 };
 
-export function insertLog(entry: Omit<MessageLogEntry, "id" | "created_at">): void {
-  const db = getDb();
-  db.prepare(`
-    INSERT INTO message_log (id, direction, event_type, igsid, post_id, payload, status, error, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(uuidv4(), entry.direction, entry.event_type, entry.igsid, entry.post_id, entry.payload, entry.status, entry.error, Date.now());
+export async function insertLog(entry: Omit<MessageLogEntry, "id" | "created_at">): Promise<void> {
+  await query(
+    `INSERT INTO message_log (id, account_id, direction, event_type, igsid, post_id, payload, status, error, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [uuidv4(), await acct(), entry.direction, entry.event_type, entry.igsid, entry.post_id,
+     typeof entry.payload === "string" ? entry.payload : JSON.stringify(entry.payload), entry.status, entry.error, Date.now()]
+  );
 }
 
-export function getRecentLogs(limit = 200): MessageLogEntry[] {
-  const db = getDb();
-  return db.prepare("SELECT * FROM message_log ORDER BY created_at DESC LIMIT ?").all(limit) as MessageLogEntry[];
+export async function getRecentLogs(limit = 200): Promise<MessageLogEntry[]> {
+  const rows = await query<MessageLogEntry & { created_at: string }>("SELECT * FROM message_log ORDER BY created_at DESC LIMIT $1", [limit]);
+  return rows.map((r) => ({ ...r, created_at: Number(r.created_at), payload: typeof r.payload === "string" ? r.payload : JSON.stringify(r.payload) }));
 }
 
-export function getAutomationStats(postId: string) {
-  const db = getDb();
-  const total = (db.prepare("SELECT COUNT(*) as n FROM processed_comments WHERE post_id=?").get(postId) as { n: number }).n;
-  const delivered = (db.prepare("SELECT COUNT(*) as n FROM user_states WHERE post_id=? AND state='delivered'").get(postId) as { n: number }).n;
-  const awaiting = (db.prepare("SELECT COUNT(*) as n FROM user_states WHERE post_id=? AND state!='delivered'").get(postId) as { n: number }).n;
-  return { total, delivered, awaiting };
+export async function getAutomationStats(postId: string): Promise<{ total: number; delivered: number; awaiting: number }> {
+  const [t] = await query<{ n: string }>("SELECT COUNT(*)::int as n FROM processed_comments WHERE post_id=$1", [postId]);
+  const [d] = await query<{ n: string }>("SELECT COUNT(*)::int as n FROM user_states WHERE post_id=$1 AND state='delivered'", [postId]);
+  const [a] = await query<{ n: string }>("SELECT COUNT(*)::int as n FROM user_states WHERE post_id=$1 AND state!='delivered'", [postId]);
+  return { total: Number(t?.n ?? 0), delivered: Number(d?.n ?? 0), awaiting: Number(a?.n ?? 0) };
 }

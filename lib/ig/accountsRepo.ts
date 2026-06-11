@@ -43,6 +43,13 @@ export async function listAccounts(): Promise<StoredAccount[]> {
   return rows.map(rowToAccount);
 }
 
+/** The single connected account (most recent). Single-account today; this is the
+ *  one seam every engine path resolves through, so multi-account is a later swap. */
+export async function currentAccountId(): Promise<string | null> {
+  const rows = await query<{ ig_user_id: string }>("SELECT ig_user_id FROM accounts ORDER BY connected_at DESC LIMIT 1");
+  return rows[0]?.ig_user_id ?? null;
+}
+
 // ── automations ─────────────────────────────────────────────────────────────
 type AutoRow = {
   id: string; account_id: string; name: string; enabled: boolean;

@@ -3,57 +3,52 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, LogOut, RefreshCw, Loader2 } from "lucide-react";
+import { useStatus, useSetMode, useSyncPosts, useDisconnect, type IgStatus } from "@/lib/api/hooks";
 
 type Props = { open: boolean; onClose: () => void; onAccountChange: () => void };
 
 export function SettingsPanel({ open, onClose, onAccountChange }: Props) {
-  const [account, setAccount]   = useState<{ username: string; igUserId: string } | null>(null);
   const [mode, setMode]         = useState<"auto" | "shadow">("auto");
-  const [syncing, setSyncing]   = useState(false);
   const [syncMsg, setSyncMsg]   = useState("");
 
-  useEffect(() => {
-    if (!open) return;
-    fetch("/api/ig/status")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.account) setAccount(d.account);
-        setMode(d.replyMode === "shadow" ? "shadow" : "auto");
-      })
-      .catch(() => {});
-  }, [open]);
+  const { data: status } = useStatus<IgStatus & { account: { username: string; igUserId: string } | null }>({
+    enabled: open,
+  });
+  const account = status?.account ?? null;
+  const setModeMut = useSetMode();
+  const syncMut = useSyncPosts();
+  const disconnectMut = useDisconnect();
+  const syncing = syncMut.isPending;
 
-  async function switchMode(m: "auto" | "shadow") {
+  // mirror the server reply mode into the local 2-state toggle once status loads
+  useEffect(() => {
+    if (status) setMode(status.replyMode === "shadow" ? "shadow" : "auto");
+  }, [status]);
+
+  function switchMode(m: "auto" | "shadow") {
     setMode(m);
-    await fetch("/api/ig/mode", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: m }),
-    }).catch(() => {});
+    setModeMut.mutate(m);
   }
 
   async function syncPosts() {
-    setSyncing(true);
     setSyncMsg("");
     try {
-      const r = await fetch("/api/ig/posts/sync", { method: "POST" });
-      const j = await r.json() as { count?: number };
+      const j = await syncMut.mutateAsync();
       setSyncMsg(`Synced ${j.count ?? 0} posts`);
     } catch {
       setSyncMsg("Sync failed");
     }
-    setSyncing(false);
   }
 
   async function disconnect() {
-    await fetch("/api/ig/disconnect", { method: "POST" });
+    await disconnectMut.mutateAsync();
     onAccountChange();
     onClose();
     window.location.reload();
   }
 
   async function switchAccount() {
-    await fetch("/api/ig/disconnect", { method: "POST" });
+    await disconnectMut.mutateAsync();
     window.location.href = "/api/ig/connect?switch=1";
   }
 

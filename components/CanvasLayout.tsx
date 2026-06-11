@@ -13,6 +13,7 @@ import { PostCanvas } from "./PostCanvas";
 import { MiraFeed } from "./MiraFeed";
 import { SettingsPanel } from "./SettingsPanel";
 import { AutomationsView } from "./AutomationsView";
+import { useStatus, type IgStatus } from "@/lib/api/hooks";
 
 type TopView =
   | "dashboard"
@@ -116,12 +117,10 @@ export function CanvasLayout() {
     return group?.sub ? v : null;
   });
 
+  const { data: status } = useStatus<IgStatus>();
   useEffect(() => {
-    fetch("/api/ig/status")
-      .then((r) => r.json())
-      .then((d) => { if (d.account?.username) setAccount(d.account.username); })
-      .catch(() => {});
-  }, []);
+    if (status?.account?.username) setAccount(status.account.username);
+  }, [status]);
 
   function navigate(id: TopView, sub?: SubView) {
     if (id === "settings") { setSettings(true); return; }

@@ -434,7 +434,7 @@ const defaultOwnerProfile: OwnerProfile = {
   defaultLanguage: "english",
 };
 
-function freshStore(): IgStore {
+export function freshStore(): IgStore {
   return {
     schemaVersion: SCHEMA_VERSION,
     account: null,
@@ -612,34 +612,93 @@ function enqueueWrite<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** Read the current store (migrated to the current schema). */
-export async function readStore(): Promise<IgStore> {
+// ── store→core: Drizzle backend (opt-in via MIRA_STORE=drizzle) ──────────────
+// When enabled, the store is hydrated per-account from Postgres into an in-memory
+// cache and writes go back as row-level deltas. Keeps the readStore/updateStore
+// API identical, so the whole brain moves off the file store with no call-site
+// changes. accountId resolves to the single connected account for now (the
+// multi-tenant callers pass it explicitly in a later slice).
+const USE_DRIZZLE = process.env.MIRA_STORE === "drizzle";
+const dz = globalThis as unknown as { __mira_store_cache?: Map<string, IgStore> };
+if (USE_DRIZZLE && !dz.__mira_store_cache) dz.__mira_store_cache = new Map();
+
+async function dzAccountId(): Promise<string | null> {
+  const { currentAccountId } = await import("./accountsRepo");
+  return currentAccountId();
+}
+async function dzLoad(accountId: string): Promise<IgStore> {
+  const cache = dz.__mira_store_cache!;
+  if (!cache.has(accountId)) {
+    const { assembleStore } = await import("./storeDb");
+    cache.set(accountId, await assembleStore(accountId));
+  }
+  return cache.get(accountId)!;
+}
+async function dzCommit(accountId: string, prev: IgStore, next: IgStore): Promise<void> {
+  const { persistDelta } = await import("./storeDb");
+  await persistDelta(accountId, prev, next);
+  dz.__mira_store_cache!.set(accountId, next);
+}
+
+// Resolve the target account: explicit (multi-tenant route handlers pass the
+// authed user's account) or the single connected account (engine/legacy paths).
+async function resolveAcct(accountId?: string | null): Promise<string | null> {
+  return accountId ?? (await dzAccountId());
+}
+
+/** Read a store — the authed account's (pass accountId) or the connected one. */
+export async function readStore(accountId?: string | null): Promise<IgStore> {
+  if (USE_DRIZZLE) {
+    const acct = await resolveAcct(accountId);
+    return acct ? dzLoad(acct) : freshStore();
+  }
   return loadAndMigrate();
 }
 
-/** Overwrite the whole store. Serialized. */
-export async function writeStore(s: IgStore): Promise<void> {
-  await enqueueWrite(() => writeFile(s));
-}
-
-/** Read-modify-write a shallow patch. Serialized — safe under concurrency. */
-export async function patchStore(patch: Partial<IgStore>): Promise<IgStore> {
-  return enqueueWrite(async () => {
-    const cur = await loadAndMigrate();
-    const next = { ...cur, ...patch };
-    await writeFile(next);
-    return next;
-  });
-}
-
-/** Apply a function to the store atomically (read + transform + write). */
-export async function updateStore(
+/** Apply a function to a specific account's store atomically. */
+export async function updateStoreFor(
+  accountId: string | null | undefined,
   fn: (s: IgStore) => IgStore | Promise<IgStore>
 ): Promise<IgStore> {
+  if (USE_DRIZZLE) {
+    const acct = await resolveAcct(accountId);
+    if (!acct) return fn(freshStore());
+    return enqueueWrite(async () => {
+      const cur = await dzLoad(acct);
+      const next = await fn(cur);
+      await dzCommit(acct, cur, next);
+      return next;
+    });
+  }
   return enqueueWrite(async () => {
     const cur = await loadAndMigrate();
     const next = await fn(cur);
     await writeFile(next);
     return next;
   });
+}
+
+/** Shallow patch a specific account's store. */
+export async function patchStoreFor(accountId: string | null | undefined, patch: Partial<IgStore>): Promise<IgStore> {
+  return updateStoreFor(accountId, (s) => ({ ...s, ...patch }));
+}
+
+/** Overwrite the whole store. Serialized. */
+export async function writeStore(s: IgStore, accountId?: string | null): Promise<void> {
+  if (USE_DRIZZLE) {
+    const acct = await resolveAcct(accountId);
+    if (acct) await enqueueWrite(async () => dzCommit(acct, await dzLoad(acct), s));
+    return;
+  }
+  await enqueueWrite(() => writeFile(s));
+}
+
+/** Read-modify-write a shallow patch on the connected account. */
+export async function patchStore(patch: Partial<IgStore>): Promise<IgStore> {
+  return patchStoreFor(undefined, patch);
+}
+
+/** Apply a function to the connected account's store atomically. */
+export async function updateStore(fn: (s: IgStore) => IgStore | Promise<IgStore>): Promise<IgStore> {
+  return updateStoreFor(undefined, fn);
 }

@@ -1,5 +1,7 @@
-import type { Automation, IgStore, AutomationButtonPending, AutomationRetryPending } from "./store";
-import { readStore, updateStore } from "./store";
+import type { Automation, IgStore } from "./store";
+// followup_message still schedules via the file-store sendQueue (rare node;
+// its drainer is the watcher). Everything else is off the file store now.
+import { updateStore } from "./store";
 import {
   tryDM as _tryDM,
   tryPrivateReply,
@@ -12,6 +14,29 @@ import type { SendResult, SendOpts } from "./dm";
 import type { ButtonTemplateButton } from "./graph";
 import { publish } from "./bus";
 import { checkFollowStatus } from "./followCheck";
+// Automation resume/dedup state now lives in Postgres + Redis (process-safe),
+// not the file store — so the worker and Next never race on ~/.mira/ig.json.
+import { parkPending, claimPending, claimDueRetries, bumpAutomationStats } from "./pending";
+import { getAutomation, currentAccountId } from "./accountsRepo";
+import { claimOnce, k } from "./redis";
+import { query } from "./pg";
+
+// Resolve the account once per call. Engine paths pass it explicitly (worker);
+// webhook/test default to the single connected account.
+async function resolveAccountId(passed?: string): Promise<string | null> {
+  return passed ?? (await currentAccountId());
+}
+
+// Minimal account view the engine needs (token + username + follower cache for
+// dryRun follow checks). Reads the Postgres accounts row directly.
+type EngineAccount = { igUserId: string; username: string; accessToken: string; followerCache: { userId: string }[] };
+async function loadAccount(accountId: string): Promise<EngineAccount | null> {
+  const rows = await query<{ username: string; access_token: string; follower_cache: { userId: string }[] | null }>(
+    "SELECT username, access_token, follower_cache FROM accounts WHERE ig_user_id=$1", [accountId]
+  );
+  const r = rows[0];
+  return r ? { igUserId: accountId, username: r.username, accessToken: r.access_token, followerCache: r.follower_cache ?? [] } : null;
+}
 
 // Every send from an automation is an in-funnel message to an already-engaged
 // user, so it bypasses the cold-DM 1-per-24h gate. Shadowing the imported names
@@ -49,16 +74,9 @@ function keywordMatches(text: string, keyword: string): boolean {
   }
 }
 
-// Cross-path resume lock: the same button tap can reach us via BOTH the webhook
-// (postback) and the 1s DM poll. Each is a different event, so id-dedup misses
-// them. This collapses any resume for one user within a short window into one.
-const resumeLock = new Set<string>();
-function acquireResumeLock(userId: string): boolean {
-  if (resumeLock.has(userId)) return false;
-  resumeLock.add(userId);
-  setTimeout(() => resumeLock.delete(userId), 8_000);
-  return true;
-}
+// Cross-path dedup for resumes (same tap arriving via webhook postback AND the
+// 1s DM poll) is now handled by claimPending's atomic FOR-UPDATE claim: the
+// first caller locks+deletes the rows, the second sees none. No separate lock.
 
 /** All nodes reachable from `startIds` via edges, in BFS order. Used when a gate
  *  pauses the flow — we must park the ENTIRE downstream chain, not just the gate's
@@ -131,39 +149,26 @@ export function matchAutomations(store: IgStore, event: AutomationEvent): Automa
 export async function executeAutomation(
   automation: Automation,
   event: AutomationEvent,
-  options: { dryRun?: boolean; resumeFrom?: string[] } = {}
+  options: { dryRun?: boolean; resumeFrom?: string[]; accountId?: string } = {}
 ): Promise<DryRunStep[]> {
   const { dryRun = false, resumeFrom } = options;
   const steps: DryRunStep[] = [];
+
+  const accountId = await resolveAccountId(options.accountId);
+  if (!accountId) return steps;
 
   // Fix 12 — dedup: skip if this automation already fired for this comment within 1h.
   // Resume runs (rate-limit retry) skip dedup/trigger-count — they continue an
   // already-counted flow from its remaining nodes.
   if (!dryRun && !resumeFrom) {
-    const dedupKey = `${automation.id}:${event.commentId}`;
-    // ATOMIC check-and-set — realtime loop + 7s tick can both reach here for the
-    // same comment; the serialized updateStore guarantees exactly one proceeds.
-    let proceed = false;
-    await updateStore((s) => {
-      const alreadyFired = (s.automationFired ?? []).some(
-        (f) => f.key === dedupKey && Date.now() - f.ts < 60 * 60_000
-      );
-      if (alreadyFired) return s;
-      proceed = true;
-      return {
-        ...s,
-        automationFired: [
-          ...(s.automationFired ?? []).filter((f) => Date.now() - f.ts < 2 * 60 * 60_000),
-          { key: dedupKey, ts: Date.now() },
-        ].slice(-2000),
-        automations: s.automations.map((a) =>
-          a.id === automation.id
-            ? { ...a, stats: { ...a.stats, triggered: (a.stats?.triggered ?? 0) + 1, lastTriggered: Date.now() } }
-            : a
-        ),
-      };
-    });
-    if (!proceed) return steps;
+    // ATOMIC cross-process check-and-set in Redis (replaces the file-store
+    // automationFired ledger). The realtime loop, 7s tick AND the worker can all
+    // reach here for the same comment; claimOnce guarantees exactly one proceeds.
+    // 24h TTL (was 1h) so dedup outlives any plausible Meta re-delivery / poll
+    // resurfacing of the same comment — matches the k.seen horizon in ingest.ts.
+    const claimed = await claimOnce(k.fired(accountId, automation.id, event.commentId), 24 * 60 * 60);
+    if (!claimed) return steps;
+    await bumpAutomationStats(automation.id, { triggered: 1, lastTriggered: Date.now() });
   }
 
   const nextNodes = new Map<string, string[]>();
@@ -229,22 +234,14 @@ export async function executeAutomation(
           // Button present — stop BFS, wait for user to click (DM arrives)
           if (hasButtons) {
             const remainingIds = downstreamFrom([...(nextNodes.get(nodeId) ?? []), ...bfsQueue], nextNodes);
-            await updateStore((s) => ({
-              ...s,
-              automationButtonPending: [
-                ...(s.automationButtonPending ?? []).filter(
-                  (p) => !(p.fromUserId === event.fromUserId && p.automationId === automation.id)
-                ),
-                {
-                  automationId: automation.id,
-                  commentId: event.commentId,
-                  fromUserId: event.fromUserId,
-                  fromUsername: event.fromUsername,
-                  remainingNodeIds: remainingIds,
-                  ts: Date.now(),
-                } satisfies AutomationButtonPending,
-              ].slice(-500),
-            }));
+            await parkPending(accountId, "button", {
+              automationId: automation.id,
+              commentId: event.commentId,
+              fromUserId: event.fromUserId,
+              fromUsername: event.fromUsername,
+              remainingNodeIds: remainingIds,
+              ts: Date.now(),
+            });
             publish({ type: "log", level: "info", msg: `automation "${automation.name}": button gate — waiting for @${event.fromUsername ?? event.fromUserId} to click`, ts: Date.now() });
             gated = true;
           }
@@ -294,12 +291,11 @@ export async function executeAutomation(
       }
 
       case "follow_gate": {
-        const store = await readStore();
-        const account = store.account;
+        const account = await loadAccount(accountId);
         if (!account) { gated = true; break; }
 
         const isFollowing = dryRun
-          ? (store.followerCache ?? []).some((f) => f.userId === event.fromUserId)
+          ? (account.followerCache ?? []).some((f) => f.userId === event.fromUserId)
           : await checkFollowStatus(event.fromUserId, account.accessToken);
 
         if (isFollowing) {
@@ -325,22 +321,14 @@ export async function executeAutomation(
 
           // Collect remaining node ids for resumption (full downstream chain)
           const remainingIds = downstreamFrom([...Array.from(nextNodes.get(nodeId) ?? []), ...bfsQueue], nextNodes);
-
-          await updateStore((s) => ({
-            ...s,
-            automationFollowPending: [
-              ...(s.automationFollowPending ?? [])
-                .filter((p) => !(p.fromUserId === event.fromUserId && p.automationId === automation.id)),
-              {
-                automationId: automation.id,
-                commentId: event.commentId,
-                fromUserId: event.fromUserId,
-                fromUsername: event.fromUsername,
-                remainingNodeIds: remainingIds,
-                ts: Date.now(),
-              },
-            ].slice(-500),
-          }));
+          await parkPending(accountId, "follow", {
+            automationId: automation.id,
+            commentId: event.commentId,
+            fromUserId: event.fromUserId,
+            fromUsername: event.fromUsername,
+            remainingNodeIds: remainingIds,
+            ts: Date.now(),
+          });
         }
 
         gated = true;
@@ -348,8 +336,7 @@ export async function executeAutomation(
       }
 
       case "ask_follow": {
-        const store = await readStore();
-        const acct = store.account;
+        const acct = await loadAccount(accountId);
         const uname = acct?.username ?? "us";
         // Live check — if they already follow, skip the ask and continue the graph.
         if (!dryRun && acct) {
@@ -372,22 +359,14 @@ export async function executeAutomation(
           if (dm.ok) sentCount++; else failCount++;
           // Gate BFS — park remaining nodes (full downstream chain) until user confirms follow
           const remainingIds = downstreamFrom([...(nextNodes.get(nodeId) ?? []), ...bfsQueue], nextNodes);
-          await updateStore((s) => ({
-            ...s,
-            automationFollowPending: [
-              ...(s.automationFollowPending ?? []).filter(
-                (p) => !(p.fromUserId === event.fromUserId && p.automationId === automation.id)
-              ),
-              {
-                automationId: automation.id,
-                commentId: event.commentId,
-                fromUserId: event.fromUserId,
-                fromUsername: event.fromUsername,
-                remainingNodeIds: remainingIds,
-                ts: Date.now(),
-              },
-            ].slice(-500),
-          }));
+          await parkPending(accountId, "follow", {
+            automationId: automation.id,
+            commentId: event.commentId,
+            fromUserId: event.fromUserId,
+            fromUsername: event.fromUsername,
+            remainingNodeIds: remainingIds,
+            ts: Date.now(),
+          });
           gated = true;
         }
         break;
@@ -439,7 +418,7 @@ export async function executeAutomation(
     // queued, retry after backoff. Generic: any graph, any node, never dropped.
     if (!dryRun && rateLimited) {
       const remaining = [nodeId, ...(nextNodes.get(nodeId) ?? []), ...bfsQueue];
-      await parkAutomationRetry(automation.id, event, remaining);
+      await parkAutomationRetry(accountId, automation.id, event, remaining);
       publish({ type: "log", level: "warn", msg: `automation "${automation.name}": rate-limited — parked ${remaining.length} node(s) for retry`, ts: Date.now() });
       break;
     }
@@ -449,22 +428,10 @@ export async function executeAutomation(
 
   // Fix 3 — accurate stats: completed only if something sent, track failed
   if (!dryRun) {
-    await updateStore((s) => ({
-      ...s,
-      automations: s.automations.map((a) =>
-        a.id === automation.id
-          ? {
-              ...a,
-              stats: {
-                triggered: a.stats?.triggered ?? 1,
-                completed: (a.stats?.completed ?? 0) + (sentCount > 0 ? 1 : 0),
-                failed: (a.stats?.failed ?? 0) + (sentCount === 0 && failCount > 0 ? 1 : 0),
-                lastTriggered: a.stats?.lastTriggered ?? Date.now(),
-              },
-            }
-          : a
-      ),
-    }));
+    await bumpAutomationStats(automation.id, {
+      completed: sentCount > 0 ? 1 : 0,
+      failed: sentCount === 0 && failCount > 0 ? 1 : 0,
+    });
 
     publish({
       type: "log",
@@ -486,41 +453,25 @@ export async function executeAutomation(
  */
 export async function resumeAutomationAfterButtonClick(
   userId: string,
-  username?: string
-): Promise<void> {
-  if (!acquireResumeLock(userId)) return; // collapse webhook + DM-poll duplicate triggers
-  // Atomic claim — updateStore uses a serialized write queue, so only one
-  // concurrent caller wins. Second caller sees empty claimed and returns early.
-  let claimed: AutomationButtonPending[] = [];
-  let claimedStore: import("./store").IgStore | null = null;
-  await updateStore((s) => {
-    const matches = (s.automationButtonPending ?? []).filter(
-      (p) => p.fromUserId === userId && Date.now() - p.ts < 24 * 60 * 60_000
-    );
-    if (!matches.length) return s;
-    // dedup: at most ONE pending per automation (keep latest) — a user with
-    // several stale openings must not trigger several duplicate resumes.
-    const byAuto = new Map<string, AutomationButtonPending>();
-    for (const p of matches) { const e = byAuto.get(p.automationId); if (!e || p.ts > e.ts) byAuto.set(p.automationId, p); }
-    claimed = [...byAuto.values()];
-    claimedStore = s;
-    // clear ALL of this user's button-pending (and any follow-pending) so one tap
-    // can't double-fire across stale entries / both resume paths.
-    return {
-      ...s,
-      automationButtonPending: (s.automationButtonPending ?? []).filter((p) => p.fromUserId !== userId),
-    };
-  });
-  if (!claimed.length) return;
-  const store = claimedStore!;
+  username?: string,
+  accountId?: string
+): Promise<boolean> {
+  const acct = await resolveAccountId(accountId);
+  if (!acct) return false;
+  // Atomic claim in Postgres (FOR UPDATE) — dedups one-per-automation (latest),
+  // deletes ALL of this user's button rows, collapses webhook+poll duplicates.
+  // Returns [] when nothing is parked, so it doubles as the "is this a resume?"
+  // gate — callers no longer pre-check the (removed) file-store arrays.
+  const claimed = await claimPending(acct, "button", userId, 24 * 60 * 60_000);
+  if (!claimed.length) return false;
+  const account = await loadAccount(acct);
+  if (!account) return false;
 
   for (const p of claimed) {
-    const automation = (store.automations ?? []).find((a) => a.id === p.automationId);
+    const automation = await getAutomation(acct, p.automationId);
     if (!automation?.enabled) continue;
 
     const nodeMap = new Map(automation.nodes.map((n) => [n.id, n]));
-    const account = store.account;
-    if (!account) continue;
 
     const isFollowing = await checkFollowStatus(userId, account.accessToken);
     publish({ type: "log", level: "info", msg: `automation button-click resume @${username ?? userId}: following=${isFollowing} remaining=[${p.remainingNodeIds.join(",")}]`, ts: Date.now() });
@@ -617,26 +568,18 @@ export async function resumeAutomationAfterButtonClick(
       ];
       await tryDMWithButtonTemplate(userId, msg, templateButtons);
 
-      await updateStore((s) => ({
-        ...s,
-        automationFollowPending: [
-          ...(s.automationFollowPending ?? []).filter(
-            (fp) => !(fp.fromUserId === userId && fp.automationId === p.automationId)
-          ),
-          {
-            automationId: p.automationId,
-            commentId: p.commentId,
-            fromUserId: userId,
-            fromUsername: username,
-            remainingNodeIds: nodesAfterAskFollow,
-            ts: Date.now(),
-          },
-        ].slice(-500),
-      }));
+      await parkPending(acct, "follow", {
+        automationId: p.automationId,
+        commentId: p.commentId,
+        fromUserId: userId,
+        fromUsername: username,
+        remainingNodeIds: nodesAfterAskFollow,
+        ts: Date.now(),
+      });
       publish({ type: "log", level: "info", msg: `automation button resume: @${username ?? userId} not following — gate msg sent (${gateNode?.type ?? "ask_follow"}), follow gate armed`, ts: Date.now() });
     }
   }
-
+  return true;
 }
 
 /**
@@ -645,34 +588,23 @@ export async function resumeAutomationAfterButtonClick(
  */
 export async function resumeAutomationAfterFollow(
   userId: string,
-  username?: string
-): Promise<void> {
-  if (!acquireResumeLock(userId)) return; // collapse webhook + DM-poll duplicate triggers
-  // Atomic claim — prevents webhook + watcher DM poll both processing the same follow confirm
-  let claimed: import("./store").AutomationFollowPending[] = [];
-  let claimedStore: import("./store").IgStore | null = null;
-  await updateStore((s) => {
-    const matches = (s.automationFollowPending ?? []).filter(
-      (p) => p.fromUserId === userId && Date.now() - p.ts < 24 * 60 * 60_000
-    );
-    if (!matches.length) return s;
-    // dedup: one pending per automation (keep latest) — no duplicate resumes.
-    const byAuto = new Map<string, import("./store").AutomationFollowPending>();
-    for (const p of matches) { const e = byAuto.get(p.automationId); if (!e || p.ts > e.ts) byAuto.set(p.automationId, p); }
-    claimed = [...byAuto.values()];
-    claimedStore = s;
-    return { ...s, automationFollowPending: (s.automationFollowPending ?? []).filter((p) => p.fromUserId !== userId) };
-  });
-  if (!claimed.length) return;
-  const store = claimedStore!;
+  username?: string,
+  accountId?: string
+): Promise<boolean> {
+  const acct = await resolveAccountId(accountId);
+  if (!acct) return false;
+  // Atomic claim in Postgres — dedups one-per-automation, deletes this user's
+  // follow rows; prevents webhook + watcher DM poll double-processing one follow.
+  const claimed = await claimPending(acct, "follow", userId, 24 * 60 * 60_000);
+  if (!claimed.length) return false;
+  const account = await loadAccount(acct);
+  if (!account) return false;
 
   for (const p of claimed) {
-    const automation = (store.automations ?? []).find((a) => a.id === p.automationId);
+    const automation = await getAutomation(acct, p.automationId);
     if (!automation?.enabled) continue;
 
     const nodeMap = new Map(automation.nodes.map((n) => [n.id, n]));
-    const account = store.account;
-    if (!account) continue;
 
     // Real-time O(1) check via is_user_follow_business. Returns false on error.
     const nowFollowing = await checkFollowStatus(userId, account.accessToken);
@@ -687,13 +619,7 @@ export async function resumeAutomationAfterFollow(
       ];
       await tryDMWithButtonTemplate(userId, gateMsg, retryButtons);
       // Re-park so next tap triggers another check
-      await updateStore((s) => ({
-        ...s,
-        automationFollowPending: [
-          ...(s.automationFollowPending ?? []).filter((fp) => fp.fromUserId !== userId),
-          { ...p, ts: Date.now() },
-        ].slice(-500),
-      }));
+      await parkPending(acct, "follow", { ...p, fromUsername: username, ts: Date.now() });
       continue;
     }
 
@@ -757,7 +683,7 @@ export async function resumeAutomationAfterFollow(
       ts: Date.now(),
     });
   }
-
+  return true;
 }
 
 /* ---------- rate-limit retry (613) ---------- */
@@ -767,50 +693,34 @@ const RETRY_BACKOFF_MS = 15 * 60_000;
 /** Park an automation that was rate-limited mid-flow, to resume from its
  *  remaining nodes once the backoff window clears. One entry per user+automation. */
 async function parkAutomationRetry(
+  accountId: string,
   automationId: string,
   event: AutomationEvent,
   remainingNodeIds: string[]
 ): Promise<void> {
-  await updateStore((s) => ({
-    ...s,
-    automationRetryPending: [
-      ...(s.automationRetryPending ?? []).filter(
-        (p) => !(p.automationId === automationId && p.fromUserId === event.fromUserId)
-      ),
-      {
-        automationId,
-        commentId: event.commentId,
-        fromUserId: event.fromUserId,
-        fromUsername: event.fromUsername,
-        postId: event.postId,
-        remainingNodeIds,
-        notBefore: Date.now() + RETRY_BACKOFF_MS,
-        attempts: 1,
-        ts: Date.now(),
-      } satisfies AutomationRetryPending,
-    ].slice(-500),
-  }));
+  await parkPending(accountId, "retry", {
+    automationId,
+    commentId: event.commentId,
+    fromUserId: event.fromUserId,
+    fromUsername: event.fromUsername,
+    remainingNodeIds,
+    notBefore: Date.now() + RETRY_BACKOFF_MS,
+    attempts: 1,
+    ts: Date.now(),
+  });
 }
 
 /** Drain due rate-limit retries — re-run each parked automation from its
  *  remaining nodes via executeAutomation's resumeFrom path (full reuse, no
- *  duplicated node logic). Called from the watcher tick. */
-export async function drainAutomationRetries(): Promise<void> {
-  const now = Date.now();
-  let due: AutomationRetryPending[] = [];
-  let snap: IgStore | null = null;
-  await updateStore((s) => {
-    const ready = (s.automationRetryPending ?? []).filter((p) => p.notBefore <= now);
-    if (!ready.length) return s;
-    due = ready;
-    snap = s;
-    return { ...s, automationRetryPending: (s.automationRetryPending ?? []).filter((p) => p.notBefore > now) };
-  });
-  if (!due.length || !snap) return;
-  const store: IgStore = snap;
+ *  duplicated node logic). Called from the watcher tick / api service loop. */
+export async function drainAutomationRetries(accountId?: string): Promise<void> {
+  const acct = await resolveAccountId(accountId);
+  if (!acct) return;
+  const due = await claimDueRetries(acct, Date.now());
+  if (!due.length) return;
 
   for (const p of due) {
-    const automation = (store.automations ?? []).find((a) => a.id === p.automationId);
+    const automation = await getAutomation(acct, p.automationId);
     if (!automation?.enabled) continue;
     const event: AutomationEvent = {
       type: automation.trigger.type,
@@ -818,10 +728,9 @@ export async function drainAutomationRetries(): Promise<void> {
       fromUserId: p.fromUserId,
       fromUsername: p.fromUsername,
       text: "",
-      postId: p.postId,
     };
     publish({ type: "log", level: "info", msg: `automation "${automation.name}": retrying ${p.remainingNodeIds.length} parked node(s) for @${p.fromUsername ?? p.fromUserId}`, ts: Date.now() });
-    await executeAutomation(automation, event, { resumeFrom: p.remainingNodeIds }).catch((e) =>
+    await executeAutomation(automation, event, { resumeFrom: p.remainingNodeIds, accountId: acct }).catch((e) =>
       publish({ type: "log", level: "error", msg: `automation retry [${p.automationId}]: ${String(e)}`, ts: Date.now() })
     );
   }
