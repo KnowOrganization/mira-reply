@@ -8,7 +8,7 @@
 // own check) — never rely on the proxy alone.
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getSessionUserId } from "@/lib/auth/server";
+import { getSessionUserId } from "@shaiz/auth";
 
 const PUBLIC_PREFIXES = [
   "/api/ig/webhook", // Meta, HMAC-verified

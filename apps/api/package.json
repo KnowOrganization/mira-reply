@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@shaiz/auth": "workspace:*",
     "@shaiz/db": "workspace:*",
+    "@shaiz/shared": "workspace:*",
     "@elysiajs/cors": "^1.2.0",
     "elysia": "^1.2.10"
   }

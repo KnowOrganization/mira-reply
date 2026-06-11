@@ -43,8 +43,18 @@
       "version": "0.1.0",
       "dependencies": {
         "@elysiajs/cors": "^1.2.0",
+        "@shaiz/auth": "workspace:*",
         "@shaiz/db": "workspace:*",
+        "@shaiz/shared": "workspace:*",
         "elysia": "^1.2.10",
+      },
+    },
+    "packages/auth": {
+      "name": "@shaiz/auth",
+      "version": "0.1.0",
+      "dependencies": {
+        "@shaiz/db": "workspace:*",
+        "better-auth": "^1.6.16",
       },
     },
     "packages/db": {
@@ -327,6 +337,8 @@
     "@rtsao/scc": ["@rtsao/scc@1.1.0", "", {}, "sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g=="],
 
     "@shaiz/api": ["@shaiz/api@workspace:apps/api"],
+
+    "@shaiz/auth": ["@shaiz/auth@workspace:packages/auth"],
 
     "@shaiz/db": ["@shaiz/db@workspace:packages/db"],
 

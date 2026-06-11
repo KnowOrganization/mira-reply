@@ -1,8 +1,8 @@
 // Elysia-side auth: validate the BetterAuth session from the request headers
 // (the Next rewrite forwards the session cookie / Authorization bearer), then
 // resolve the user's own Instagram account. Single source of truth = the shared
-// BetterAuth instance (lib/auth/server.ts) — no duplicated token logic.
-import { getSessionUserId } from "@/lib/auth/server";
+// BetterAuth instance (@shaiz/auth) — no duplicated token logic.
+import { getSessionUserId } from "@shaiz/auth";
 import { query } from "@/lib/ig/pg";
 
 /** The IG account owned by this user (most-recent). Null if they have none yet. */
