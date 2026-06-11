@@ -14,7 +14,10 @@ import type {
   Automation, Post, PostLink, PostInsights, Fact, FactTopic,
   PendingDraft, ReplyLog, Clarification, ClarificationWaiter,
   TrainingExample, Mention, FollowerCacheEntry,
-} from "@/lib/ig/store";
+  // NOTE: relative (not @/) because the `@/` alias resolves differently per
+  // consuming package (web=./src, root=./). Phase 3 relocates these store types
+  // into the shared/db layer to remove this cross-package reach into lib/ig.
+} from "../../../lib/ig/store";
 
 const ms = (name: string) => bigint(name, { mode: "number" });
 

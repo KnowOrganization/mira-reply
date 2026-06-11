@@ -10,11 +10,12 @@ const API_URL = process.env.API_URL || "http://localhost:4000";
 
 const nextConfig: NextConfig = {
   turbopack: {
-    root: path.join(__dirname),
+    // Monorepo root — lets Turbopack resolve workspace packages (apps/* + packages/*).
+    root: path.join(__dirname, "..", ".."),
   },
-  // Let Next compile the Drizzle workspace package (TS source) — so the shared
-  // BetterAuth instance + db client can be imported directly, no raw-SQL workaround.
-  transpilePackages: ["@shaiz/db"],
+  // Compile the TS-source workspace packages this app imports (Drizzle client,
+  // shared BetterAuth instance, shared contracts) — no prebuilt dist needed.
+  transpilePackages: ["@shaiz/db", "@shaiz/auth", "@shaiz/shared"],
   allowedDevOrigins: ["*.trycloudflare.com"],
   async rewrites() {
     // afterFiles runs AFTER the filesystem — every /api/ig/* route (including

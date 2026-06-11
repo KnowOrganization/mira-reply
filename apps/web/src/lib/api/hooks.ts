@@ -10,7 +10,7 @@ import {
   type UseQueryOptions,
 } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Automation } from "@/lib/ig/store";
+import type { Automation } from "@shaiz/shared";
 
 // ── query keys ─────────────────────────────────────────────────────────────
 export const qk = {

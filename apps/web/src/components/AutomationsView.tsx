@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import type { Automation, AutomationNodeType, AutomationNodeData, AutomationNode } from "@/lib/ig/store";
+import type { Automation, AutomationNodeType, AutomationNodeData, AutomationNode } from "@shaiz/shared";
 import { api } from "@/lib/api/client";
 import {
   usePosts,
@@ -1420,7 +1420,7 @@ function AutomationCanvas({ automation, onSave }: { automation: Automation; onSa
     const hasPostFilter = ns.some((n) => n.type === "post_filter");
     if (needsPostFilter && !hasPostFilter && trigger) {
       const idx = ns.indexOf(trigger);
-      const pf: import("@/lib/ig/store").AutomationNode = {
+      const pf: import("@shaiz/shared").AutomationNode = {
         id: `node_post_filter_${Date.now().toString(36)}`,
         type: "post_filter", position: { x: 0, y: 0 }, data: { postIds: [] },
       };
@@ -1455,7 +1455,7 @@ function AutomationCanvas({ automation, onSave }: { automation: Automation; onSa
         const hasPostFilter = updated.some((n) => n.type === "post_filter");
         if (needsPostFilter && !hasPostFilter) {
           const pfId = `node_post_filter_${Date.now().toString(36)}`;
-          const pfNode: import("@/lib/ig/store").AutomationNode = {
+          const pfNode: import("@shaiz/shared").AutomationNode = {
             id: pfId, type: "post_filter", position: { x: 0, y: 0 }, data: { postIds: [] },
           };
           return [updated[0], pfNode, ...updated.slice(1)];
@@ -1538,7 +1538,7 @@ function AutomationCanvas({ automation, onSave }: { automation: Automation; onSa
       const triggerNode = nodes.find((n) => n.type === "trigger");
       const postFilterNode = nodes.find((n) => n.type === "post_filter");
       const triggerPatch = triggerNode ? {
-        type: (triggerNode.data.text ?? "comment_post") as import("@/lib/ig/store").AutomationTriggerType,
+        type: (triggerNode.data.text ?? "comment_post") as import("@shaiz/shared").AutomationTriggerType,
         keywords: (triggerNode.data.buttons ?? []).map((b) => b.label).filter(Boolean),
         postIds: postFilterNode?.data.postIds ?? [],
       } : undefined;

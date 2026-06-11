@@ -7,7 +7,7 @@ import { db } from "./client";
 import {
   accounts, automations, postConfigs, processedComments, userStates,
 } from "./schema";
-import type { Settings } from "@/lib/ig/store";
+import type { Settings } from "../../../lib/ig/store";
 
 export async function currentAccountId(): Promise<string | null> {
   const [a] = await db
