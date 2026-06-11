@@ -19,6 +19,7 @@
     "db:push": "bun --filter @shaiz/db db:push",
     "db:generate": "bun --filter @shaiz/db db:generate",
     "db:import": "bun --filter @shaiz/db import",
+    "test": "bun test tests/",
     "mcp:brain": "tsx scripts/mcp-brain.mjs",
     "worker": "tsx --env-file=.env.local worker/index.ts",
     "worker:watch": "tsx watch --env-file=.env.local worker/index.ts"
