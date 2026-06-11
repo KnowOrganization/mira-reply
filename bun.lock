@@ -58,6 +58,10 @@
         "drizzle-kit": "^0.30.1",
       },
     },
+    "packages/shared": {
+      "name": "@shaiz/shared",
+      "version": "0.1.0",
+    },
   },
   "packages": {
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
@@ -325,6 +329,8 @@
     "@shaiz/api": ["@shaiz/api@workspace:apps/api"],
 
     "@shaiz/db": ["@shaiz/db@workspace:packages/db"],
+
+    "@shaiz/shared": ["@shaiz/shared@workspace:packages/shared"],
 
     "@sinclair/typebox": ["@sinclair/typebox@0.34.49", "", {}, "sha512-brySQQs7Jtn0joV8Xh9ZV/hZb9Ozb0pmazDIASBkYKCjXrXU3mpcFahmK/z4YDhGkQvP9mWJbVyahdtU5wQA+A=="],
 
