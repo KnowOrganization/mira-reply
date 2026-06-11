@@ -3,19 +3,16 @@ import { Elysia } from "elysia";
 import {
   listAutomations, getAutomation, insertAutomation, patchAutomation, removeAutomation,
 } from "@shaiz/db";
-import { requireUser } from "../lib/auth";
+import { authPlugin } from "../plugins/auth";
 
 export const automationsRoute = new Elysia()
-  .get("/api/ig/automations", async ({ request, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-    if (!a.ctx.accountId) { set.status = 404; return { error: "no account" }; }
-    return { automations: await listAutomations(a.ctx.accountId) };
-  })
-  .post("/api/ig/automations", async ({ request, body, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-    if (!a.ctx.accountId) { set.status = 404; return { error: "no account" }; }
+  .use(authPlugin)
+  .get("/api/ig/automations", async ({ auth, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
+    return { automations: await listAutomations(auth.accountId) };
+  }, { auth: true })
+  .post("/api/ig/automations", async ({ auth, body, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const now = Date.now();
     const id = `auto_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     const name = ((body ?? {}) as { name?: string }).name?.trim() || "New Automation";
@@ -28,34 +25,28 @@ export const automationsRoute = new Elysia()
       }],
       edges: [], stats: { triggered: 0, completed: 0, failed: 0 }, createdAt: now, updatedAt: now,
     };
-    await insertAutomation(a.ctx.accountId, { ...automation, accountId: a.ctx.accountId } as any);
+    await insertAutomation(auth.accountId, { ...automation, accountId: auth.accountId } as any);
     set.status = 201;
     return { automation };
-  })
-  .get("/api/ig/automations/:id", async ({ request, params, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-    if (!a.ctx.accountId) { set.status = 404; return { error: "no account" }; }
-    const automation = await getAutomation(a.ctx.accountId, params.id);
+  }, { auth: true })
+  .get("/api/ig/automations/:id", async ({ auth, params, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
+    const automation = await getAutomation(auth.accountId, params.id);
     if (!automation) { set.status = 404; return { error: "not found" }; }
     return { automation };
-  })
-  .patch("/api/ig/automations/:id", async ({ request, params, body, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-    if (!a.ctx.accountId) { set.status = 404; return { error: "no account" }; }
+  }, { auth: true })
+  .patch("/api/ig/automations/:id", async ({ auth, params, body, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const allowed = ["name", "enabled", "trigger", "nodes", "edges", "stats"];
     const patch: Record<string, unknown> = {};
     for (const k of allowed) if ((body as any)?.[k] !== undefined) patch[k] = (body as any)[k];
-    const automation = await patchAutomation(a.ctx.accountId, params.id, patch as any);
+    const automation = await patchAutomation(auth.accountId, params.id, patch as any);
     if (!automation) { set.status = 404; return { error: "not found" }; }
     return { automation };
-  })
-  .delete("/api/ig/automations/:id", async ({ request, params, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-    if (!a.ctx.accountId) { set.status = 404; return { error: "no account" }; }
-    const ok = await removeAutomation(a.ctx.accountId, params.id);
+  }, { auth: true })
+  .delete("/api/ig/automations/:id", async ({ auth, params, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
+    const ok = await removeAutomation(auth.accountId, params.id);
     if (!ok) { set.status = 404; return { error: "not found" }; }
     return { ok: true };
-  });
+  }, { auth: true });

@@ -1,13 +1,12 @@
 import { Elysia } from "elysia";
-import { requireUser } from "../../../lib/auth";
+import { authPlugin } from "../../../plugins/auth";
 import { getClarifications } from "../../../services/inbox-service";
 
-export const getClarificationsHandler = new Elysia().get(
+export const getClarificationsHandler = new Elysia().use(authPlugin).get(
   "/api/ig/clarifications",
-  async ({ request, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-    if (!a.ctx.accountId) { set.status = 404; return { error: "no account" }; }
-    return await getClarifications(a.ctx.accountId);
-  }
+  async ({ auth, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
+    return await getClarifications(auth.accountId);
+  },
+  { auth: true }
 );

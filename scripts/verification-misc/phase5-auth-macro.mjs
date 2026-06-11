@@ -16,10 +16,15 @@ const user = await ctx.internalAdapter.createUser({
 const session = await ctx.internalAdapter.createSession(user.id, undefined);
 const H = { authorization: `Bearer ${session.token}` };
 
-for (const path of ["/api/ig/status"]) {
+const paths = [
+  "/api/ig/status", "/api/ig/settings", "/api/ig/automations",
+  "/api/ig/dashboard", "/api/ig/knowledge", "/api/ig/poll", "/api/ig/posts",
+];
+for (const path of paths) {
   const noAuth = await fetch(`${BASE}${path}`);
   const withAuth = await fetch(`${BASE}${path}`, { headers: H });
-  console.log(`${path}  no-auth=${noAuth.status}  bearer=${withAuth.status}  bearerBody=${(await withAuth.text()).slice(0, 120)}`);
+  const pass = withAuth.status !== 401 ? "PASS" : "FAIL";
+  console.log(`${pass}  ${path}  no-auth=${noAuth.status}  bearer=${withAuth.status}`);
 }
 
 // cleanup (SQL — internalAdapter delete threw in a prior run)

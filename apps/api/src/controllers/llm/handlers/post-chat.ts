@@ -2,18 +2,16 @@
 // Streaming Response construction stays in the handler (inherently HTTP).
 // prepareChatUpstream handles upstream fetch setup.
 import { Elysia } from "elysia";
-import { requireUser } from "../../../lib/auth";
+import { authPlugin } from "../../../plugins/auth";
 import { prepareChatUpstream, type ChatBody } from "../../../services/llm-service";
 
-export const postChatHandler = new Elysia().post(
+export const postChatHandler = new Elysia().use(authPlugin).post(
   "/api/chat",
-  async ({ request, body, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-    if (!a.ctx.accountId) { set.status = 404; return { error: "no account" }; }
+  async ({ auth, body, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
 
     const { upstreamUrl, upstreamInit } = await prepareChatUpstream(
-      a.ctx.accountId,
+      auth.accountId,
       (body ?? {}) as ChatBody
     );
 
@@ -34,5 +32,6 @@ export const postChatHandler = new Elysia().post(
         "X-Accel-Buffering": "no",
       },
     });
-  }
+  },
+  { auth: true }
 );

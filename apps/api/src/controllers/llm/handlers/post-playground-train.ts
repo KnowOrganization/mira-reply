@@ -1,14 +1,11 @@
 // POST /api/playground/train — add a training example (auth-gated)
 import { Elysia } from "elysia";
-import { requireUser } from "../../../lib/auth";
+import { authPlugin } from "../../../plugins/auth";
 import { createTraining, type TrainingInput } from "../../../services/llm-service";
 
-export const postPlaygroundTrainHandler = new Elysia().post(
+export const postPlaygroundTrainHandler = new Elysia().use(authPlugin).post(
   "/api/playground/train",
-  async ({ request, body, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-
+  async ({ auth, body, set }) => {
     const b = (body ?? {}) as Record<string, unknown>;
     const comment = typeof b.comment === "string" ? b.comment.trim() : "";
     const verdict = b.verdict === "good" ? "good" : ("bad" as const);
@@ -36,5 +33,6 @@ export const postPlaygroundTrainHandler = new Elysia().post(
 
     const entry = await createTraining(input);
     return { entry };
-  }
+  },
+  { auth: true }
 );

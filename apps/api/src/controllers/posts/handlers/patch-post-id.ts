@@ -1,14 +1,12 @@
 import { Elysia } from "elysia";
-import { requireUser } from "../../../lib/auth";
+import { authPlugin } from "../../../plugins/auth";
 import { patchPost } from "../../../services/posts-service";
 import type { PostLink } from "@/lib/ig/store";
 
-export const patchPostIdHandler = new Elysia().patch(
+export const patchPostIdHandler = new Elysia().use(authPlugin).patch(
   "/api/ig/posts/:postId",
-  async ({ request, params, body, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-    if (!a.ctx.accountId) { set.status = 404; return { error: "no account" }; }
+  async ({ auth, params, body, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
 
     const b = (body ?? {}) as {
       notes?: string;
@@ -17,6 +15,7 @@ export const patchPostIdHandler = new Elysia().patch(
       removeLink?: string;
     };
 
-    return patchPost(a.ctx.accountId, params.postId, b, set);
-  }
+    return patchPost(auth.accountId, params.postId, b, set);
+  },
+  { auth: true }
 );

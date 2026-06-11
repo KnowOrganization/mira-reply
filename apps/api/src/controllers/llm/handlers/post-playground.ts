@@ -1,14 +1,11 @@
 // POST /api/playground — dry-run the pipeline on fake data (auth-gated)
 import { Elysia } from "elysia";
-import { requireUser } from "../../../lib/auth";
+import { authPlugin } from "../../../plugins/auth";
 import { runPlayground } from "../../../services/llm-service";
 
-export const postPlaygroundHandler = new Elysia().post(
+export const postPlaygroundHandler = new Elysia().use(authPlugin).post(
   "/api/playground",
-  async ({ request, body, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-
+  async ({ auth, body, set }) => {
     const b = (body ?? {}) as {
       comment?: string;
       caption?: string;
@@ -29,5 +26,6 @@ export const postPlaygroundHandler = new Elysia().post(
       set.status = 500;
       return { error: e instanceof Error ? e.message : "decide failed" };
     }
-  }
+  },
+  { auth: true }
 );

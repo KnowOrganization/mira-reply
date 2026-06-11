@@ -1,14 +1,12 @@
 import { Elysia } from "elysia";
-import { requireUser } from "../../../lib/auth";
+import { authPlugin } from "../../../plugins/auth";
 import { createKnowledge } from "../../../services/inbox-service";
 import type { FactTopic } from "@/lib/ig/store";
 
-export const postKnowledgeHandler = new Elysia().post(
+export const postKnowledgeHandler = new Elysia().use(authPlugin).post(
   "/api/ig/knowledge",
-  async ({ request, body, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-    if (!a.ctx.accountId) { set.status = 404; return { error: "no account" }; }
+  async ({ body, auth, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const b = (body ?? {}) as {
       question?: string;
       answer?: string;
@@ -23,5 +21,6 @@ export const postKnowledgeHandler = new Elysia().post(
       return { error: result.validationError };
     }
     return result;
-  }
+  },
+  { auth: true }
 );

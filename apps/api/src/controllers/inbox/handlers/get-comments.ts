@@ -1,16 +1,15 @@
 import { Elysia } from "elysia";
-import { requireUser } from "../../../lib/auth";
+import { authPlugin } from "../../../plugins/auth";
 import { getComments } from "../../../services/inbox-service";
 
-export const getCommentsHandler = new Elysia().get(
+export const getCommentsHandler = new Elysia().use(authPlugin).get(
   "/api/ig/comments",
-  async ({ request, query, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-    if (!a.ctx.accountId) { set.status = 404; return { error: "no account" }; }
+  async ({ query, auth, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "not connected" }; }
     const refresh = (query as Record<string, string | undefined>).refresh === "1";
-    const result = await getComments(a.ctx.accountId, refresh);
+    const result = await getComments(auth.accountId, refresh);
     if (result.notConnected) { set.status = 400; return { error: "not connected" }; }
     return { rows: result.rows, count: result.count, live: result.live };
-  }
+  },
+  { auth: true }
 );

@@ -1,13 +1,11 @@
 import { Elysia } from "elysia";
-import { requireUser } from "../../../lib/auth";
+import { authPlugin } from "../../../plugins/auth";
 import { postBrain, type BrainBody } from "../../../services/analytics-service";
 
-export const postBrainHandler = new Elysia().post(
+export const postBrainHandler = new Elysia().use(authPlugin).post(
   "/api/ig/brain",
-  async ({ request, body, set }) => {
-    const a = await requireUser(request.headers);
-    if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-    if (!a.ctx.accountId) { set.status = 404; return { error: "no account" }; }
+  async ({ auth, body, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const b = (body ?? {}) as BrainBody;
     try {
       return await postBrain(b);
@@ -16,5 +14,6 @@ export const postBrainHandler = new Elysia().post(
       if (err.status) { set.status = err.status; return { error: err.error }; }
       throw e;
     }
-  }
+  },
+  { auth: true }
 );
