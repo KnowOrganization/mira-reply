@@ -3,7 +3,7 @@
 import { Elysia } from "elysia";
 import { db, accounts, drafts, history } from "@shaiz/db";
 import { eq, count } from "drizzle-orm";
-import { requireUser } from "../lib/auth";
+import { authPlugin } from "../plugins/auth";
 
 function isConfigured(): boolean {
   return Boolean(
@@ -16,12 +16,10 @@ const disconnected = {
   replyMode: "assisted", settings: {}, pendingCount: 0, historyCount: 0, canReconnect: false,
 };
 
-export const statusRoute = new Elysia().get("/api/ig/status", async ({ request, set }) => {
-  const a = await requireUser(request.headers);
-  if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-  if (!a.ctx.accountId) return disconnected;
+export const statusRoute = new Elysia().use(authPlugin).get("/api/ig/status", async ({ auth }) => {
+  if (!auth.accountId) return disconnected;
 
-  const [acct] = await db.select().from(accounts).where(eq(accounts.igUserId, a.ctx.accountId));
+  const [acct] = await db.select().from(accounts).where(eq(accounts.igUserId, auth.accountId));
   if (!acct || !acct.accessToken) return disconnected;
 
   const [{ value: pendingCount }] = await db.select({ value: count() }).from(drafts).where(eq(drafts.accountId, acct.igUserId));
@@ -39,4 +37,4 @@ export const statusRoute = new Elysia().get("/api/ig/status", async ({ request, 
     pendingCount, historyCount,
     canReconnect: Boolean(acct.lastToken),
   };
-});
+}, { auth: true });
