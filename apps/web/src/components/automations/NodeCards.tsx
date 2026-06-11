@@ -1,0 +1,670 @@
+"use client";
+
+// Message-type node cards + RenderNode dispatcher
+// TriggerNode   → TriggerNode.tsx
+// PostFilterNode → PostFilterNode.tsx
+
+import {
+  MessageSquare,
+  LayoutGrid,
+  Image as ImageIcon,
+  UserPlus,
+  ClipboardList,
+  Clock,
+  Plus,
+} from "lucide-react";
+import type { AutomationNodeData, AutomationNode } from "@shaiz/shared";
+import { NodeShell, NodeHeader } from "./NodeShell";
+import { Toggle, MessageBody, SuggestButton } from "./MessageBody";
+import { DELAY_OPTS } from "./constants";
+import type { NodeCardProps } from "./types";
+import { TriggerNode } from "./TriggerNode";
+import { PostFilterNode } from "./PostFilterNode";
+
+// ── OpeningMessageNode ─────────────────────────────────────────────────────
+
+export function OpeningMessageNode({
+  data,
+  onUpdate,
+  onDelete,
+  canDelete,
+  dragMode,
+}: NodeCardProps) {
+  const enabled = data.enabled !== false;
+  return (
+    <NodeShell color="#7c3aed" glow={enabled} dragMode={dragMode}>
+      <NodeHeader
+        icon={<MessageSquare size={14} />}
+        title="Opening Message"
+        subtitle="First message sent to user"
+        color="#7c3aed"
+        onDelete={onDelete}
+        canDelete={canDelete}
+      />
+      <div
+        style={{
+          padding: "7px 12px 0",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span
+          style={{
+            fontSize: 9.5,
+            color: "#383848",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.12em",
+          }}
+        >
+          Message
+        </span>
+        <Toggle on={enabled} onChange={(v) => onUpdate({ enabled: v })} />
+      </div>
+      {enabled ? (
+        <MessageBody
+          data={data}
+          onUpdate={onUpdate}
+          accentColor="#7c3aed"
+          placeholder="Hey there! I'm so happy you're here..."
+          nodeType="opening_message"
+        />
+      ) : (
+        <div style={{ height: 10 }} />
+      )}
+    </NodeShell>
+  );
+}
+
+// ── TextMessageNode ────────────────────────────────────────────────────────
+
+export function TextMessageNode({
+  data,
+  onUpdate,
+  onDelete,
+  canDelete,
+  dragMode,
+}: NodeCardProps) {
+  return (
+    <NodeShell color="#6366f1" dragMode={dragMode}>
+      <NodeHeader
+        icon={<MessageSquare size={14} />}
+        title="Text Message"
+        subtitle="Send a simple text or button response"
+        color="#6366f1"
+        onDelete={onDelete}
+        canDelete={canDelete}
+      />
+      <MessageBody
+        data={data}
+        onUpdate={onUpdate}
+        accentColor="#6366f1"
+        placeholder="Your message here..."
+        nodeType="text_message"
+      />
+    </NodeShell>
+  );
+}
+
+// ── CardMessageNode ────────────────────────────────────────────────────────
+
+export function CardMessageNode({
+  data,
+  onUpdate,
+  onDelete,
+  canDelete,
+  dragMode,
+}: NodeCardProps) {
+  return (
+    <NodeShell color="#ec4899" dragMode={dragMode}>
+      <NodeHeader
+        icon={<LayoutGrid size={14} />}
+        title="Card Message"
+        subtitle="Image via DM · Text via private reply"
+        color="#ec4899"
+        onDelete={onDelete}
+        canDelete={canDelete}
+      />
+      <div style={{ padding: "9px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+        <div
+          style={{
+            height: 68,
+            border: "1px dashed rgba(236,72,153,0.2)",
+            borderRadius: 9,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexDirection: "column",
+            gap: 4,
+            color: "#2a2a2a",
+            background: "rgba(236,72,153,0.04)",
+          }}
+        >
+          <ImageIcon size={15} />
+          <span style={{ fontSize: 10 }}>Select an image · Max 15MB</span>
+        </div>
+        {(["title", "subtitle"] as const).map((key) => (
+          <div key={key} style={{ position: "relative" }}>
+            <input
+              value={(data as unknown as Record<string, string>)[key] ?? ""}
+              maxLength={80}
+              onChange={(e) => onUpdate({ [key]: e.target.value })}
+              placeholder={key.charAt(0).toUpperCase() + key.slice(1)}
+              style={{
+                width: "100%",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                borderRadius: 8,
+                padding: "6px 28px 6px 9px",
+                fontSize: 11,
+                color: "#ccc",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+            <span
+              style={{
+                position: "absolute",
+                right: 7,
+                top: "50%",
+                transform: "translateY(-50%)",
+                fontSize: 9,
+                color: "#222",
+              }}
+            >
+              {((data as unknown as Record<string, string>)[key] ?? "").length}/80
+            </span>
+          </div>
+        ))}
+        <button
+          onClick={() =>
+            onUpdate({ buttons: [...(data.buttons ?? []), { label: "", payload: "" }] })
+          }
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 5,
+            background: "rgba(236,72,153,0.07)",
+            border: "1px dashed rgba(236,72,153,0.2)",
+            borderRadius: 8,
+            padding: "5px",
+            fontSize: 10.5,
+            color: "#ec4899",
+            cursor: "pointer",
+          }}
+        >
+          <Plus size={10} /> Add Button
+        </button>
+      </div>
+    </NodeShell>
+  );
+}
+
+// ── ImageMessageNode ───────────────────────────────────────────────────────
+
+export function ImageMessageNode({ onDelete, canDelete, dragMode }: NodeCardProps) {
+  return (
+    <NodeShell color="#14b8a6" dragMode={dragMode}>
+      <NodeHeader
+        icon={<ImageIcon size={14} />}
+        title="Image Message"
+        subtitle="Sent as DM attachment (not private reply)"
+        color="#14b8a6"
+        onDelete={onDelete}
+        canDelete={canDelete}
+      />
+      <div style={{ padding: "9px 12px" }}>
+        <div
+          style={{
+            height: 78,
+            border: "1.5px dashed rgba(20,184,166,0.25)",
+            borderRadius: 9,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexDirection: "column",
+            gap: 5,
+            background: "rgba(20,184,166,0.04)",
+            cursor: "pointer",
+          }}
+        >
+          <ImageIcon size={17} color="#14b8a6" />
+          <span style={{ fontSize: 10, color: "#14b8a6" }}>Click or drag image here</span>
+        </div>
+      </div>
+    </NodeShell>
+  );
+}
+
+// ── AskFollowNode ──────────────────────────────────────────────────────────
+
+export function AskFollowNode({
+  data,
+  onUpdate,
+  onDelete,
+  canDelete,
+  dragMode,
+  windowOpen,
+}: NodeCardProps) {
+  return (
+    <NodeShell color="#f59e0b" dragMode={dragMode}>
+      <NodeHeader
+        icon={<UserPlus size={14} />}
+        title="Ask For Follow"
+        subtitle="Request users to follow your account"
+        color="#f59e0b"
+        onDelete={onDelete}
+        canDelete={canDelete}
+      />
+      <div style={{ padding: "9px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div
+            style={{
+              fontSize: 9.5,
+              color: "#3a3a4a",
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.1em",
+            }}
+          >
+            Message
+          </div>
+          <SuggestButton nodeType="ask_follow" onSelect={(t) => onUpdate({ text: t })} />
+        </div>
+        <textarea
+          value={data.text ?? ""}
+          onChange={(e) => onUpdate({ text: e.target.value })}
+          placeholder="Follow @[username] then tap the button below 👇"
+          rows={2}
+          style={{
+            width: "100%",
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(245,158,11,0.18)",
+            borderRadius: 8,
+            padding: "7px 9px",
+            fontSize: 11,
+            color: "#ccc",
+            outline: "none",
+            resize: "none",
+            boxSizing: "border-box",
+            lineHeight: 1.5,
+          }}
+        />
+        <div style={{ fontSize: 9.5, color: "#3a3a4a", lineHeight: 1.4 }}>
+          Use{" "}
+          <span style={{ color: "#f59e0b", fontFamily: "monospace" }}>[username]</span> as
+          placeholder — replaced with your IG handle at send time.
+        </div>
+        <div>
+          <div
+            style={{
+              fontSize: 9.5,
+              color: "#3a3a4a",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.1em",
+              marginBottom: 5,
+            }}
+          >
+            Confirm button
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              background: "rgba(245,158,11,0.07)",
+              border: "1px solid rgba(245,158,11,0.2)",
+              borderRadius: 8,
+              padding: "5px 9px",
+            }}
+          >
+            <span style={{ fontSize: 12 }}>✓</span>
+            <input
+              value={data.buttons?.[0]?.label ?? ""}
+              onChange={(e) =>
+                onUpdate({ buttons: [{ label: e.target.value, payload: "done" }] })
+              }
+              placeholder="I'm following ✓"
+              style={{
+                flex: 1,
+                background: "transparent",
+                border: "none",
+                fontSize: 11,
+                color: "#f59e0b",
+                outline: "none",
+                fontWeight: 600,
+              }}
+            />
+          </div>
+          <div style={{ fontSize: 9.5, color: "#3a3a4a", lineHeight: 1.4, marginTop: 4 }}>
+            User taps this to confirm — no typing. Defaults to{" "}
+            <span style={{ color: "#f59e0b" }}>I&apos;m following ✓</span>.
+          </div>
+        </div>
+        {windowOpen === false && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 6,
+              background: "rgba(251,146,60,0.07)",
+              border: "1px solid rgba(251,146,60,0.2)",
+              borderRadius: 8,
+              padding: "7px 10px",
+              fontSize: 10.5,
+              color: "#fb923c",
+              lineHeight: 1.4,
+            }}
+          >
+            <span style={{ fontSize: 13, flexShrink: 0 }}>⚠</span>
+            Opening Message disabled — this step won't execute
+          </div>
+        )}
+      </div>
+    </NodeShell>
+  );
+}
+
+// ── LeadFormNode ───────────────────────────────────────────────────────────
+
+export function LeadFormNode({
+  data,
+  onUpdate,
+  onDelete,
+  canDelete,
+  dragMode,
+}: NodeCardProps) {
+  return (
+    <NodeShell color="#a855f7" dragMode={dragMode}>
+      <NodeHeader
+        icon={<ClipboardList size={14} />}
+        title="Lead Form"
+        subtitle="Request users to input text"
+        color="#a855f7"
+        onDelete={onDelete}
+        canDelete={canDelete}
+      />
+      <div style={{ padding: "9px 12px" }}>
+        <input
+          value={data.question ?? ""}
+          onChange={(e) => onUpdate({ question: e.target.value })}
+          placeholder="What's your question?"
+          style={{
+            width: "100%",
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(168,85,247,0.2)",
+            borderRadius: 8,
+            padding: "7px 9px",
+            fontSize: 11,
+            color: "#ccc",
+            outline: "none",
+            boxSizing: "border-box",
+          }}
+        />
+      </div>
+    </NodeShell>
+  );
+}
+
+// ── FollowGateNode ─────────────────────────────────────────────────────────
+
+export function FollowGateNode({
+  data,
+  onUpdate,
+  onDelete,
+  canDelete,
+  dragMode,
+}: NodeCardProps) {
+  return (
+    <NodeShell color="#ec4899" dragMode={dragMode}>
+      <NodeHeader
+        icon={<UserPlus size={14} />}
+        title="Follow Gate"
+        subtitle="Only proceeds if user is following"
+        color="#ec4899"
+        onDelete={onDelete}
+        canDelete={canDelete}
+      />
+      <div style={{ padding: "9px 12px", display: "flex", flexDirection: "column", gap: 9 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              padding: "6px 9px",
+              borderRadius: 8,
+              background: "rgba(34,197,94,0.07)",
+              border: "1px solid rgba(34,197,94,0.15)",
+            }}
+          >
+            <span style={{ fontSize: 13 }}>✓</span>
+            <span style={{ fontSize: 10.5, color: "#22c55e" }}>
+              Following → continues to next node
+            </span>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              padding: "6px 9px",
+              borderRadius: 8,
+              background: "rgba(239,68,68,0.07)",
+              border: "1px solid rgba(239,68,68,0.15)",
+            }}
+          >
+            <span style={{ fontSize: 13 }}>✗</span>
+            <span style={{ fontSize: 10.5, color: "#f87171" }}>
+              Not following → sends gate message below
+            </span>
+          </div>
+        </div>
+
+        <div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 5,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 9.5,
+                color: "#3a3a4a",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+              }}
+            >
+              Message when not following
+            </div>
+            <SuggestButton nodeType="follow_gate" onSelect={(t) => onUpdate({ text: t })} />
+          </div>
+          <textarea
+            value={data.text ?? ""}
+            onChange={(e) => onUpdate({ text: e.target.value })}
+            placeholder={`Oops! 😅 This is for our community only 💜\n\nFollow @[username] to unlock it!\n\nReply "done" once you've followed 👇`}
+            rows={4}
+            style={{
+              width: "100%",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(236,72,153,0.2)",
+              borderRadius: 8,
+              padding: "7px 9px",
+              fontSize: 11,
+              color: "#ccc",
+              outline: "none",
+              resize: "none",
+              boxSizing: "border-box",
+              lineHeight: 1.5,
+            }}
+          />
+          <div style={{ fontSize: 9.5, color: "#2a2a3a", marginTop: 4, lineHeight: 1.4 }}>
+            Use{" "}
+            <span style={{ color: "#ec4899", fontFamily: "monospace" }}>[username]</span> —
+            replaced with your IG handle. User replies "done" → re-checks follow status.
+          </div>
+        </div>
+      </div>
+    </NodeShell>
+  );
+}
+
+// ── FollowupMessageNode ────────────────────────────────────────────────────
+
+export function FollowupMessageNode({
+  data,
+  onUpdate,
+  onDelete,
+  canDelete,
+  dragMode,
+  windowOpen,
+}: NodeCardProps) {
+  const d = data.delayMinutes ?? 60;
+  const fmt = (m: number) =>
+    m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}`;
+  return (
+    <NodeShell color="#f97316" dragMode={dragMode}>
+      <NodeHeader
+        icon={<Clock size={14} />}
+        title="Follow-up Message"
+        subtitle={`Sent after ${fmt(d)} delay`}
+        color="#f97316"
+        onDelete={onDelete}
+        canDelete={canDelete}
+      />
+      <div style={{ padding: "9px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+        <textarea
+          value={data.text ?? ""}
+          onChange={(e) => onUpdate({ text: e.target.value })}
+          placeholder="Follow-up message..."
+          rows={2}
+          style={{
+            width: "100%",
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: 8,
+            padding: "7px 9px",
+            fontSize: 11,
+            color: "#ccc",
+            outline: "none",
+            resize: "none",
+            boxSizing: "border-box",
+            lineHeight: 1.5,
+          }}
+        />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+          {DELAY_OPTS.map((opt) => (
+            <button
+              key={opt}
+              onClick={() => onUpdate({ delayMinutes: opt })}
+              style={{
+                padding: "3px 7px",
+                borderRadius: 5,
+                border: `1px solid ${d === opt ? "#f97316" : "rgba(255,255,255,0.06)"}`,
+                background: d === opt ? "rgba(249,115,22,0.13)" : "transparent",
+                color: d === opt ? "#f97316" : "#383838",
+                fontSize: 10,
+                cursor: "pointer",
+              }}
+            >
+              {fmt(opt)}
+            </button>
+          ))}
+        </div>
+        {windowOpen === false ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 6,
+              background: "rgba(251,146,60,0.07)",
+              border: "1px solid rgba(251,146,60,0.2)",
+              borderRadius: 8,
+              padding: "7px 10px",
+              fontSize: 10.5,
+              color: "#fb923c",
+              lineHeight: 1.4,
+            }}
+          >
+            <span style={{ fontSize: 13, flexShrink: 0 }}>⚠</span>
+            Opening Message disabled — this step won't execute
+          </div>
+        ) : (
+          <div
+            style={{
+              fontSize: 10,
+              color: "#7c2d12",
+              background: "rgba(249,115,22,0.05)",
+              border: "1px solid rgba(249,115,22,0.09)",
+              borderRadius: 6,
+              padding: "4px 7px",
+              lineHeight: 1.4,
+            }}
+          >
+            Sends after delay once Opening Message is delivered.
+          </div>
+        )}
+      </div>
+    </NodeShell>
+  );
+}
+
+// ── RenderNode dispatcher ──────────────────────────────────────────────────
+
+export { TriggerNode, PostFilterNode };
+
+export function RenderNode({
+  node,
+  onUpdate,
+  onDelete,
+  canDelete,
+  dragMode,
+  windowOpen,
+}: {
+  node: AutomationNode;
+  onUpdate: (p: Partial<AutomationNodeData>) => void;
+  onDelete: () => void;
+  canDelete: boolean;
+  dragMode?: boolean;
+  windowOpen?: boolean;
+}) {
+  const props: NodeCardProps = {
+    data: node.data,
+    onUpdate,
+    onDelete,
+    canDelete,
+    dragMode,
+    windowOpen,
+  };
+  switch (node.type) {
+    case "trigger":
+      return <TriggerNode {...props} />;
+    case "post_filter":
+      return <PostFilterNode {...props} />;
+    case "opening_message":
+      return <OpeningMessageNode {...props} />;
+    case "text_message":
+      return <TextMessageNode {...props} />;
+    case "card_message":
+      return <CardMessageNode {...props} />;
+    case "image_message":
+      return <ImageMessageNode {...props} />;
+    case "ask_follow":
+      return <AskFollowNode {...props} />;
+    case "follow_gate":
+      return <FollowGateNode {...props} />;
+    case "lead_form":
+      return <LeadFormNode {...props} />;
+    case "followup_message":
+      return <FollowupMessageNode {...props} />;
+    default:
+      return null;
+  }
+}
