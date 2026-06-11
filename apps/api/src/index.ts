@@ -18,6 +18,23 @@ import { webhookRoute } from "./routes/webhook";
 
 const PORT = Number(process.env.API_PORT || 4000);
 
+// Fail fast on missing required secrets/connections. In production a missing
+// var is fatal (no silent insecure fallback); in dev we warn and continue so
+// local work isn't blocked.
+const REQUIRED_ENV = [
+  "DATABASE_URL",
+  "REDIS_URL",
+  "META_APP_SECRET",
+  "META_WEBHOOK_VERIFY_TOKEN",
+  "BETTER_AUTH_SECRET",
+];
+const missingEnv = REQUIRED_ENV.filter((k) => !process.env[k]);
+if (missingEnv.length) {
+  const msg = `[api] missing required env: ${missingEnv.join(", ")}`;
+  if (process.env.NODE_ENV === "production") throw new Error(msg);
+  console.warn(`${msg} — continuing (NODE_ENV != production)`);
+}
+
 // Explicit origins (not reflect-any-with-credentials). Normal traffic comes
 // server-side via the Next rewrite proxy, so this only matters for direct calls.
 const ALLOWED_ORIGINS = [
@@ -26,7 +43,16 @@ const ALLOWED_ORIGINS = [
 ].filter(Boolean);
 
 export const app = new Elysia()
-  .use(cors({ origin: ALLOWED_ORIGINS, credentials: true }))
+  .use(
+    cors({
+      origin: ALLOWED_ORIGINS,
+      credentials: true,
+      // explicit allowedHeaders (not undefined) — a real bug source per the
+      // migration guideline; cover cookie + bearer auth + JSON.
+      allowedHeaders: ["Content-Type", "Authorization"],
+      preflight: true,
+    })
+  )
   .get("/health", () => ({ ok: true, service: "mira-api" }))
   .use(statusRoute)
   .use(settingsRoute)
