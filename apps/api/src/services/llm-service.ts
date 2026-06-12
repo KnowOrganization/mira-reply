@@ -84,15 +84,11 @@ export async function buildAccountContext(accountId: string): Promise<string> {
   return lines.join("\n");
 }
 
-/**
- * Prepare the upstream fetch options for the /api/chat Ollama proxy.
- * Handler is responsible for constructing the streaming Response.
- */
-export async function prepareChatUpstream(
+/** Merge the Mira persona + account snapshot into the chat's system prompt. */
+export async function prepareChatMessages(
   accountId: string,
-  chatBody: ChatBody
-): Promise<{ upstreamUrl: string; upstreamInit: RequestInit }> {
-  const { model, host, messages } = chatBody;
+  messages: ChatBody["messages"]
+): Promise<ChatBody["messages"]> {
   const acctCtx = await buildAccountContext(accountId);
 
   const sysIdx = messages.findIndex((m) => m.role === "system");
@@ -111,10 +107,22 @@ export async function prepareChatUpstream(
     "=== END SNAPSHOT ===",
   ].join("\n");
 
-  const finalMessages = [
+  return [
     { role: "system" as const, content: newSys },
     ...messages.filter((m) => m.role !== "system"),
   ];
+}
+
+/**
+ * Prepare the upstream fetch options for the /api/chat Ollama proxy.
+ * Handler is responsible for constructing the streaming Response.
+ */
+export async function prepareChatUpstream(
+  accountId: string,
+  chatBody: ChatBody
+): Promise<{ upstreamUrl: string; upstreamInit: RequestInit }> {
+  const { model, host, messages } = chatBody;
+  const finalMessages = await prepareChatMessages(accountId, messages);
 
   return {
     upstreamUrl: `${host.replace(/\/$/, "")}/api/chat`,

@@ -1,19 +1,57 @@
-// POST /api/chat — streaming Ollama proxy (passthrough body, auth-gated)
-// Streaming Response construction stays in the handler (inherently HTTP).
-// prepareChatUpstream handles upstream fetch setup.
+// POST /api/chat — streaming chat proxy (auth-gated). Provider-aware:
+//   claude (default) — Agent SDK stream on the user's subscription
+//   ollama           — passthrough to the local Ollama upstream (original path)
+// Both emit Ollama-shaped NDJSON lines ({message:{content},done}) so the
+// playground/chat frontend needs no changes.
 import { Elysia } from "elysia";
 import { authPlugin } from "../../../plugins/auth";
-import { prepareChatUpstream, type ChatBody } from "../../../services/llm-service";
+import { aiProvider } from "@/lib/ig/llm";
+import { claudeChatStream } from "@/lib/ig/providers/claude";
+import {
+  prepareChatMessages,
+  prepareChatUpstream,
+  type ChatBody,
+} from "../../../services/llm-service";
+
+const NDJSON_HEADERS = {
+  "Content-Type": "application/x-ndjson; charset=utf-8",
+  "Cache-Control": "no-cache, no-transform",
+  "X-Accel-Buffering": "no",
+};
+
+function claudeNdjsonResponse(messages: ChatBody["messages"]): Response {
+  const enc = new TextEncoder();
+  const line = (obj: unknown) => enc.encode(JSON.stringify(obj) + "\n");
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const delta of claudeChatStream(messages)) {
+          controller.enqueue(line({ message: { role: "assistant", content: delta }, done: false }));
+        }
+        controller.enqueue(line({ message: { role: "assistant", content: "" }, done: true }));
+      } catch (e) {
+        controller.enqueue(line({ error: String(e), done: true }));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, { headers: NDJSON_HEADERS });
+}
 
 export const postChatHandler = new Elysia().use(authPlugin).post(
   "/api/chat",
   async ({ auth, body, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
 
-    const { upstreamUrl, upstreamInit } = await prepareChatUpstream(
-      auth.accountId,
-      (body ?? {}) as ChatBody
-    );
+    const chatBody = (body ?? {}) as ChatBody;
+
+    if (aiProvider() === "claude") {
+      const messages = await prepareChatMessages(auth.accountId, chatBody.messages ?? []);
+      return claudeNdjsonResponse(messages);
+    }
+
+    const { upstreamUrl, upstreamInit } = await prepareChatUpstream(auth.accountId, chatBody);
 
     const upstream = await fetch(upstreamUrl, upstreamInit).catch(
       (e: Error) => new Response(`Ollama unreachable at ${upstreamUrl}. (${e.message})`, { status: 502 })
@@ -25,13 +63,7 @@ export const postChatHandler = new Elysia().use(authPlugin).post(
       return new Response(txt || `Upstream error ${upstream.status}`, { status: upstream.status });
     }
 
-    return new Response(upstream.body, {
-      headers: {
-        "Content-Type": "application/x-ndjson; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-      },
-    });
+    return new Response(upstream.body, { headers: NDJSON_HEADERS });
   },
   { auth: true }
 );

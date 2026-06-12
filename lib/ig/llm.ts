@@ -1,34 +1,36 @@
-const OLLAMA = process.env.OLLAMA_HOST || "http://localhost:11434";
-const MODEL = process.env.OLLAMA_MODEL || "qwen2.5:7b-instruct";
+// LLM chokepoint — every Mira brain call (reply gen, perception, planning,
+// intent, KB verify, agent, brain loop) goes through chat()/chatJSON().
+// Provider is selected by MIRA_AI_PROVIDER:
+//   "claude" (default) — user's Claude subscription via the Agent SDK
+//   "ollama"           — local Ollama fallback (the original implementation)
+import { ollamaChat, type ChatMessage, type ChatOpts } from "./providers/ollama";
+import { claudeChat } from "./providers/claude";
 
-export async function chat(
-  messages: { role: "system" | "user" | "assistant"; content: string }[],
-  opts: { json?: boolean; temperature?: number } = {}
-) {
-  const res = await fetch(`${OLLAMA}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      stream: false,
-      format: opts.json ? "json" : undefined,
-      options: { temperature: opts.temperature ?? 0.7, top_p: 0.9 },
-    }),
-  });
-  if (!res.ok) throw new Error(`Ollama: ${res.status} ${await res.text()}`);
-  const j = (await res.json()) as { message: { content: string } };
-  return j.message.content;
+export type { ChatMessage, ChatOpts };
+
+export function aiProvider(): "claude" | "ollama" {
+  return (process.env.MIRA_AI_PROVIDER || "claude").toLowerCase() === "ollama"
+    ? "ollama"
+    : "claude";
+}
+
+export async function chat(messages: ChatMessage[], opts: ChatOpts = {}) {
+  return aiProvider() === "ollama" ? ollamaChat(messages, opts) : claudeChat(messages, opts);
 }
 
 export async function chatJSON<T>(
-  messages: { role: "system" | "user" | "assistant"; content: string }[],
+  messages: ChatMessage[],
   fallback: T,
   temp = 0.4
 ): Promise<T> {
   try {
     const out = await chat(messages, { json: true, temperature: temp });
-    return JSON.parse(out) as T;
+    // Claude may wrap JSON in markdown fences despite instructions; strip them.
+    const cleaned = out
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```\s*$/, "")
+      .trim();
+    return JSON.parse(cleaned) as T;
   } catch {
     return fallback;
   }

@@ -25,6 +25,7 @@
     "worker:watch": "tsx watch --env-file=.env.local worker/index.ts"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.175",
     "@shaiz/auth": "workspace:*",
     "@shaiz/db": "workspace:*",
     "@shaiz/shared": "workspace:*",
