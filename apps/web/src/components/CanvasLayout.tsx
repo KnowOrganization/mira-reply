@@ -8,12 +8,24 @@ import {
   BookOpen, Sparkles, Mic2, TrendingUp, Heart,
   MessageCircle, Send, Camera,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+import { motion } from "framer-motion";
 import { MiraLogo } from "./MiraLogo";
 import { PostCanvas } from "./PostCanvas";
 import { MiraFeed } from "./MiraFeed";
-import { SettingsPanel } from "./SettingsPanel";
-import { AutomationsView } from "./AutomationsView";
 import { useStatus, type IgStatus } from "@/lib/api/hooks";
+
+// Heavy, non-default views — split out of the dashboard bundle so the first
+// paint never parses the automations node-graph or the settings panel. They
+// load on demand: automations only when its view is selected, settings only
+// when opened.
+const AutomationsView = dynamic(() => import("./AutomationsView").then((m) => m.AutomationsView), {
+  ssr: false,
+  loading: () => <PanelBoot />,
+});
+const SettingsPanel = dynamic(() => import("./SettingsPanel").then((m) => m.SettingsPanel), {
+  ssr: false,
+});
 
 type TopView =
   | "dashboard"
@@ -382,6 +394,18 @@ export function CanvasLayout() {
         .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
         .scrollbar-thin::-webkit-scrollbar-thumb { background: #1a1a1a; border-radius: 2px; }
       `}</style>
+    </div>
+  );
+}
+
+// Loader shown in the main area while a lazily-loaded view chunk arrives. Matches
+// the dark app shell (which is intentionally not theme-tokened).
+function PanelBoot() {
+  return (
+    <div className="flex-1 h-full flex items-center justify-center" style={{ background: "#07070f" }}>
+      <motion.div animate={{ opacity: [0.25, 0.7, 0.25] }} transition={{ duration: 1.6, repeat: Infinity }}>
+        <MiraLogo size={30} color="#5a5a6a" />
+      </motion.div>
     </div>
   );
 }

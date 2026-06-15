@@ -18,7 +18,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
 function Splash() {
   return (
-    <div className="h-screen w-screen flex items-center justify-center" style={{ background: "#0a0a0a" }}>
+    <div className="h-screen w-screen flex items-center justify-center" style={{ background: "var(--bg-frame)" }}>
       <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.8, repeat: Infinity }}>
         <MiraLogo size={40} />
       </motion.div>
@@ -33,7 +33,7 @@ function SignIn() {
     await signIn.social({ provider: "google", callbackURL: "/" });
   };
   return (
-    <div className="h-screen w-screen flex items-center justify-center" style={{ background: "#0a0a0a" }}>
+    <div className="h-screen w-screen flex items-center justify-center" style={{ background: "var(--bg-frame)" }}>
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -42,13 +42,14 @@ function SignIn() {
       >
         <MiraLogo size={56} />
         <div className="text-center">
-          <h1 className="text-white text-2xl font-semibold tracking-tight">Welcome to Mira</h1>
-          <p className="text-white/50 text-sm mt-2">Sign in to connect your Instagram and automate replies.</p>
+          <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Welcome to Mira</h1>
+          <p className="text-sm mt-2" style={{ color: "var(--text-muted)" }}>Sign in to connect your Instagram and automate replies.</p>
         </div>
         <button
           onClick={go}
           disabled={busy}
-          className="flex items-center gap-3 bg-white text-black font-medium rounded-full px-6 py-3 hover:bg-white/90 transition disabled:opacity-60"
+          className="flex items-center gap-3 font-medium rounded-full px-6 py-3 transition disabled:opacity-60"
+          style={{ background: "var(--bg-elev)", color: "var(--text)", border: "1px solid var(--border)" }}
         >
           <GoogleMark />
           {busy ? "Redirecting…" : "Continue with Google"}
