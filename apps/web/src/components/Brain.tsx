@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { useBrain, useBrainAction } from "@/lib/api/hooks";
@@ -16,26 +16,148 @@ import {
   Check,
 } from "lucide-react";
 import { BrainGraph, BRAIN_TOPICS, type GraphFact } from "./BrainGraph";
+import { MiraLogo } from "./MiraLogo";
 
 const SPRING = { type: "spring" as const, stiffness: 320, damping: 30 };
 
 type Fact = GraphFact & { link?: { url: string; label: string } };
 
-// the guided interview — niche-agnostic; answerable by any kind of creator
-// (food, fashion, fitness, travel, tech, comedy, music, moto — anyone).
-const INTERVIEW: { topic: string; q: string }[] = [
-  { topic: "personal", q: "What's your name, and where are you based?" },
-  { topic: "general", q: "What's your account about — your niche or main topic?" },
-  { topic: "personal", q: "Is this full-time, a side hustle, or alongside a job / studies?" },
-  { topic: "personal", q: "How would you describe your personality and your content's vibe?" },
-  { topic: "personal", q: "How and why did you start this account?" },
-  { topic: "gear", q: "What do you create with — tools, gear, software, your setup?" },
-  { topic: "general", q: "What makes your content recognisable — your style, format or signature?" },
-  { topic: "general", q: "Who is your audience — who follows you, and why?" },
-  { topic: "shop", q: "Any links you share often — shop, merch, bookings, collabs, other socials?" },
-  { topic: "general", q: "What do followers ask you most — and what's the answer?" },
-  { topic: "general", q: "Anything else Mira should know about you or the account? Write freely." },
+// the guided interview — niche-agnostic and mostly tap-to-select, so any creator
+// (food, fashion, fitness, travel, tech, comedy, music, moto — anyone) builds a
+// strong brain in seconds. Only name / links / FAQ answers need real typing.
+// Curated for the facts Mira actually uses to answer follower DMs + comments:
+// who you are, what you offer, where to buy, collabs, gear, voice, top FAQ.
+type QKind = "single" | "multi" | "text" | "longtext";
+type TextField = { key: string; label: string; placeholder: string };
+type Question = {
+  topic: string; // drives the chip colour header only — the LLM assigns the real fact topic
+  q: string;
+  kind: QKind;
+  options?: string[];
+  allowOther?: boolean; // single/multi: also show a free "add your own" input
+  otherLabel?: string; // single/multi: a labelled follow-up text input
+  fields?: TextField[]; // text: the small labelled inputs
+  optional?: boolean;
+};
+
+const QUESTIONS: Question[] = [
+  {
+    topic: "personal",
+    q: "What's your name, and where are you based?",
+    kind: "text",
+    fields: [
+      { key: "name", label: "Name", placeholder: "Your name" },
+      { key: "location", label: "Based in", placeholder: "City, country" },
+    ],
+  },
+  {
+    topic: "general",
+    q: "What's your account about?",
+    kind: "multi",
+    allowOther: true,
+    options: [
+      "Fitness", "Fashion & Style", "Food", "Travel", "Tech", "Beauty",
+      "Business & Finance", "Comedy", "Music", "Art & Design", "Photography",
+      "Gaming", "Education", "Lifestyle", "Health & Wellness", "Automotive",
+      "Sports", "Parenting",
+    ],
+  },
+  {
+    topic: "shop",
+    q: "What do you do or offer here?",
+    kind: "multi",
+    allowOther: true,
+    options: [
+      "Sell physical products", "Digital products / courses",
+      "Services / freelance", "Coaching / consulting",
+      "Just content & entertainment", "Brand promos",
+      "Affiliate / recommendations",
+    ],
+  },
+  {
+    topic: "shop",
+    q: "Where can people buy, book, or find more?",
+    kind: "text",
+    optional: true,
+    fields: [
+      { key: "shop", label: "Website / shop", placeholder: "yoursite.com" },
+      { key: "booking", label: "Booking / contact", placeholder: "email or link" },
+      { key: "social", label: "Best other social", placeholder: "@handle or link" },
+    ],
+  },
+  {
+    topic: "general",
+    q: "Open to brand collabs or paid partnerships?",
+    kind: "single",
+    options: ["Yes, love them", "Selective / depends", "Not right now"],
+    otherLabel: "How should brands reach you? (optional)",
+  },
+  {
+    topic: "gear",
+    q: "What do you create with?",
+    kind: "multi",
+    allowOther: true,
+    optional: true,
+    options: [
+      "Phone camera", "DSLR / mirrorless", "GoPro", "Drone", "Mic",
+      "Ring light", "Lightroom", "CapCut", "Premiere Pro", "Final Cut",
+      "Canva", "Photoshop",
+    ],
+  },
+  {
+    topic: "personal",
+    q: "Your personality & content vibe?",
+    kind: "multi",
+    options: [
+      "Funny", "Chill", "Energetic", "Professional", "Inspirational",
+      "Educational", "Bold", "Wholesome", "Aesthetic", "Warm", "Real / raw",
+      "Playful",
+    ],
+  },
+  {
+    topic: "general",
+    q: "What do followers ask you most?",
+    kind: "multi",
+    options: [
+      "Prices", "Where to buy", "How to start", "Your gear", "Your location",
+      "Collabs", "Recommendations", "Tutorials",
+    ],
+    otherLabel: "The short answer they need (optional)",
+  },
+  {
+    topic: "general",
+    q: "Anything else Mira should know?",
+    kind: "longtext",
+    optional: true,
+  },
 ];
+
+type Answer = { selected: string[]; other: string; fields: Record<string, string> };
+const emptyAnswer = (): Answer => ({ selected: [], other: "", fields: {} });
+
+function hasContent(a: Answer): boolean {
+  return (
+    a.selected.length > 0 ||
+    a.other.trim().length > 0 ||
+    Object.values(a.fields).some((v) => v.trim().length > 0)
+  );
+}
+
+// turn one answer into the natural-language line the extractor reads
+function composeAnswer(qu: Question, a: Answer): string {
+  if (qu.kind === "text") {
+    return (qu.fields || [])
+      .map((f) => (a.fields[f.key]?.trim() ? `${f.label}: ${a.fields[f.key].trim()}` : ""))
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (qu.kind === "longtext") return a.other.trim();
+  const base = a.selected.join(", ");
+  const extra = a.other.trim();
+  if (!extra) return base;
+  if (qu.otherLabel) return base ? `${base} — ${extra}` : extra;
+  return [base, extra].filter(Boolean).join(", ");
+}
 
 const TOPIC = Object.fromEntries(BRAIN_TOPICS.map((t) => [t.key, t]));
 
@@ -81,7 +203,7 @@ export function Brain() {
             className="w-8 h-8 rounded-xl flex items-center justify-center"
             style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
           >
-            <Sparkles size={16} />
+            <MiraLogo size={18} color="var(--accent-fg)" />
           </div>
           <h1 className="display" style={{ fontSize: 22 }}>
             Account Brain
@@ -187,7 +309,7 @@ export function Brain() {
           </div>
 
           <div className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-4">
-            {mode === "interview" && <Interview onSaved={load} />}
+            {mode === "interview" && <Interview onSaved={load} handle={handle} />}
             {mode === "paste" && <Paste onSaved={load} />}
             {mode === "facts" && (
               <FactsList facts={facts} onChanged={load} onPick={setSelected} />
@@ -252,23 +374,83 @@ function Legend() {
 }
 
 // ── interview ────────────────────────────────────────────────────────────
-// Collect every answer first, then build the graph in one pass at the end.
-function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
+// Mostly MCQ — tap chips, type only where unavoidable (name, links, FAQ answer).
+// Selections autosave to localStorage so progress survives a reload. Everything
+// is composed into one blob at the end and sent to the same `extract` action
+// Paste uses — so the brain-build path (and the DM pipeline) is unchanged.
+function Interview({ onSaved, handle }: { onSaved: () => Promise<void>; handle: string }) {
+  const KEY = `mira.brain.interview:${handle || "default"}`;
   const [idx, setIdx] = useState(0);
-  const [answers, setAnswers] = useState<string[]>(() =>
-    INTERVIEW.map(() => "")
-  );
+  const [answers, setAnswers] = useState<Answer[]>(() => QUESTIONS.map(emptyAnswer));
+  const [hydrated, setHydrated] = useState(false);
   const [building, setBuilding] = useState(false);
   const [done, setDone] = useState<number | null>(null);
   const extractAction = useBrainAction<{ created?: unknown[] }>();
 
-  const answeredCount = answers.filter((a) => a.trim()).length;
+  // Load saved progress once, on the client — NOT in the useState initialiser, so
+  // the server and first client render both start empty and hydration matches; we
+  // fill from localStorage only after mount. That's the React-recommended way to
+  // avoid an SSR hydration mismatch, and it legitimately needs setState here.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as { answers?: unknown; idx?: unknown };
+        if (Array.isArray(saved.answers)) {
+          setAnswers(
+            QUESTIONS.map((_, i) => {
+              const a = (saved.answers as Answer[])[i] || ({} as Answer);
+              return {
+                selected: Array.isArray(a.selected) ? a.selected : [],
+                other: typeof a.other === "string" ? a.other : "",
+                fields: a.fields && typeof a.fields === "object" ? a.fields : {},
+              };
+            })
+          );
+        }
+        if (typeof saved.idx === "number") setIdx(Math.min(saved.idx, QUESTIONS.length));
+      }
+    } catch {
+      /* corrupt cache — ignore */
+    }
+    setHydrated(true);
+  }, [KEY]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // autosave on every change (only after hydration, so we don't clobber the load)
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ answers, idx }));
+    } catch {
+      /* quota / private mode — non-fatal */
+    }
+  }, [answers, idx, hydrated, KEY]);
+
+  const answeredCount = answers.filter(hasContent).length;
+
+  function patch(p: Partial<Answer>) {
+    setAnswers((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], ...p };
+      return next;
+    });
+  }
+  function setField(key: string, v: string) {
+    setAnswers((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], fields: { ...next[idx].fields, [key]: v } };
+      return next;
+    });
+  }
 
   async function build() {
     setBuilding(true);
-    const text = INTERVIEW.map((q, i) =>
-      answers[i].trim() ? `${q.q}\n${answers[i].trim()}` : ""
-    )
+    const text = QUESTIONS.map((qu, i) => {
+      const composed = composeAnswer(qu, answers[i]);
+      return composed ? `${qu.q}\n${composed}` : "";
+    })
       .filter(Boolean)
       .join("\n\n");
     let learned = 0;
@@ -278,6 +460,11 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
       if (learned)
         toast.success(`Learned ${learned} fact${learned === 1 ? "" : "s"}`);
       await onSaved();
+    }
+    try {
+      localStorage.removeItem(KEY); // interview consumed — start fresh next time
+    } catch {
+      /* ignore */
     }
     setBuilding(false);
     setDone(learned);
@@ -300,7 +487,7 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
         </p>
         <button
           onClick={() => {
-            setAnswers(INTERVIEW.map(() => ""));
+            setAnswers(QUESTIONS.map(emptyAnswer));
             setIdx(0);
             setDone(null);
           }}
@@ -314,43 +501,42 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
   }
 
   // review & build screen
-  if (idx >= INTERVIEW.length) {
+  if (idx >= QUESTIONS.length) {
     return (
       <div>
         <div className="text-[14px] font-bold mb-1">Review &amp; build</div>
         <p className="text-[12px] mb-3" style={{ color: "var(--text-subtle)" }}>
-          {answeredCount} of {INTERVIEW.length} answered. Mira reads it all at
+          {answeredCount} of {QUESTIONS.length} answered. Mira reads it all at
           once and grows the graph. Tap any answer to edit it.
         </p>
         <div className="space-y-1.5 mb-4">
-          {INTERVIEW.map((q, i) => (
-            <button
-              key={i}
-              onClick={() => setIdx(i)}
-              className="w-full text-left rounded-xl p-2.5"
-              style={{
-                background: "var(--bg-elev)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <div
-                className="text-[11px] font-semibold truncate"
-                style={{ color: "var(--text-subtle)" }}
-              >
-                {q.q}
-              </div>
-              <div
-                className="text-[12.5px] mt-0.5 line-clamp-2"
+          {QUESTIONS.map((qu, i) => {
+            const composed = composeAnswer(qu, answers[i]);
+            return (
+              <button
+                key={i}
+                onClick={() => setIdx(i)}
+                className="w-full text-left rounded-xl p-2.5"
                 style={{
-                  color: answers[i].trim()
-                    ? "var(--text)"
-                    : "var(--text-subtle)",
+                  background: "var(--bg-elev)",
+                  border: "1px solid var(--border)",
                 }}
               >
-                {answers[i].trim() || "— skipped —"}
-              </div>
-            </button>
-          ))}
+                <div
+                  className="text-[11px] font-semibold truncate"
+                  style={{ color: "var(--text-subtle)" }}
+                >
+                  {qu.q}
+                </div>
+                <div
+                  className="text-[12.5px] mt-0.5 line-clamp-2"
+                  style={{ color: composed ? "var(--text)" : "var(--text-subtle)" }}
+                >
+                  {composed || "— skipped —"}
+                </div>
+              </button>
+            );
+          })}
         </div>
         <div className="flex items-center gap-2">
           <motion.button
@@ -368,7 +554,7 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
             Build my brain
           </motion.button>
           <button
-            onClick={() => setIdx(INTERVIEW.length - 1)}
+            onClick={() => setIdx(QUESTIONS.length - 1)}
             className="h-11 px-3 rounded-xl text-[12px] font-semibold"
             style={{ background: "var(--bg-inset)", color: "var(--text-muted)" }}
           >
@@ -379,16 +565,9 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
     );
   }
 
-  const cur = INTERVIEW[idx];
+  const cur = QUESTIONS[idx];
   const topic = TOPIC[cur.topic];
-
-  function setAnswer(v: string) {
-    setAnswers((prev) => {
-      const next = [...prev];
-      next[idx] = v;
-      return next;
-    });
-  }
+  const ans = answers[idx];
 
   return (
     <div>
@@ -402,11 +581,16 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
         >
           {topic?.label}
         </span>
+        {cur.optional && (
+          <span className="text-[10px]" style={{ color: "var(--text-subtle)" }}>
+            optional
+          </span>
+        )}
         <span
           className="ml-auto text-[11px] tabular-nums"
           style={{ color: "var(--text-subtle)" }}
         >
-          {idx + 1} / {INTERVIEW.length}
+          {idx + 1} / {QUESTIONS.length}
         </span>
       </div>
       <div
@@ -416,7 +600,7 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
         <motion.div
           className="h-full rounded-full"
           style={{ background: "var(--accent)" }}
-          animate={{ width: `${(idx / INTERVIEW.length) * 100}%` }}
+          animate={{ width: `${(idx / QUESTIONS.length) * 100}%` }}
         />
       </div>
 
@@ -431,9 +615,9 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
           <div className="flex items-start gap-2 mb-3">
             <div
               className="w-7 h-7 rounded-xl shrink-0 flex items-center justify-center"
-              style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+              style={{ background: "var(--accent)" }}
             >
-              <Sparkles size={14} />
+              <MiraLogo size={15} color="var(--accent-fg)" />
             </div>
             <div
               className="text-[14px] font-semibold leading-snug pt-0.5"
@@ -442,15 +626,62 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
               {cur.q}
             </div>
           </div>
-          <textarea
-            value={answers[idx]}
-            onChange={(e) => setAnswer(e.target.value)}
-            rows={5}
-            autoFocus
-            placeholder="Answer in your own words — Mira pulls the facts out at the end. Leave blank to skip."
-            className="w-full px-3.5 py-3 rounded-xl bg-transparent text-[13.5px] outline-none resize-none"
-            style={{ border: "1px solid var(--border-strong)" }}
-          />
+
+          {/* answer body — varies by question kind */}
+          {cur.kind === "text" && (
+            <div className="space-y-2">
+              {(cur.fields || []).map((f) => (
+                <div key={f.key}>
+                  <label
+                    className="text-[11px] font-semibold"
+                    style={{ color: "var(--text-subtle)" }}
+                  >
+                    {f.label}
+                  </label>
+                  <input
+                    value={ans.fields[f.key] || ""}
+                    onChange={(e) => setField(f.key, e.target.value)}
+                    placeholder={f.placeholder}
+                    className="mt-1 w-full h-10 px-3 rounded-xl bg-transparent text-[13px] outline-none"
+                    style={{ border: "1px solid var(--border-strong)" }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {cur.kind === "longtext" && (
+            <textarea
+              value={ans.other}
+              onChange={(e) => patch({ other: e.target.value })}
+              rows={5}
+              autoFocus
+              placeholder="Write anything else — your story, links, what makes you you. Leave blank to skip."
+              className="w-full px-3.5 py-3 rounded-xl bg-transparent text-[13.5px] outline-none resize-none"
+              style={{ border: "1px solid var(--border-strong)" }}
+            />
+          )}
+
+          {(cur.kind === "single" || cur.kind === "multi") && (
+            <div className="space-y-2.5">
+              <ChipSelect
+                options={cur.options || []}
+                value={ans.selected}
+                multi={cur.kind === "multi"}
+                onChange={(v) => patch({ selected: v })}
+              />
+              {(cur.allowOther || cur.otherLabel) && (
+                <input
+                  value={ans.other}
+                  onChange={(e) => patch({ other: e.target.value })}
+                  placeholder={cur.otherLabel || "Add your own…"}
+                  className="w-full h-9 px-3 rounded-xl bg-transparent text-[12.5px] outline-none"
+                  style={{ border: "1px solid var(--border-strong)" }}
+                />
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-2 mt-3">
             {idx > 0 && (
               <button
@@ -471,11 +702,55 @@ function Interview({ onSaved }: { onSaved: () => Promise<void> }) {
               style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
             >
               <ArrowRight size={14} />
-              {idx === INTERVIEW.length - 1 ? "Review" : "Next"}
+              {idx === QUESTIONS.length - 1 ? "Review" : "Next"}
             </motion.button>
           </div>
         </motion.div>
       </AnimatePresence>
+    </div>
+  );
+}
+
+// tap-to-select chips — single (radio) or multi (toggle). Token-styled to match
+// the rest of the brain UI, so it follows the app theme in light + dark.
+function ChipSelect({
+  options,
+  value,
+  multi,
+  onChange,
+}: {
+  options: string[];
+  value: string[];
+  multi: boolean;
+  onChange: (v: string[]) => void;
+}) {
+  function toggle(opt: string) {
+    if (multi) onChange(value.includes(opt) ? value.filter((v) => v !== opt) : [...value, opt]);
+    else onChange(value.includes(opt) ? [] : [opt]);
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((opt) => {
+        const on = value.includes(opt);
+        return (
+          <button
+            key={opt}
+            onClick={() => toggle(opt)}
+            className="h-8 px-3 rounded-xl text-[12px] font-semibold transition-colors"
+            style={
+              on
+                ? { background: "var(--accent)", color: "var(--accent-fg)" }
+                : {
+                    background: "var(--bg-inset)",
+                    color: "var(--text-muted)",
+                    border: "1px solid var(--border)",
+                  }
+            }
+          >
+            {opt}
+          </button>
+        );
+      })}
     </div>
   );
 }

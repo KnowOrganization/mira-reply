@@ -8,6 +8,9 @@ type Props = {
   showWordmark?: boolean;
   pulse?: boolean;
   className?: string;
+  /** Glyph color — defaults to the theme text token. Pass e.g. var(--accent-fg)
+   *  to sit the logo inside an accent box, or var(--accent) for a tinted box. */
+  color?: string;
 };
 
 // organic spoke-length pattern — repeats around the burst
@@ -23,6 +26,7 @@ export function MiraLogo({
   showWordmark = false,
   pulse = false,
   className,
+  color = "var(--text)",
 }: Props) {
   const marks: React.ReactNode[] = [];
   for (let i = 0; i < SPOKES; i++) {
@@ -60,7 +64,7 @@ export function MiraLogo({
         whileHover={{ rotate: 24 }}
         transition={{ type: "spring", stiffness: 110, damping: 13 }}
         className="relative shrink-0"
-        style={{ width: size, height: size, color: "var(--text)" }}
+        style={{ width: size, height: size, color }}
       >
         <svg width={size} height={size} viewBox="0 0 100 100" className="block">
           {marks}

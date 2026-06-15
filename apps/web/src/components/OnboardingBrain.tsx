@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowRight, Brain as BrainIcon } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Brain } from "./Brain";
 import { useBrain } from "@/lib/api/hooks";
 import { api } from "@/lib/api/client";
@@ -50,7 +50,7 @@ export function OnboardingBrain() {
           <MiraLogo size={28} />
           <div>
             <div className="flex items-center gap-2 text-[14px] font-bold">
-              <BrainIcon size={15} /> Train your brain
+              Train your brain
             </div>
             <div className="text-[12px]" style={{ color: "var(--text-subtle)" }}>
               Step 2 of 2 · Teach Mira who you are so it can reply for you
