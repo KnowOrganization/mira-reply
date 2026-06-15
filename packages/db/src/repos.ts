@@ -2,12 +2,43 @@
 // Replaces the per-route raw SQL / file-store access during the strangler port.
 // Single-account for now: currentAccountId() returns the connected account;
 // every function takes accountId so multi-account is a later no-op.
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, count } from "drizzle-orm";
 import { db } from "./client";
 import {
-  accounts, automations, postConfigs, processedComments, userStates,
+  accounts, automations, postConfigs, processedComments, userStates, knowledge,
 } from "./schema";
 import type { Settings } from "../../../lib/ig/store";
+
+// ── onboarding / brain readiness ─────────────────────────────────────────────
+// Mira stays draft-only until the brain has at least this many facts — keep in
+// sync with MIN_BRAIN_FACTS in lib/ig/dmPipeline.ts.
+export const MIN_BRAIN_FACTS = 3;
+
+export async function factCount(accountId: string): Promise<number> {
+  const [r] = await db.select({ value: count() }).from(knowledge).where(eq(knowledge.accountId, accountId));
+  return r?.value ?? 0;
+}
+
+export async function getOnboarding(accountId: string): Promise<{ step: string; skippedAt: number | null; brainReady: boolean; factCount: number }> {
+  const [a] = await db
+    .select({ step: accounts.onboardingStep, skippedAt: accounts.onboardingSkippedAt })
+    .from(accounts)
+    .where(eq(accounts.igUserId, accountId));
+  const facts = await factCount(accountId);
+  return {
+    step: a?.step ?? "connect",
+    skippedAt: a?.skippedAt ?? null,
+    brainReady: facts >= MIN_BRAIN_FACTS,
+    factCount: facts,
+  };
+}
+
+export async function setOnboarding(accountId: string, patch: { step?: string; skipped?: boolean }): Promise<void> {
+  const set: Record<string, unknown> = { updatedAt: Date.now() };
+  if (patch.step !== undefined) set.onboardingStep = patch.step;
+  if (patch.skipped) set.onboardingSkippedAt = Date.now();
+  await db.update(accounts).set(set).where(eq(accounts.igUserId, accountId));
+}
 
 export async function currentAccountId(): Promise<string | null> {
   const [a] = await db

@@ -5,7 +5,7 @@ import { processIngestJob, type IngestJob } from "@/lib/ig/ingest";
 import { processOutboundJob, recordOutboundFailure, RateLimitedError, type OutboundJob } from "@/lib/ig/outbound";
 import { reconcileAccount } from "@/lib/ig/reconcile";
 import { syncFollowers, refreshTokenIfNeeded } from "@/lib/ig/maintenance";
-import { ingestDLQ, outboundDLQ, reconcileQueue } from "@/lib/ig/ingestQueue";
+import { ingestDLQ, outboundDLQ, reconcileQueue, COMMENTS_QUEUE, DM_QUEUE } from "@/lib/ig/ingestQueue";
 
 // Long-running worker tier — the ONLY place events are processed and messages
 // are sent. Drains:
@@ -20,12 +20,24 @@ const SCHEDULER_REFRESH_MS = 5 * 60_000;
 
 async function main() {
   await initSchema();
-  const concurrency = Number(process.env.WORKER_CONCURRENCY || 10);
+  const commentConcurrency = Number(
+    process.env.WORKER_CONCURRENCY_COMMENTS || process.env.WORKER_CONCURRENCY || 10
+  );
+  const dmConcurrency = Number(process.env.WORKER_CONCURRENCY_DM || 10);
 
+  // Comment lane — public comments / mentions / follows.
   const ingestWorker = new Worker<IngestJob>(
-    "ingest",
+    COMMENTS_QUEUE,
     async (job) => { await processIngestJob(job.data); },
-    { connection: bullConnection, concurrency }
+    { connection: bullConnection, concurrency: commentConcurrency }
+  );
+
+  // DM lane — 1:1 conversations + postbacks, isolated so comment bursts can't
+  // stall it. Per-conversation ordering is enforced inside processMessage.
+  const ingestDMWorker = new Worker<IngestJob>(
+    DM_QUEUE,
+    async (job) => { await processIngestJob(job.data); },
+    { connection: bullConnection, concurrency: dmConcurrency }
   );
 
   const outboundWorker = new Worker<OutboundJob>(
@@ -58,12 +70,14 @@ async function main() {
   );
 
   // exhausted retries → explicit DLQ (replayable after a fix)
-  ingestWorker.on("failed", async (job, err) => {
+  const onIngestFailed = async (job: Job<IngestJob> | undefined, err: Error | undefined) => {
     console.error("[worker] ingest job failed", job?.id, err?.message);
     if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
       await ingestDLQ.add(job.name, job.data, { jobId: `dlq_${job.id}_${Date.now()}` }).catch(() => {});
     }
-  });
+  };
+  ingestWorker.on("failed", onIngestFailed);
+  ingestDMWorker.on("failed", onIngestFailed);
   outboundWorker.on("failed", async (job, err) => {
     console.error("[worker] outbound job failed", job?.id, err?.message);
     if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
@@ -71,10 +85,11 @@ async function main() {
       await outboundDLQ.add(job.name, job.data, { jobId: `dlq_${job.id}_${Date.now()}` }).catch(() => {});
     }
   });
-  for (const w of [ingestWorker, outboundWorker, reconcileWorker]) {
+  for (const w of [ingestWorker, ingestDMWorker, outboundWorker, reconcileWorker]) {
     w.on("error", (err) => console.error(`[worker] ${w.name} error`, err.message));
   }
-  ingestWorker.on("ready", () => console.log(`[worker] ingest ready, concurrency=${concurrency}`));
+  ingestWorker.on("ready", () => console.log(`[worker] ingest-comments ready, concurrency=${commentConcurrency}`));
+  ingestDMWorker.on("ready", () => console.log(`[worker] ingest-dm ready, concurrency=${dmConcurrency}`));
   outboundWorker.on("ready", () => console.log("[worker] outbound ready"));
   reconcileWorker.on("ready", () => console.log("[worker] reconcile ready"));
 
@@ -105,7 +120,7 @@ async function main() {
 
   const shutdown = async () => {
     clearInterval(schedTimer);
-    await Promise.all([ingestWorker.close(), outboundWorker.close(), reconcileWorker.close()]);
+    await Promise.all([ingestWorker.close(), ingestDMWorker.close(), outboundWorker.close(), reconcileWorker.close()]);
     process.exit(0);
   };
   process.on("SIGINT", shutdown);

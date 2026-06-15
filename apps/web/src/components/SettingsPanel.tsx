@@ -1,34 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, LogOut, RefreshCw, Loader2 } from "lucide-react";
-import { useStatus, useSetMode, useSyncPosts, useDisconnect, type IgStatus } from "@/lib/api/hooks";
+import { useStatus, useSetChannelMode, useSyncPosts, useDisconnect, type IgStatus } from "@/lib/api/hooks";
 
 type Props = { open: boolean; onClose: () => void; onAccountChange: () => void };
+type ChannelMode = "shadow" | "assisted" | "auto";
 
 export function SettingsPanel({ open, onClose, onAccountChange }: Props) {
-  const [mode, setMode]         = useState<"auto" | "shadow">("auto");
   const [syncMsg, setSyncMsg]   = useState("");
 
   const { data: status } = useStatus<IgStatus & { account: { username: string; igUserId: string } | null }>({
     enabled: open,
   });
   const account = status?.account ?? null;
-  const setModeMut = useSetMode();
+  const brainReady = status?.brainReady ?? true;
+  // Read modes straight off the status cache — useSetChannelMode updates it
+  // optimistically, so no local mirror state (and no setState-in-effect).
+  const commentMode = (status?.commentMode as ChannelMode) ?? "assisted";
+  const dmMode = (status?.dmMode as ChannelMode) ?? "auto";
+  const setModeMut = useSetChannelMode();
   const syncMut = useSyncPosts();
   const disconnectMut = useDisconnect();
   const syncing = syncMut.isPending;
 
-  // mirror the server reply mode into the local 2-state toggle once status loads
-  useEffect(() => {
-    if (status) setMode(status.replyMode === "shadow" ? "shadow" : "auto");
-  }, [status]);
-
-  function switchMode(m: "auto" | "shadow") {
-    setMode(m);
-    setModeMut.mutate(m);
-  }
+  const switchComment = (m: ChannelMode) => setModeMut.mutate({ commentMode: m });
+  const switchDm = (m: ChannelMode) => setModeMut.mutate({ dmMode: m });
 
   async function syncPosts() {
     setSyncMsg("");
@@ -128,32 +126,78 @@ export function SettingsPanel({ open, onClose, onAccountChange }: Props) {
                 {syncMsg && <p className="text-[11px] mt-2" style={{ color: "#555" }}>{syncMsg}</p>}
               </div>
 
-              {/* mode */}
-              <div>
-                <p className="text-[10px] font-bold tracking-widest uppercase mb-3" style={{ color: "#444" }}>Reply mode</p>
-                <div className="flex gap-2">
-                  {(["auto", "shadow"] as const).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => switchMode(m)}
-                      className="flex-1 py-2 rounded-xl text-[12px] font-semibold capitalize"
-                      style={mode === m
-                        ? { background: "#3b82f6", color: "#fff" }
-                        : { background: "#111", border: "1px solid #1e1e1e", color: "#555" }
-                      }
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[10px] mt-2" style={{ color: "#333" }}>
-                  {mode === "auto" ? "Mira sends everything automatically." : "Mira drafts only — nothing is sent."}
-                </p>
+              {/* reply modes — per channel */}
+              <div className="space-y-5">
+                {!brainReady && (
+                  <div
+                    className="rounded-xl px-3 py-2.5 text-[11px] leading-4"
+                    style={{ background: "rgba(59,130,246,0.1)", color: "#7ab0ff" }}
+                  >
+                    Train your brain to turn on auto-replies. Until then Mira drafts only.
+                  </div>
+                )}
+
+                <ModeRow
+                  label="Comments"
+                  hint={{
+                    shadow: "Mira drafts only — nothing is posted.",
+                    assisted: "Mira drafts a reply; you approve before it posts.",
+                    auto: "Mira replies to comments automatically.",
+                  }}
+                  value={commentMode}
+                  onChange={switchComment}
+                />
+                <ModeRow
+                  label="DMs"
+                  hint={{
+                    shadow: "Mira drafts only — nothing is sent.",
+                    assisted: "Mira drafts a reply; you approve before it sends.",
+                    auto: "Mira answers DMs conversationally on its own.",
+                  }}
+                  value={dmMode}
+                  onChange={switchDm}
+                />
               </div>
             </div>
           </motion.div>
         </>
       )}
     </AnimatePresence>
+  );
+}
+
+type ChannelModeT = "shadow" | "assisted" | "auto";
+function ModeRow({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: Record<ChannelModeT, string>;
+  value: ChannelModeT;
+  onChange: (m: ChannelModeT) => void;
+}) {
+  const modes: ChannelModeT[] = ["shadow", "assisted", "auto"];
+  return (
+    <div>
+      <p className="text-[10px] font-bold tracking-widest uppercase mb-3" style={{ color: "#444" }}>{label}</p>
+      <div className="flex gap-2">
+        {modes.map((m) => (
+          <button
+            key={m}
+            onClick={() => onChange(m)}
+            className="flex-1 py-2 rounded-xl text-[11.5px] font-semibold capitalize"
+            style={value === m
+              ? { background: "#3b82f6", color: "#fff" }
+              : { background: "#111", border: "1px solid #1e1e1e", color: "#555" }
+            }
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+      <p className="text-[10px] mt-2" style={{ color: "#333" }}>{hint[value]}</p>
+    </div>
   );
 }

@@ -46,7 +46,8 @@ export type PrefilterResult = { action: "skip" | "react"; reason: string };
  */
 export function prefilter(
   text: string,
-  accountUsername: string
+  accountUsername: string,
+  alwaysReply = false
 ): PrefilterResult | null {
   const t = (text || "").trim();
   if (!t) return { action: "skip", reason: "empty" };
@@ -78,16 +79,19 @@ export function prefilter(
       return { action: "skip", reason: "tags-other" };
   }
 
-  // a single vague word with no mention ("ok", "hmm", "nice") → too thin.
-  // BUT a one-word *question* ("Location?", "Price?", "Song?") is a real
-  // ask — never skip those; let the pipeline answer them.
+  // a single vague word with no mention ("ok", "hmm", "nice") → normally too
+  // thin to bother with. BUT a one-word *question* ("Location?", "Price?",
+  // "Song?") is a real ask — never skip those; let the pipeline answer them.
+  // With alwaysReply on (Grok-style "reply to everything"), a one-word comment
+  // still earns a short warm ack instead of silence.
   if (mentions.length === 0 && coreWords.length <= 1) {
     const oneWordQuestion =
       /\?/.test(t) ||
       /^(location|where|price|cost|song|music|track|gear|link|who|when|how|kahan|kaha)\b/i.test(
         core
       );
-    if (!oneWordQuestion) return { action: "skip", reason: "one-word" };
+    if (!oneWordQuestion && !alwaysReply)
+      return { action: "skip", reason: "one-word" };
   }
 
   return null;

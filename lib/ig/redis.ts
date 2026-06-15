@@ -55,9 +55,48 @@ export async function claimOwned(key: string, owner: string, ttlSeconds: number)
   return (await redis.get(key)) === owner;
 }
 
+/**
+ * Run `fn` while holding a short-lived Redis lock — used to serialize messages
+ * within one DM conversation (different conversations still run in parallel).
+ * If the lock can't be acquired within `waitMs` we proceed anyway: ordering is
+ * best-effort, while *correctness* (no duplicate sends) is guaranteed
+ * separately by the per-target `replied:` claim. The lock is only released if we
+ * still own it, so a crashed holder can't deadlock the conversation.
+ */
+export async function withLock<T>(
+  key: string,
+  ttlMs: number,
+  fn: () => Promise<T>,
+  waitMs = 8000
+): Promise<T> {
+  const token = `${process.pid}_${Math.random().toString(36).slice(2)}`;
+  const deadline = Date.now() + waitMs;
+  let held = false;
+  while (Date.now() <= deadline) {
+    const ok = await redis.set(key, token, "PX", ttlMs, "NX");
+    if (ok === "OK") { held = true; break; }
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  try {
+    return await fn();
+  } finally {
+    if (held) {
+      const cur = await redis.get(key).catch(() => null);
+      if (cur === token) await redis.del(key).catch(() => {});
+    }
+  }
+}
+
 // ── key builders (account-scoped) ───────────────────────────────────────────
 export const k = {
   seen: (acct: string, commentId: string) => `seen:${acct}:${commentId}`,
+  // Per-conversation lock so two DMs from the same person process in order.
+  dmLock: (acct: string, igsid: string) => `lock:dm:${acct}:${igsid}`,
+  // Outbound idempotency — claimed exactly once per reply target (comment id or
+  // DM inbound mid) right before the Graph send. Survives jobId eviction,
+  // worker restarts (which wipe the in-memory seen set), and reconciler
+  // re-enqueues, so a single inbound can never be answered twice.
+  replied: (acct: string, targetId: string) => `replied:${acct}:${targetId}`,
   fired: (acct: string, automationId: string, commentId: string) => `fired:${acct}:${automationId}:${commentId}`,
   resumeLock: (acct: string, userId: string) => `lock:resume:${acct}:${userId}`,
   dmWatermark: (acct: string) => `dmwm:${acct}`,

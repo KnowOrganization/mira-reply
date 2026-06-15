@@ -9,15 +9,18 @@
 import {
   readStore,
   updateStore,
+  normalizeMode,
   type PendingDraft,
   type ReplyLog,
   type IgStore,
   type Settings,
+  type ReplyMode,
 } from "./store";
 import { publish } from "./bus";
 import { replyToComment } from "./graph";
 import { tryPrivateReply } from "./dm";
 import { primeSeen } from "./seen";
+import { claimOnce, k } from "./redis";
 import { recallFact } from "./knowledge";
 import { firstEmoji } from "./rulebook";
 import { prefilter } from "./rulebook";
@@ -110,41 +113,35 @@ async function bumpReplied(userId: string) {
   });
 }
 
-function shouldAutoSend(
-  settings: Settings,
-  reviewOnly: boolean,
-  action: "send" | "draft"
-): boolean {
-  const mode = settings.replyMode;
-  if (mode === "shadow") return false;
-  if (mode === "assisted") return false;
-  if (reviewOnly) return false;
-  if (mode === "auto") return true;
-  return action === "send";
+/** The reply posture for this channel. Comments → commentMode, DMs → dmMode. */
+function modeFor(settings: Settings, kind: "comment" | "dm"): ReplyMode {
+  return normalizeMode(kind === "dm" ? settings.dmMode : settings.commentMode);
 }
 
-// ── Serialized generation chain ────────────────────────────────────────────
-// Kept on globalThis so HMR doesn't spawn parallel chains.
-const pq = globalThis as unknown as { __mira_pipeline_chain?: Promise<unknown> };
-if (!pq.__mira_pipeline_chain) pq.__mira_pipeline_chain = Promise.resolve();
+function shouldAutoSend(
+  settings: Settings,
+  kind: "comment" | "dm",
+  reviewOnly: boolean
+): boolean {
+  const mode = modeFor(settings, kind);
+  if (mode === "shadow") return false; // never send
+  if (mode === "assisted") return false; // owner approves every reply
+  if (reviewOnly) return false; // sensitive (flirty/personal) — always review
+  return mode === "auto";
+}
 
 // Warm the brain MCP (account cache + KB embedding index) once per process.
 void brain.warm();
 
 // ── Main entry points (public API — unchanged) ─────────────────────────────
 
+// No global serialization here any more. Comments run concurrently, bounded by
+// the BullMQ ingest worker's concurrency; the lost-write race the old
+// __mira_pipeline_chain guarded against is already handled by updateStore()'s
+// serialized write queue (store.ts). Serializing every comment behind one
+// promise was the "single lane" that made the second message wait on the first.
 export async function processInbound(input: DraftInput): Promise<void> {
-  const prev = pq.__mira_pipeline_chain as Promise<unknown>;
-  const run = prev.then(
-    () => runPipeline(input),
-    () => runPipeline(input)
-  );
-  pq.__mira_pipeline_chain = run.then(
-    () => undefined,
-    () => undefined
-  );
-  const pd = await run;
-  // Paced send runs OUTSIDE the serialized chain
+  const pd = await runPipeline(input);
   if (pd) void pacedAutoSend(pd);
 }
 
@@ -205,7 +202,11 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
   }
 
   // ── 3. Structural prefilter (no LLM) ─────────────────────────────────────
-  const pre = prefilter(input.text, store.account.username || "");
+  const pre = prefilter(
+    input.text,
+    store.account.username || "",
+    settings.alwaysReply
+  );
   if (pre?.action === "skip") {
     publish({
       type: "log",
@@ -232,7 +233,8 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
     const text = firstEmoji(raw);
     const pd = makeDraft(input, text, "simple_acknowledgement", undefined);
     await queueDraft(pd);
-    return pd; // auto-sendable
+    // Respect the channel mode — in assisted/shadow this stays a draft.
+    return shouldAutoSend(settings, input.kind, false) ? pd : null;
   }
 
   // ── 4. Stats + commenter bump ──────────────────────────────────────────────
@@ -284,7 +286,7 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
     // trained reply — queue directly, no LLM generation
     const pd = makeDraft(input, tm.text, tm.intent, undefined);
     await queueDraft(pd);
-    return shouldAutoSend(settings, false, "send") ? pd : null;
+    return shouldAutoSend(settings, input.kind, false) ? pd : null;
   }
 
   // ── 8. Perception — soul read ─────────────────────────────────────────────
@@ -303,6 +305,24 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
     postId: input.postId,
     commentId: input.kind === "comment" ? input.threadOrMediaId : undefined,
   });
+
+  // ── Always-reply override ────────────────────────────────────────────────
+  // "Mira should always reply something" (Grok-style). If the planner wants to
+  // skip purely because the comment is thin (chatter / low-value) — NOT for a
+  // rulebook reason (spam, troll, inappropriate, business, personal, unsafe) —
+  // and the comment is safe to engage, reply with a short warm ack instead of
+  // staying silent.
+  if (
+    settings.alwaysReply &&
+    perception.is_safe_to_engage &&
+    actionPlan.steps.length === 1 &&
+    actionPlan.steps[0].tool === "skip" &&
+    (actionPlan.steps[0].args.reason === "chatter" ||
+      actionPlan.steps[0].args.reason === "low-value")
+  ) {
+    actionPlan.steps = [{ tool: "reply", args: { style: "warm_ack" } }];
+    actionPlan.rationale = "always-reply: benign skip upgraded to a warm ack";
+  }
 
   publish({
     type: "log",
@@ -403,7 +423,7 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
   if (wasSkipped || wasClarified || !replyText) return null;
 
   // ── 12. Selective reply + daily cap ──────────────────────────────────────
-  let allowAutoSend = shouldAutoSend(settings, reviewOnly, "send");
+  let allowAutoSend = shouldAutoSend(settings, input.kind, reviewOnly);
 
   if (allowAutoSend && shouldSkipForVariety(intent, settings)) {
     publish({
@@ -483,15 +503,35 @@ export async function sendDraft(
   token: string,
   igUserId: string
 ) {
-  void igUserId;
   const cur0 = await readStore();
-  if (cur0.settings.replyMode === "shadow") {
+  if (modeFor(cur0.settings, pd.kind) === "shadow") {
     publish({
       type: "log",
       level: "warn",
       msg: `Shadow mode — send suppressed for draft ${pd.id}`,
       ts: Date.now(),
     });
+    return;
+  }
+
+  // ── Send-side idempotency — the backstop that kills duplicate replies ──────
+  // Claimed exactly once per reply target. A second attempt for the same
+  // comment/DM (reconciler re-enqueue, worker restart, owner double-clicking
+  // Send, the emoji-react path racing the pipeline) is suppressed here, no
+  // matter which code path produced the draft.
+  const targetKey =
+    pd.kind === "comment" ? `c_${pd.threadOrMediaId}` : `m_${pd.threadOrMediaId}`;
+  if (!(await claimOnce(k.replied(igUserId, targetKey), 7 * 24 * 3600))) {
+    publish({
+      type: "log",
+      level: "warn",
+      msg: `Duplicate send suppressed for ${pd.kind} ${pd.threadOrMediaId}`,
+      ts: Date.now(),
+    });
+    await updateStore((s) => ({
+      ...s,
+      pendingDrafts: s.pendingDrafts.filter((x) => x.id !== pd.id),
+    }));
     return;
   }
 

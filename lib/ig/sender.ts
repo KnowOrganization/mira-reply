@@ -86,6 +86,8 @@ export function shouldSkipForVariety(
   intent: string,
   settings: Settings
 ): boolean {
+  // alwaysReply (Grok-style) wins — never randomly drop a reply.
+  if (settings.alwaysReply) return false;
   if (settings.selectiveReplyRate <= 0) return false;
   if (intent !== "simple_acknowledgement") return false;
   return Math.random() < settings.selectiveReplyRate;
