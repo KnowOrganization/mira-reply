@@ -1,6 +1,6 @@
 import { matchAutomations, executeAutomation, resumeAutomationAfterButtonClick, resumeAutomationAfterFollow, type AutomationEvent } from "./automation";
 import { listAutomations } from "./accountsRepo";
-import { claimOwned, k, bumpCounter } from "./redis";
+import { claimOwned, isClaimed, k, bumpCounter } from "./redis";
 import { readStore, updateStoreFor, type IgStore, type Mention } from "./store";
 import { getCommentInfo, getMentionedComment, getMentionedMedia } from "./graph";
 import { processInbound } from "./pipeline";
@@ -91,6 +91,14 @@ async function processComment(job: Extract<IngestJob, { kind: "comment" }>) {
 
   // durable cross-worker dedup; a retry of THIS job re-enters (claimOwned)
   if (!(await claimOwned(k.seen(accountId, cid), job.eventKey, SEEN_TTL))) {
+    bumpCounter(accountId, "deduped");
+    return;
+  }
+
+  // Already answered? (deleted-then-repolled comment, reconciler catch-up after
+  // the in-memory seen set was wiped by a restart.) The send-claim is the
+  // source of truth — never run the pipeline twice for one comment.
+  if (await isClaimed(k.replied(accountId, `c_${cid}`))) {
     bumpCounter(accountId, "deduped");
     return;
   }

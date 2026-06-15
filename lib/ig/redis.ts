@@ -58,6 +58,11 @@ export async function claimOwned(key: string, owner: string, ttlSeconds: number)
 // ── key builders (account-scoped) ───────────────────────────────────────────
 export const k = {
   seen: (acct: string, commentId: string) => `seen:${acct}:${commentId}`,
+  // Outbound idempotency — claimed exactly once per reply target (comment id or
+  // DM inbound mid) right before the Graph send. Survives jobId eviction,
+  // worker restarts (which wipe the in-memory seen set), and reconciler
+  // re-enqueues, so a single inbound can never be answered twice.
+  replied: (acct: string, targetId: string) => `replied:${acct}:${targetId}`,
   fired: (acct: string, automationId: string, commentId: string) => `fired:${acct}:${automationId}:${commentId}`,
   resumeLock: (acct: string, userId: string) => `lock:resume:${acct}:${userId}`,
   dmWatermark: (acct: string) => `dmwm:${acct}`,

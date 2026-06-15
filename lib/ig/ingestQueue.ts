@@ -24,6 +24,7 @@ const defaultJobOptions = {
 
 type G = {
   __mira_ingest_q?: Queue<IngestJob>;
+  __mira_ingest_dm_q?: Queue<IngestJob>;
   __mira_ingest_dlq?: Queue<IngestJob>;
   __mira_outbound_q?: Queue<OutboundJob>;
   __mira_outbound_dlq?: Queue<OutboundJob>;
@@ -41,7 +42,14 @@ function makeQueue<T>(slot: keyof G, name: string): Queue<T> {
   return g[slot] as unknown as Queue<T>;
 }
 
-export const ingestQueue = makeQueue<IngestJob>("__mira_ingest_q", "ingest");
+// Two inbound lanes so a burst of comments can never block DMs (and vice-versa):
+//   ingest-comments — comments, mentions, follows (public, batchy)
+//   ingest-dm       — DMs, postbacks (1:1 conversations, latency-sensitive)
+export const COMMENTS_QUEUE = "ingest-comments";
+export const DM_QUEUE = "ingest-dm";
+
+export const ingestQueue = makeQueue<IngestJob>("__mira_ingest_q", COMMENTS_QUEUE);
+export const ingestDMQueue = makeQueue<IngestJob>("__mira_ingest_dm_q", DM_QUEUE);
 export const ingestDLQ = makeQueue<IngestJob>("__mira_ingest_dlq", "ingest-dlq");
 export const outboundQueue = makeQueue<OutboundJob>("__mira_outbound_q", "outbound");
 export const outboundDLQ = makeQueue<OutboundJob>("__mira_outbound_dlq", "outbound-dlq");
@@ -49,9 +57,14 @@ export const reconcileQueue = makeQueue<{ accountId: string; task: string }>("__
 
 const safeId = (s: string) => s.replace(/[:]/g, "_");
 
+/** DMs and button postbacks ride the DM lane; everything else the comment lane. */
+function laneFor(kind: IngestJob["kind"]): Queue<IngestJob> {
+  return kind === "message" || kind === "postback" ? ingestDMQueue : ingestQueue;
+}
+
 /** Enqueue an inbound event. jobId = account + eventKey → exact dupes drop. */
 export async function enqueueIngest(job: IngestJob): Promise<void> {
-  await ingestQueue.add(job.kind, job, { jobId: safeId(`${job.accountId}__${job.eventKey}`) });
+  await laneFor(job.kind).add(job.kind, job, { jobId: safeId(`${job.accountId}__${job.eventKey}`) });
 }
 
 /**

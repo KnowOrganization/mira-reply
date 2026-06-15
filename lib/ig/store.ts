@@ -158,12 +158,26 @@ export type ScheduledSend = {
   retryCount?: number; // max 3, then drop
 };
 
+// Per-channel reply posture.
+//   shadow   = draft only, never send
+//   assisted = owner approves every reply before it goes out
+//   auto     = send automatically within safety limits
+export type ReplyMode = "shadow" | "assisted" | "auto";
+
 export type Settings = {
-  // shadow   = draft only, never send
-  // assisted = owner approves everything
-  // balanced = mostly-auto: auto acks + confident KB answers, queue the rest
-  // auto     = send everything within safety limits
+  // Legacy single-mode field. Kept as a back-compat alias — new code reads
+  // commentMode / dmMode. Migration in readStore() keeps the three in sync.
+  // "balanced" is folded into "auto" (auto within safety limits).
   replyMode: "shadow" | "assisted" | "balanced" | "auto";
+  // Channel-specific posture. Comments default to assisted (owner approves),
+  // DMs default to auto (Mira answers conversationally on its own).
+  commentMode: ReplyMode;
+  dmMode: ReplyMode;
+  // Reply-by-default ("always reply something", Grok-style). When true, benign
+  // comments that used to be skipped (one-word, vague, low-confidence) get a
+  // short warm reply instead of silence. Owner's rulebook skips (spam, troll,
+  // sexual, politics, business, two-users-chatting) still apply.
+  alwaysReply: boolean;
   skipOwnComments: boolean;
   autoReplySimpleAcks: boolean;
   autoDMLinks: boolean;
@@ -175,6 +189,13 @@ export type Settings = {
   selectiveReplyRate: number; // 0-1, fraction of low-value acks to skip
   uniquenessThreshold: number; // similarity above this → regenerate
 };
+
+/** Collapse the legacy replyMode into the three-state per-channel ReplyMode. */
+export function normalizeMode(m: string | undefined): ReplyMode {
+  if (m === "shadow" || m === "assisted" || m === "auto") return m;
+  if (m === "balanced") return "auto"; // mostly-auto folds into auto
+  return "assisted";
+}
 
 export type IgStore = {
   schemaVersion: number;
@@ -357,10 +378,17 @@ export type {
 // ── defaults ───────────────────────────────────────────────────────────────
 const defaultSettings: Settings = {
   replyMode: (process.env.MIRA_REPLY_MODE as Settings["replyMode"]) || "balanced",
+  // Comments are public + ban-sensitive → owner approves by default.
+  // DMs are private 1:1 conversations → Mira answers on its own by default.
+  commentMode: (process.env.MIRA_COMMENT_MODE as ReplyMode) || "assisted",
+  dmMode: (process.env.MIRA_DM_MODE as ReplyMode) || "auto",
+  alwaysReply: process.env.MIRA_ALWAYS_REPLY !== "0",
   skipOwnComments: true,
   autoReplySimpleAcks: true,
   autoDMLinks: true,
-  cooldownMinutes: 60,
+  // Always-reply means a second comment from the same person should still get a
+  // reply — no ack cooldown by default.
+  cooldownMinutes: 0,
   dailySendCap: 1000,
   minSecondsBetweenSends: 45,
   sendJitter: true,
@@ -464,10 +492,21 @@ function migrate(parsedIn: unknown): IgStore {
     delete parsed.replyMode;
   }
 
+  const mergedSettings: Settings = { ...defaultSettings, ...(parsed.settings || {}) };
+  // Back-compat: stores written before per-channel modes only have replyMode.
+  // Derive commentMode/dmMode from it the first time, then they're authoritative.
+  const ps = (parsed.settings || {}) as Partial<Settings>;
+  if (ps.commentMode === undefined && ps.replyMode !== undefined) {
+    mergedSettings.commentMode = normalizeMode(ps.replyMode);
+  }
+  if (ps.dmMode === undefined && ps.replyMode !== undefined) {
+    mergedSettings.dmMode = normalizeMode(ps.replyMode);
+  }
+
   const base: IgStore = {
     ...freshStore(),
     ...(parsed as Partial<IgStore>),
-    settings: { ...defaultSettings, ...(parsed.settings || {}) },
+    settings: mergedSettings,
     ownerProfile: {
       ...defaultOwnerProfile,
       ...((parsed.ownerProfile as Partial<OwnerProfile>) || {}),
