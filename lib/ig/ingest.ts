@@ -1,6 +1,7 @@
 import { matchAutomations, executeAutomation, resumeAutomationAfterButtonClick, resumeAutomationAfterFollow, type AutomationEvent } from "./automation";
 import { listAutomations } from "./accountsRepo";
-import { claimOwned, isClaimed, k, bumpCounter } from "./redis";
+import { claimOwned, isClaimed, k, bumpCounter, withLock } from "./redis";
+import { processDM } from "./dmPipeline";
 import { readStore, updateStoreFor, type IgStore, type Mention } from "./store";
 import { getCommentInfo, getMentionedComment, getMentionedMedia } from "./graph";
 import { processInbound } from "./pipeline";
@@ -245,18 +246,27 @@ async function processMessage(job: Extract<IngestJob, { kind: "message" }>) {
     if (resumed) return;
   }
 
-  await processInbound({ kind: "dm", threadOrMediaId: mid, fromUserId: fromId, text }).catch((e) =>
-    publish({ type: "log", level: "error", msg: `pipeline: ${String(e)}`, ts: Date.now() })
-  );
-
+  // Keyword DM automations (funnels) take priority over the conversational
+  // engine — if one matches, it owns the reply for this message.
   const automations = await listAutomations(accountId);
   const evt: AutomationEvent = { type: "dm", commentId: mid, fromUserId: fromId, text };
   const matched = matchAutomations({ ...store, automations } as IgStore, evt);
-  for (const auto of matched) {
-    await executeAutomation(auto, evt, { accountId }).catch((e) =>
-      publish({ type: "log", level: "error", msg: `automation: ${String(e)}`, ts: Date.now() })
-    );
+  if (matched.length > 0) {
+    for (const auto of matched) {
+      await executeAutomation(auto, evt, { accountId }).catch((e) =>
+        publish({ type: "log", level: "error", msg: `automation: ${String(e)}`, ts: Date.now() })
+      );
+    }
+    return;
   }
+
+  // Otherwise hand off to the DM Conversation Engine, serialized per
+  // conversation so a second message sees the first (real conversation memory).
+  await withLock(k.dmLock(accountId, fromId), 30_000, () =>
+    processDM({ accountId, igsid: fromId, mid, text }).catch((e) =>
+      publish({ type: "log", level: "error", msg: `dmPipeline: ${String(e)}`, ts: Date.now() })
+    )
+  );
 }
 
 /* ── postback button clicks ────────────────────────────────────────────────── */

@@ -52,6 +52,9 @@ export const accounts = pgTable("accounts", {
   postDMsSent: jsonb("post_dms_sent").$type<{ userId: string; postId: string }[]>().notNull().default([]),
   dmBlocked: jsonb("dm_blocked").$type<{ userId: string; reason: string; ts: number }[]>().notNull().default([]),
   linkPending: jsonb("link_pending").$type<unknown[]>().notNull().default([]),
+  // Brain-first onboarding progress: connect -> brain -> done.
+  onboardingStep: text("onboarding_step").notNull().default("connect"),
+  onboardingSkippedAt: ms("onboarding_skipped_at"),
   updatedAt: ms("updated_at").notNull().default(0),
 });
 
@@ -338,6 +341,41 @@ export const commentsCache = pgTable("comments_cache", {
   isOwn: boolean("is_own").notNull().default(false),
 }, (t) => [index("idx_comments_cache_account_ts").on(t.accountId, t.ts)]);
 
+// ── DM conversation threads ────────────────────────────────────────────────
+// One row per (account, person). Gives DMs real thread memory so a follow-up
+// ("what do you sell?") is answered in the context of the prior turns instead
+// of being judged in isolation. Replaces running DMs through the comment
+// pipeline, which had zero conversation history.
+export const conversations = pgTable("conversations", {
+  id: text("id").primaryKey(), // conv_{accountId}_{igsid}
+  accountId: text("account_id").notNull(),
+  igsid: text("igsid").notNull(), // the other person's IG-scoped id
+  username: text("username"),
+  lastInboundAt: ms("last_inbound_at").notNull().default(0),
+  lastOutboundAt: ms("last_outbound_at").notNull().default(0),
+  // 24h standard messaging window — resets on each inbound user message.
+  windowExpiresAt: ms("window_expires_at").notNull().default(0),
+  summary: text("summary").notNull().default(""), // rolling context summary
+  status: text("status").notNull().default("open"), // open | needs_human | closed
+  createdAt: ms("created_at").notNull().default(0),
+  updatedAt: ms("updated_at").notNull().default(0),
+}, (t) => [
+  uniqueIndex("uq_conversations_acct_igsid").on(t.accountId, t.igsid),
+  index("idx_conversations_account").on(t.accountId, t.updatedAt),
+]);
+
+export const messages = pgTable("messages", {
+  id: text("id").primaryKey(), // IG mid for inbound; generated for outbound
+  conversationId: text("conversation_id").notNull(),
+  accountId: text("account_id").notNull(),
+  direction: text("direction").notNull(), // in | out
+  text: text("text").notNull().default(""),
+  sentBy: text("sent_by").notNull().default("user"), // user | ai | human
+  createdAt: ms("created_at").notNull().default(0),
+}, (t) => [
+  index("idx_messages_conversation").on(t.conversationId, t.createdAt),
+]);
+
 export type Schema = {
   accounts: typeof accounts; automations: typeof automations;
   webhookEvents: typeof webhookEvents;
@@ -349,4 +387,5 @@ export type Schema = {
   training: typeof training; mentions: typeof mentions;
   commenters: typeof commenters; dailyStats: typeof dailyStats;
   commentsCache: typeof commentsCache;
+  conversations: typeof conversations; messages: typeof messages;
 };
