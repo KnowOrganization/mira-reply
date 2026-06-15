@@ -40,6 +40,12 @@ export type IgStatus = {
   connected?: boolean;
   account: { username: string; igUserId?: string } | null;
   replyMode?: string;
+  commentMode?: "shadow" | "assisted" | "auto";
+  dmMode?: "shadow" | "assisted" | "auto";
+  brainReady?: boolean;
+  factCount?: number;
+  onboardingStep?: string;
+  onboardingSkipped?: boolean;
   pendingCount?: number;
 };
 
@@ -251,6 +257,24 @@ export function useSetMode() {
       return { prev };
     },
     onError: (_e, _mode, ctx) => {
+      if (ctx?.prev) qc.setQueryData(qk.status, ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.status }),
+  });
+}
+
+/** Set comment and/or DM reply mode independently. */
+export function useSetChannelMode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: { commentMode?: string; dmMode?: string }) => api.post("/api/ig/modes", patch),
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: qk.status });
+      const prev = qc.getQueryData<Record<string, unknown>>(qk.status);
+      if (prev) qc.setQueryData(qk.status, { ...prev, ...patch });
+      return { prev };
+    },
+    onError: (_e, _patch, ctx) => {
       if (ctx?.prev) qc.setQueryData(qk.status, ctx.prev);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: qk.status }),

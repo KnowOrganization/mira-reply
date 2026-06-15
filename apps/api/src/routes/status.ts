@@ -1,7 +1,7 @@
 // GET /api/ig/status — now requires a Supabase session and returns ONLY the
 // logged-in user's connected Instagram account (or connected:false if none).
 import { Elysia } from "elysia";
-import { db, accounts, drafts, history } from "@shaiz/db";
+import { db, accounts, drafts, history, getOnboarding } from "@shaiz/db";
 import { eq, count } from "drizzle-orm";
 import { authPlugin } from "../plugins/auth";
 
@@ -24,6 +24,7 @@ export const statusRoute = new Elysia().use(authPlugin).get("/api/ig/status", as
 
   const [{ value: pendingCount }] = await db.select({ value: count() }).from(drafts).where(eq(drafts.accountId, acct.igUserId));
   const [{ value: historyCount }] = await db.select({ value: count() }).from(history).where(eq(history.accountId, acct.igUserId));
+  const onboarding = await getOnboarding(acct.igUserId);
 
   return {
     configured: isConfigured(),
@@ -33,8 +34,16 @@ export const statusRoute = new Elysia().use(authPlugin).get("/api/ig/status", as
       tokenExpiresAt: acct.tokenExpiresAt, connectedAt: acct.connectedAt,
     },
     replyMode: acct.settings?.replyMode ?? "assisted",
+    commentMode: acct.settings?.commentMode ?? "assisted",
+    dmMode: acct.settings?.dmMode ?? "auto",
     settings: acct.settings ?? {},
     pendingCount, historyCount,
     canReconnect: Boolean(acct.lastToken),
+    // Brain-first onboarding: the UI shows the train-brain step until the brain
+    // is ready or the owner skipped it.
+    onboardingStep: onboarding.step,
+    onboardingSkipped: onboarding.skippedAt !== null,
+    brainReady: onboarding.brainReady,
+    factCount: onboarding.factCount,
   };
 }, { auth: true });

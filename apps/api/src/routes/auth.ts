@@ -22,8 +22,11 @@ const redirectUri = () => `${ig.baseUrl}/api/ig/callback`;
 const isConfigured = () => Boolean(ig.appId && ig.appSecret);
 
 const DEFAULT_SETTINGS: Settings = {
-  replyMode: "assisted", skipOwnComments: true, autoReplySimpleAcks: true, autoDMLinks: true,
-  cooldownMinutes: 60, dailySendCap: 1000, minSecondsBetweenSends: 45, sendJitter: true,
+  replyMode: "assisted",
+  // New accounts: comments assisted (owner approves), DMs auto (conversational).
+  commentMode: "assisted", dmMode: "auto", alwaysReply: true,
+  skipOwnComments: true, autoReplySimpleAcks: true, autoDMLinks: true,
+  cooldownMinutes: 0, dailySendCap: 1000, minSecondsBetweenSends: 45, sendJitter: true,
   selectiveReplyRate: 0, uniquenessThreshold: 0.55,
 };
 
