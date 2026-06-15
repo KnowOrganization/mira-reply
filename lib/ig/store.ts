@@ -173,6 +173,10 @@ export type Settings = {
   // DMs default to auto (Mira answers conversationally on its own).
   commentMode: ReplyMode;
   dmMode: ReplyMode;
+  // Per-contact DM auto-reply allowlist (igsids or usernames). These contacts
+  // auto-reply even when dmMode is assisted and before the brain is trained —
+  // lets one contact (e.g. a test account) go auto while everyone else stays drafted.
+  dmAutoAllowlist?: string[];
   // Reply-by-default ("always reply something", Grok-style). When true, benign
   // comments that used to be skipped (one-word, vague, low-confidence) get a
   // short warm reply instead of silence. Owner's rulebook skips (spam, troll,

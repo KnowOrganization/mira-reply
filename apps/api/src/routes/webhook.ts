@@ -106,6 +106,22 @@ async function defaultAccountId(): Promise<string | null> {
   return rows[0]?.ig_user_id ?? null;
 }
 
+/** Meta's webhook entry.id is the IG-scoped id (ig_id, 17841…), but every table +
+ *  readStore key on the app-scoped ig_user_id. Resolve it before use — otherwise
+ *  every DM/comment routes to a phantom account and processDM bails at readStore
+ *  (silent no-op: zero replies). Falls back to the newest account for test payloads
+ *  that carry no entry.id. */
+async function resolveAccountId(entryId: string | undefined): Promise<string | null> {
+  if (entryId) {
+    const rows = await query<{ ig_user_id: string }>(
+      "SELECT ig_user_id FROM accounts WHERE ig_id = $1 OR ig_user_id = $1 LIMIT 1",
+      [entryId]
+    ).catch(() => [] as { ig_user_id: string }[]);
+    if (rows[0]?.ig_user_id) return rows[0].ig_user_id;
+  }
+  return defaultAccountId().catch(() => null);
+}
+
 export const webhookRoute = new Elysia()
   // Meta subscription handshake — must stay public (no auth guard)
   .get("/api/ig/webhook", ({ query: q, set }) => {
@@ -145,8 +161,8 @@ export const webhookRoute = new Elysia()
 
     let stored = 0, duplicates = 0, failed = 0;
     for (const entry of entries) {
-      // entry.id = receiving IG account; test payloads have none → newest account
-      const accountId = entry.id || (await defaultAccountId().catch(() => null));
+      // entry.id is the ig_id (17841…) — resolve to our app-scoped ig_user_id.
+      const accountId = await resolveAccountId(entry.id);
       if (!accountId) continue;
       redis.set(k.lastWebhookAt(accountId), String(Date.now())).catch(() => {});
 

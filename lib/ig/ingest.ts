@@ -260,12 +260,12 @@ async function processMessage(job: Extract<IngestJob, { kind: "message" }>) {
     return;
   }
 
-  // Otherwise hand off to the DM Conversation Engine, serialized per
-  // conversation so a second message sees the first (real conversation memory).
-  await withLock(k.dmLock(accountId, fromId), 30_000, () =>
-    processDM({ accountId, igsid: fromId, mid, text }).catch((e) =>
-      publish({ type: "log", level: "error", msg: `dmPipeline: ${String(e)}`, ts: Date.now() })
-    )
+  // Otherwise hand off to the DM Conversation Engine. NOT serialized per
+  // conversation — processDM debounces a burst itself (records every inbound, then
+  // only the last replies), and the send is idempotent. Serializing here would
+  // block the debounce from seeing the rest of the burst.
+  await processDM({ accountId, igsid: fromId, mid, text }).catch((e) =>
+    publish({ type: "log", level: "error", msg: `dmPipeline: ${String(e)}`, ts: Date.now() })
   );
 }
 

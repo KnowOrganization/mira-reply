@@ -148,10 +148,14 @@ export function sanitizeReply(text: string): string {
   out = out.replace(STRAY_SCRIPT, "");
   out = deShout(out);
   out = capEmoji(out);
+  // em-dash / en-dash / "--" are a dead AI tell — humans text with commas. Swap
+  // them for a comma (and collapse any doubled commas that creates).
+  out = out.replace(/\s*[—–]+\s*/g, ", ").replace(/\s*--\s*/g, ", ").replace(/,\s*,/g, ", ");
   // tidy whitespace left where emoji / stray tokens were stripped
   return out
     .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+([.,!?])/g, "$1")
+    .replace(/,\s*([.!?])/g, "$1")
     .trim();
 }
 
