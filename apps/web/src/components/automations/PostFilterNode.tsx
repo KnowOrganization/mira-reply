@@ -39,14 +39,14 @@ export function PostPickerModal({
     >
       <div
         style={{
-          background: "#0d0d1a",
+          background: "var(--bg-elev)",
           border: "1.5px solid rgba(124,58,237,0.3)",
           borderRadius: 20,
           width: 420,
           maxHeight: "80vh",
           display: "flex",
           flexDirection: "column",
-          boxShadow: "0 0 0 1px rgba(124,58,237,0.1), 0 24px 60px rgba(0,0,0,0.8)",
+          boxShadow: "0 0 0 1px rgba(124,58,237,0.1), var(--shadow-card)",
           overflow: "hidden",
         }}
       >
@@ -54,7 +54,7 @@ export function PostPickerModal({
         <div
           style={{
             padding: "14px 16px 12px",
-            borderBottom: "1px solid rgba(255,255,255,0.05)",
+            borderBottom: "1px solid var(--border)",
             display: "flex",
             alignItems: "center",
             gap: 10,
@@ -73,11 +73,11 @@ export function PostPickerModal({
               justifyContent: "center",
             }}
           >
-            <Images size={15} color="#888" />
+            <Images size={15} color="var(--text-muted)" />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#e5e5e5" }}>Select Posts</div>
-            <div style={{ fontSize: 10.5, color: "#555", marginTop: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Select Posts</div>
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 1 }}>
               {selectedIds.length === 0
                 ? "No posts selected"
                 : `${selectedIds.length} post${selectedIds.length > 1 ? "s" : ""} selected`}
@@ -95,8 +95,8 @@ export function PostPickerModal({
                   style={{
                     borderRadius: 10,
                     overflow: "hidden",
-                    background: "rgba(255,255,255,0.03)",
-                    border: "2px solid rgba(255,255,255,0.05)",
+                    background: "var(--border)",
+                    border: "2px solid var(--border)",
                   }}
                 >
                   <div style={{ width: "100%", paddingBottom: "100%", position: "relative" }}>
@@ -105,7 +105,7 @@ export function PostPickerModal({
                         position: "absolute",
                         inset: 0,
                         background:
-                          "linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.03) 100%)",
+                          "linear-gradient(90deg, var(--border) 0%, var(--bg-inset) 50%, var(--border) 100%)",
                         backgroundSize: "200% 100%",
                         animation: "shimmer 1.4s infinite",
                       }}
@@ -116,7 +116,7 @@ export function PostPickerModal({
             </div>
           )}
           {!loading && posts.length === 0 && (
-            <div style={{ fontSize: 12, color: "#333", textAlign: "center", padding: "24px 0" }}>
+            <div style={{ fontSize: 12, color: "var(--text-subtle)", textAlign: "center", padding: "24px 0" }}>
               No posts found.
             </div>
           )}
@@ -133,8 +133,8 @@ export function PostPickerModal({
                       position: "relative",
                       borderRadius: 10,
                       overflow: "hidden",
-                      border: `2px solid ${sel ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.05)"}`,
-                      background: "rgba(255,255,255,0.03)",
+                      border: `2px solid ${sel ? "var(--border-strong)" : "var(--border)"}`,
+                      background: "var(--border)",
                       cursor: "pointer",
                       padding: 0,
                       transition: "border-color 0.15s",
@@ -146,7 +146,7 @@ export function PostPickerModal({
                         width: "100%",
                         paddingBottom: "100%",
                         position: "relative",
-                        background: "#0a0a14",
+                        background: "var(--bg-inset)",
                       }}
                     >
                       {thumb ? (
@@ -171,7 +171,7 @@ export function PostPickerModal({
                             justifyContent: "center",
                           }}
                         >
-                          <ImageIcon size={18} color="#2a2a2a" />
+                          <ImageIcon size={18} color="var(--text-subtle)" />
                         </div>
                       )}
                       {sel && (
@@ -190,13 +190,13 @@ export function PostPickerModal({
                               width: 20,
                               height: 20,
                               borderRadius: 6,
-                              background: "rgba(255,255,255,0.9)",
+                              background: "var(--bg-elev)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
                             }}
                           >
-                            <span style={{ fontSize: 11, color: "#fff", lineHeight: 1 }}>✓</span>
+                            <span style={{ fontSize: 11, color: "var(--text)", lineHeight: 1 }}>✓</span>
                           </div>
                         </div>
                       )}
@@ -210,7 +210,7 @@ export function PostPickerModal({
                             borderRadius: 4,
                             padding: "1px 4px",
                             fontSize: 8,
-                            color: "#ccc",
+                            color: "var(--accent-fg)",
                           }}
                         >
                           ▶
@@ -221,7 +221,7 @@ export function PostPickerModal({
                       <div
                         style={{
                           fontSize: 9,
-                          color: sel ? "#d4d4d4" : "#444",
+                          color: sel ? "var(--text)" : "var(--text-muted)",
                           lineHeight: 1.3,
                           overflow: "hidden",
                           display: "-webkit-box",
@@ -243,7 +243,7 @@ export function PostPickerModal({
         <div
           style={{
             padding: "12px 14px",
-            borderTop: "1px solid rgba(255,255,255,0.05)",
+            borderTop: "1px solid var(--border)",
             flexShrink: 0,
           }}
         >
@@ -254,11 +254,11 @@ export function PostPickerModal({
               padding: "10px 0",
               borderRadius: 10,
               background:
-                selectedIds.length > 0 ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.04)",
+                selectedIds.length > 0 ? "var(--bg-inset)" : "var(--border)",
               border: `1px solid ${
-                selectedIds.length > 0 ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)"
+                selectedIds.length > 0 ? "var(--border-strong)" : "var(--bg-inset)"
               }`,
-              color: selectedIds.length > 0 ? "#e5e5e5" : "#333",
+              color: selectedIds.length > 0 ? "var(--text)" : "var(--text-subtle)",
               fontSize: 13,
               fontWeight: 700,
               cursor: selectedIds.length > 0 ? "pointer" : "default",
@@ -341,7 +341,7 @@ export function PostFilterNode({
       )}
       <div
         style={{
-          background: "rgba(10,10,18,0.98)",
+          background: "var(--bg-elev)",
           border: `1.5px solid ${
             noneSelected ? "rgba(239,68,68,0.35)" : "rgba(124,58,237,0.25)"
           }`,
@@ -350,7 +350,7 @@ export function PostFilterNode({
           overflow: "hidden",
           boxShadow: `0 0 0 1px ${
             noneSelected ? "rgba(239,68,68,0.1)" : "rgba(124,58,237,0.1)"
-          }, 0 4px 24px rgba(0,0,0,0.6)`,
+          }, var(--shadow-card)`,
           cursor: dragMode ? "grab" : "default",
         }}
       >
@@ -375,12 +375,12 @@ export function PostFilterNode({
               flexShrink: 0,
             }}
           >
-            <Images size={14} color="#888" />
+            <Images size={14} color="var(--text-muted)" />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#e5e5e5" }}>Post Filter</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Post Filter</div>
             <div
-              style={{ fontSize: 10.5, color: noneSelected ? "#ef4444" : "#555", marginTop: 1 }}
+              style={{ fontSize: 10.5, color: noneSelected ? "#ef4444" : "var(--text-muted)", marginTop: 1 }}
             >
               {noneSelected
                 ? "No posts selected"
@@ -390,12 +390,12 @@ export function PostFilterNode({
           <button
             onClick={openModal}
             style={{
-              background: "rgba(255,255,255,0.07)",
-              border: "1px solid rgba(255,255,255,0.12)",
+              background: "var(--border)",
+              border: "1px solid var(--bg-inset)",
               borderRadius: 7,
               padding: "4px 9px",
               cursor: "pointer",
-              color: "#aaa",
+              color: "var(--text-muted)",
               fontSize: 10.5,
               fontWeight: 600,
               flexShrink: 0,
@@ -410,13 +410,13 @@ export function PostFilterNode({
                 background: "none",
                 border: "none",
                 cursor: "pointer",
-                color: "#2a2a2a",
+                color: "var(--text-subtle)",
                 padding: 3,
                 display: "flex",
                 borderRadius: 6,
               }}
               onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#ef4444")}
-              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#2a2a2a")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-subtle)")}
             >
               <X size={13} />
             </button>
@@ -436,7 +436,7 @@ export function PostFilterNode({
                     height: 38,
                     borderRadius: 7,
                     overflow: "hidden",
-                    background: "#0a0a14",
+                    background: "var(--bg-inset)",
                     border: "1.5px solid rgba(124,58,237,0.3)",
                     flexShrink: 0,
                     position: "relative",
@@ -458,7 +458,7 @@ export function PostFilterNode({
                         justifyContent: "center",
                       }}
                     >
-                      <ImageIcon size={12} color="#333" />
+                      <ImageIcon size={12} color="var(--text-subtle)" />
                     </div>
                   )}
                 </div>
@@ -478,7 +478,7 @@ export function PostFilterNode({
                   flexShrink: 0,
                 }}
               >
-                <span style={{ fontSize: 9, color: "#888", fontWeight: 700 }}>
+                <span style={{ fontSize: 9, color: "var(--text-muted)", fontWeight: 700 }}>
                   +{confirmedIds.length - 5}
                 </span>
               </div>

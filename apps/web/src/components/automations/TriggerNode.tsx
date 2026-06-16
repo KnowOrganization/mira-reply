@@ -36,7 +36,7 @@ export function TriggerNode({ data, onUpdate, dragMode }: NodeCardProps) {
         <div
           style={{
             fontSize: 9.5,
-            color: "#383848",
+            color: "var(--text-subtle)",
             fontWeight: 700,
             textTransform: "uppercase",
             letterSpacing: "0.12em",
@@ -57,10 +57,10 @@ export function TriggerNode({ data, onUpdate, dragMode }: NodeCardProps) {
                 padding: "7px 9px",
                 borderRadius: 9,
                 border: `1px solid ${
-                  selected === opt.value ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.05)"
+                  selected === opt.value ? "var(--border-strong)" : "var(--border)"
                 }`,
-                background: selected === opt.value ? "rgba(255,255,255,0.08)" : "transparent",
-                color: selected === opt.value ? "#e5e5e5" : "#555",
+                background: selected === opt.value ? "var(--bg-inset)" : "transparent",
+                color: selected === opt.value ? "var(--text)" : "var(--text-muted)",
                 fontSize: 11,
                 fontWeight: 500,
                 cursor: "pointer",
@@ -78,16 +78,16 @@ export function TriggerNode({ data, onUpdate, dragMode }: NodeCardProps) {
                     opt.value === "dm"
                       ? "transparent"
                       : "linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)",
-                  border: opt.value === "dm" ? "1px solid #333" : "none",
+                  border: opt.value === "dm" ? "1px solid var(--border)" : "none",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
                 {opt.value === "dm" ? (
-                  <MessageSquare size={10} color="#555" />
+                  <MessageSquare size={10} color="var(--text-muted)" />
                 ) : (
-                  <Zap size={9} color="#fff" fill="#fff" />
+                  <Zap size={9} color="var(--accent-fg)" fill="var(--accent-fg)" />
                 )}
               </div>
               {opt.label}
@@ -100,7 +100,7 @@ export function TriggerNode({ data, onUpdate, dragMode }: NodeCardProps) {
             <div
               style={{
                 fontSize: 9.5,
-                color: "#2a2a3a",
+                color: "var(--text-subtle)",
                 fontWeight: 700,
                 textTransform: "uppercase",
                 letterSpacing: "0.12em",
@@ -128,11 +128,11 @@ export function TriggerNode({ data, onUpdate, dragMode }: NodeCardProps) {
                     cursor: "pointer",
                     transition: "all 0.14s",
                     border: `1px solid ${
-                      filterMode === m.id ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.06)"
+                      filterMode === m.id ? "var(--border-strong)" : "var(--border)"
                     }`,
                     background:
-                      filterMode === m.id ? "rgba(255,255,255,0.09)" : "rgba(255,255,255,0.03)",
-                    color: filterMode === m.id ? "#e5e5e5" : "#3a3a4a",
+                      filterMode === m.id ? "var(--bg-inset)" : "rgba(0,0,0,0.03)",
+                    color: filterMode === m.id ? "var(--text)" : "var(--text-subtle)",
                   }}
                 >
                   {m.label}
@@ -157,17 +157,17 @@ export function TriggerNode({ data, onUpdate, dragMode }: NodeCardProps) {
                   placeholder="e.g. link, info, price"
                   style={{
                     width: "100%",
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.06)",
+                    background: "rgba(0,0,0,0.03)",
+                    border: "1px solid var(--border)",
                     borderRadius: 8,
                     padding: "6px 9px",
                     fontSize: 11,
-                    color: "#aaa",
+                    color: "var(--text-muted)",
                     outline: "none",
                     boxSizing: "border-box",
                   }}
                 />
-                <div style={{ fontSize: 9.5, color: "#2a2a3a", marginTop: 5, lineHeight: 1.4 }}>
+                <div style={{ fontSize: 9.5, color: "var(--text-subtle)", marginTop: 5, lineHeight: 1.4 }}>
                   Triggers only when comment contains one of these words. Comma-separated.
                 </div>
               </>
@@ -184,7 +184,7 @@ export function TriggerNode({ data, onUpdate, dragMode }: NodeCardProps) {
                 }}
               >
                 Triggers on{" "}
-                <span style={{ color: "#d4d4d4", fontWeight: 600 }}>every comment</span> —
+                <span style={{ color: "var(--text)", fontWeight: 600 }}>every comment</span> —
                 regardless of what they write.
               </div>
             )}

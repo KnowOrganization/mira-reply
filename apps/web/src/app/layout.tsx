@@ -19,7 +19,7 @@ export default function RootLayout({
         {/* no-flash theme — set the class before first paint */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('mira.theme');var d=t?t==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('mira.theme');var d=t==='dark';if(d)document.documentElement.classList.add('dark');}catch(e){}})();`,
           }}
         />
       </head>

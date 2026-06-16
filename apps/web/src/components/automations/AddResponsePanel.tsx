@@ -33,19 +33,19 @@ export function AddResponsePanel({
             top: 0,
             bottom: 0,
             width: 310,
-            background: "rgba(8,8,16,0.97)",
+            background: "var(--bg-elev)",
             borderLeft: "1px solid rgba(124,58,237,0.18)",
             zIndex: 50,
             display: "flex",
             flexDirection: "column",
-            boxShadow: "-6px 0 40px rgba(0,0,0,0.6), -1px 0 0 rgba(124,58,237,0.1)",
+            boxShadow: "var(--shadow-card), -1px 0 0 rgba(124,58,237,0.1)",
           }}
         >
           {/* header */}
           <div
             style={{
               padding: "16px 16px 13px",
-              borderBottom: "1px solid rgba(255,255,255,0.05)",
+              borderBottom: "1px solid var(--border)",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -53,20 +53,20 @@ export function AddResponsePanel({
             }}
           >
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#e5e5e5" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
                 Add Response
               </div>
-              <div style={{ fontSize: 10.5, color: "#333", marginTop: 2 }}>
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>
                 Choose next step in your flow
               </div>
             </div>
             <button
               onClick={onClose}
               style={{
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.07)",
+                background: "var(--border)",
+                border: "1px solid var(--border)",
                 cursor: "pointer",
-                color: "#555",
+                color: "var(--text-muted)",
                 display: "flex",
                 borderRadius: 8,
                 padding: "5px",
@@ -153,7 +153,7 @@ export function AddResponsePanel({
                         style={{
                           fontSize: 13,
                           fontWeight: 600,
-                          color: blocked ? "#555" : "#e5e5e5",
+                          color: blocked ? "var(--text-muted)" : "var(--text)",
                         }}
                       >
                         {rt.label}
@@ -175,7 +175,7 @@ export function AddResponsePanel({
                         </span>
                       )}
                     </div>
-                    <div style={{ fontSize: 11, color: "#3a3a4a", marginBottom: warning ? 5 : 0 }}>
+                    <div style={{ fontSize: 11, color: "var(--text-subtle)", marginBottom: warning ? 5 : 0 }}>
                       {rt.desc}
                     </div>
                     {warning && (
@@ -187,7 +187,7 @@ export function AddResponsePanel({
                   {!blocked && (
                     <ChevronRight
                       size={13}
-                      color="#2a2a2a"
+                      color="var(--text-subtle)"
                       style={{ marginTop: 2, flexShrink: 0 }}
                     />
                   )}
@@ -200,11 +200,11 @@ export function AddResponsePanel({
           <div
             style={{
               padding: "12px 14px",
-              borderTop: "1px solid rgba(255,255,255,0.04)",
+              borderTop: "1px solid var(--border)",
               flexShrink: 0,
             }}
           >
-            <div style={{ fontSize: 10, color: "#2a2a3a", lineHeight: 1.6 }}>
+            <div style={{ fontSize: 10, color: "var(--text-subtle)", lineHeight: 1.6 }}>
               Selected step connects to the last node in your flow automatically.
             </div>
           </div>

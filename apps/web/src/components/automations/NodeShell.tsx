@@ -19,13 +19,13 @@ export function NodeShell({
   return (
     <div
       style={{
-        background: "rgba(10,10,18,0.98)",
-        border: `1.5px solid rgba(255,255,255,0.07)`,
+        background: "var(--bg-elev)",
+        border: `1.5px solid var(--border)`,
         borderRadius: 16,
         width: 288,
         boxShadow: glow
-          ? `0 0 0 1px ${color}22, 0 0 28px ${color}22, 0 6px 28px rgba(0,0,0,0.7)`
-          : `0 4px 22px rgba(0,0,0,0.6)`,
+          ? `0 0 0 1px ${color}22, 0 0 28px ${color}22, 0 6px 28px rgba(0,0,0,0.12)`
+          : "var(--shadow-card)",
         overflow: "hidden",
         cursor: dragMode ? "grab" : "default",
         userSelect: "none",
@@ -56,7 +56,7 @@ export function NodeHeader({
     <div
       style={{
         padding: "11px 12px 9px",
-        borderBottom: "1px solid rgba(255,255,255,0.05)",
+        borderBottom: "1px solid var(--border)",
         display: "flex",
         alignItems: "center",
         gap: 9,
@@ -79,11 +79,11 @@ export function NodeHeader({
         {icon}
       </div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#e5e5e5", lineHeight: 1.2 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", lineHeight: 1.2 }}>
           {title}
         </div>
         {subtitle && (
-          <div style={{ fontSize: 10.5, color: "#3a3a4a", marginTop: 1.5 }}>{subtitle}</div>
+          <div style={{ fontSize: 10.5, color: "var(--text-subtle)", marginTop: 1.5 }}>{subtitle}</div>
         )}
       </div>
       {canDelete && onDelete && (
@@ -93,13 +93,13 @@ export function NodeHeader({
             background: "none",
             border: "none",
             cursor: "pointer",
-            color: "#2a2a2a",
+            color: "var(--text-subtle)",
             padding: 3,
             display: "flex",
             borderRadius: 6,
           }}
           onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#ef4444")}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#2a2a2a")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-subtle)")}
         >
           <X size={13} />
         </button>

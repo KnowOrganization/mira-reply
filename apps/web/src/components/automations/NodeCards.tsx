@@ -52,7 +52,7 @@ export function OpeningMessageNode({
         <span
           style={{
             fontSize: 9.5,
-            color: "#383848",
+            color: "var(--text-subtle)",
             fontWeight: 700,
             textTransform: "uppercase",
             letterSpacing: "0.12em",
@@ -137,7 +137,7 @@ export function CardMessageNode({
             justifyContent: "center",
             flexDirection: "column",
             gap: 4,
-            color: "#2a2a2a",
+            color: "var(--text-subtle)",
             background: "rgba(236,72,153,0.04)",
           }}
         >
@@ -153,12 +153,12 @@ export function CardMessageNode({
               placeholder={key.charAt(0).toUpperCase() + key.slice(1)}
               style={{
                 width: "100%",
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.06)",
+                background: "var(--border)",
+                border: "1px solid var(--bg-inset)",
                 borderRadius: 8,
                 padding: "6px 28px 6px 9px",
                 fontSize: 11,
-                color: "#ccc",
+                color: "var(--text-muted)",
                 outline: "none",
                 boxSizing: "border-box",
               }}
@@ -170,7 +170,7 @@ export function CardMessageNode({
                 top: "50%",
                 transform: "translateY(-50%)",
                 fontSize: 9,
-                color: "#222",
+                color: "var(--border)",
               }}
             >
               {((data as unknown as Record<string, string>)[key] ?? "").length}/80
@@ -263,7 +263,7 @@ export function AskFollowNode({
           <div
             style={{
               fontSize: 9.5,
-              color: "#3a3a4a",
+              color: "var(--text-subtle)",
               fontWeight: 600,
               textTransform: "uppercase",
               letterSpacing: "0.1em",
@@ -280,19 +280,19 @@ export function AskFollowNode({
           rows={2}
           style={{
             width: "100%",
-            background: "rgba(255,255,255,0.04)",
+            background: "var(--border)",
             border: "1px solid rgba(245,158,11,0.18)",
             borderRadius: 8,
             padding: "7px 9px",
             fontSize: 11,
-            color: "#ccc",
+            color: "var(--text-muted)",
             outline: "none",
             resize: "none",
             boxSizing: "border-box",
             lineHeight: 1.5,
           }}
         />
-        <div style={{ fontSize: 9.5, color: "#3a3a4a", lineHeight: 1.4 }}>
+        <div style={{ fontSize: 9.5, color: "var(--text-subtle)", lineHeight: 1.4 }}>
           Use{" "}
           <span style={{ color: "#f59e0b", fontFamily: "monospace" }}>[username]</span> as
           placeholder — replaced with your IG handle at send time.
@@ -301,7 +301,7 @@ export function AskFollowNode({
           <div
             style={{
               fontSize: 9.5,
-              color: "#3a3a4a",
+              color: "var(--text-subtle)",
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.1em",
@@ -339,7 +339,7 @@ export function AskFollowNode({
               }}
             />
           </div>
-          <div style={{ fontSize: 9.5, color: "#3a3a4a", lineHeight: 1.4, marginTop: 4 }}>
+          <div style={{ fontSize: 9.5, color: "var(--text-subtle)", lineHeight: 1.4, marginTop: 4 }}>
             User taps this to confirm — no typing. Defaults to{" "}
             <span style={{ color: "#f59e0b" }}>I&apos;m following ✓</span>.
           </div>
@@ -394,12 +394,12 @@ export function LeadFormNode({
           placeholder="What's your question?"
           style={{
             width: "100%",
-            background: "rgba(255,255,255,0.04)",
+            background: "var(--border)",
             border: "1px solid rgba(168,85,247,0.2)",
             borderRadius: 8,
             padding: "7px 9px",
             fontSize: 11,
-            color: "#ccc",
+            color: "var(--text-muted)",
             outline: "none",
             boxSizing: "border-box",
           }}
@@ -476,7 +476,7 @@ export function FollowGateNode({
             <div
               style={{
                 fontSize: 9.5,
-                color: "#3a3a4a",
+                color: "var(--text-subtle)",
                 fontWeight: 700,
                 textTransform: "uppercase",
                 letterSpacing: "0.1em",
@@ -493,19 +493,19 @@ export function FollowGateNode({
             rows={4}
             style={{
               width: "100%",
-              background: "rgba(255,255,255,0.04)",
+              background: "var(--border)",
               border: "1px solid rgba(236,72,153,0.2)",
               borderRadius: 8,
               padding: "7px 9px",
               fontSize: 11,
-              color: "#ccc",
+              color: "var(--text-muted)",
               outline: "none",
               resize: "none",
               boxSizing: "border-box",
               lineHeight: 1.5,
             }}
           />
-          <div style={{ fontSize: 9.5, color: "#2a2a3a", marginTop: 4, lineHeight: 1.4 }}>
+          <div style={{ fontSize: 9.5, color: "var(--text-subtle)", marginTop: 4, lineHeight: 1.4 }}>
             Use{" "}
             <span style={{ color: "#ec4899", fontFamily: "monospace" }}>[username]</span> —
             replaced with your IG handle. User replies "done" → re-checks follow status.
@@ -547,12 +547,12 @@ export function FollowupMessageNode({
           rows={2}
           style={{
             width: "100%",
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.06)",
+            background: "var(--border)",
+            border: "1px solid var(--bg-inset)",
             borderRadius: 8,
             padding: "7px 9px",
             fontSize: 11,
-            color: "#ccc",
+            color: "var(--text-muted)",
             outline: "none",
             resize: "none",
             boxSizing: "border-box",
@@ -567,9 +567,9 @@ export function FollowupMessageNode({
               style={{
                 padding: "3px 7px",
                 borderRadius: 5,
-                border: `1px solid ${d === opt ? "#f97316" : "rgba(255,255,255,0.06)"}`,
+                border: `1px solid ${d === opt ? "#f97316" : "var(--bg-inset)"}`,
                 background: d === opt ? "rgba(249,115,22,0.13)" : "transparent",
-                color: d === opt ? "#f97316" : "#383838",
+                color: d === opt ? "#f97316" : "var(--text-subtle)",
                 fontSize: 10,
                 cursor: "pointer",
               }}

@@ -6,7 +6,7 @@ import {
   CreditCard, Settings, ChevronDown, LogOut, Headphones,
   Crown, Images, MessagesSquare, AtSign, Tag, UserCheck,
   BookOpen, Sparkles, Mic2, TrendingUp, Heart,
-  MessageCircle, Send, Camera,
+  MessageCircle, Send, Camera, BrainCircuit, Gem,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
@@ -26,11 +26,25 @@ const AutomationsView = dynamic(() => import("./AutomationsView").then((m) => m.
 const SettingsPanel = dynamic(() => import("./SettingsPanel").then((m) => m.SettingsPanel), {
   ssr: false,
 });
+const NeuralBrainCanvas = dynamic(() => import("./NeuralBrainCanvas").then((m) => m.NeuralBrainCanvas), {
+  ssr: false,
+  loading: () => <PanelBoot />,
+});
+const InboxView = dynamic(() => import("./InboxView").then((m) => m.InboxView), {
+  ssr: false,
+  loading: () => <PanelBoot />,
+});
+const OpportunitiesView = dynamic(() => import("./OpportunitiesView").then((m) => m.OpportunitiesView), {
+  ssr: false,
+  loading: () => <PanelBoot />,
+});
 
 type TopView =
   | "dashboard"
+  | "brain"
   | "automations"
   | "inbox"
+  | "opportunities"
   | "contacts"
   | "ai-studio"
   | "analytics"
@@ -51,6 +65,8 @@ interface NavGroup {
 
 const NAV: NavGroup[] = [
   { id: "dashboard", icon: <Home size={15} />, label: "Dashboard" },
+  { id: "brain", icon: <BrainCircuit size={15} />, label: "Brain" },
+  { id: "opportunities", icon: <Gem size={15} />, label: "Opportunities" },
   {
     id: "automations", icon: <Zap size={15} />, label: "Automations",
     sub: [
@@ -61,7 +77,7 @@ const NAV: NavGroup[] = [
     ],
   },
   {
-    id: "inbox", icon: <MessageSquare size={15} />, label: "Inbox", soon: true,
+    id: "inbox", icon: <MessageSquare size={15} />, label: "Inbox",
     sub: [
       { id: "dms", label: "DMs", icon: <MessagesSquare size={12} /> },
       { id: "comments", label: "Comments", icon: <MessageCircle size={12} /> },
@@ -164,34 +180,34 @@ export function CanvasLayout() {
   }
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden" style={{ background: "#07070f" }}>
+    <div className="h-screen w-screen flex overflow-hidden" style={{ background: "var(--bg-frame)" }}>
 
       {/* ── sidebar — hidden in automations (it has its own left panel) ── */}
       <aside style={{
         width: 220,
         flexShrink: 0,
-        background: "#0a0a16",
-        borderRight: "1px solid rgba(255,255,255,0.04)",
-        display: view === "automations" ? "none" : "flex",
+        background: "var(--bg-sidebar)",
+        borderRight: "1px solid var(--border)",
+        display: "flex",
         flexDirection: "column",
         overflow: "hidden",
       }}>
 
         {/* logo + brand */}
-        <div style={{ padding: "16px 16px 12px", display: "flex", alignItems: "center", gap: 9, borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+        <div style={{ padding: "16px 16px 12px", display: "flex", alignItems: "center", gap: 9, borderBottom: "1px solid var(--border)" }}>
           <MiraLogo size={26} />
-          <span style={{ fontSize: 15, fontWeight: 800, color: "#e5e5e5", letterSpacing: "-0.02em" }}>Mira</span>
+          <span style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.02em" }}>Mira</span>
         </div>
 
         {/* account card */}
         {account && (
-          <div style={{ margin: "10px 10px 4px", padding: "9px 10px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 12, display: "flex", alignItems: "center", gap: 9 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <span style={{ fontSize: 11, fontWeight: 800, color: "#fff" }}>{getInitials(account)}</span>
+          <div style={{ margin: "10px 10px 4px", padding: "9px 10px", background: "var(--border)", border: "1px solid var(--border)", borderRadius: 12, display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 10, background: "var(--bg-inset)", border: "1px solid var(--bg-inset)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text)" }}>{getInitials(account)}</span>
             </div>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#d4d4d4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{account}</div>
-              <div style={{ fontSize: 10, color: "#333", marginTop: 1 }}>Instagram</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{account}</div>
+              <div style={{ fontSize: 10, color: "var(--text-subtle)", marginTop: 1 }}>Instagram</div>
             </div>
           </div>
         )}
@@ -213,23 +229,23 @@ export function CanvasLayout() {
                     gap: 9,
                     padding: "7px 9px",
                     borderRadius: 9,
-                    background: active && !item.soon ? "rgba(255,255,255,0.07)" : "transparent",
+                    background: active && !item.soon ? "var(--accent-soft)" : "transparent",
                     border: "none",
                     cursor: item.soon ? "default" : "pointer",
-                    color: item.soon ? "#252535" : active ? "#e5e5e5" : "#4a4a5a",
+                    color: item.soon ? "var(--text-subtle)" : active ? "var(--accent-deep)" : "var(--text-subtle)",
                     fontSize: 12.5,
                     fontWeight: active ? 600 : 500,
                     textAlign: "left",
                     transition: "all 0.12s",
                     marginBottom: 1,
                   }}
-                  onMouseEnter={(e) => { if (!item.soon && !active) { (e.currentTarget as HTMLElement).style.color = "#9a9aaa"; (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; } }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = item.soon ? "#252535" : active ? "#e5e5e5" : "#4a4a5a"; (e.currentTarget as HTMLElement).style.background = active && !item.soon ? "rgba(255,255,255,0.07)" : "transparent"; }}
+                  onMouseEnter={(e) => { if (!item.soon && !active) { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.05)"; } }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = item.soon ? "var(--text-subtle)" : active ? "var(--accent-deep)" : "var(--text-subtle)"; (e.currentTarget as HTMLElement).style.background = active && !item.soon ? "var(--accent-soft)" : "transparent"; }}
                 >
                   <span style={{ flexShrink: 0, opacity: item.soon ? 0.3 : 1 }}>{item.icon}</span>
                   <span style={{ flex: 1 }}>{item.label}</span>
                   {item.soon && (
-                    <span style={{ fontSize: 8.5, fontWeight: 700, color: "#2a2a3a", background: "rgba(255,255,255,0.04)", padding: "2px 5px", borderRadius: 4 }}>SOON</span>
+                    <span style={{ fontSize: 8.5, fontWeight: 700, color: "var(--text-subtle)", background: "var(--border)", padding: "2px 5px", borderRadius: 4 }}>SOON</span>
                   )}
                   {item.sub && !item.soon && (
                     <ChevronDown size={11} style={{ flexShrink: 0, transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", opacity: 0.5 }} />
@@ -252,18 +268,18 @@ export function CanvasLayout() {
                             gap: 7,
                             padding: "5px 9px",
                             borderRadius: 7,
-                            background: subActive ? "rgba(255,255,255,0.06)" : "transparent",
+                            background: subActive ? "var(--accent-soft)" : "transparent",
                             border: "none",
                             cursor: "pointer",
-                            color: subActive ? "#d4d4d4" : "#383848",
+                            color: subActive ? "var(--accent-deep)" : "var(--text-subtle)",
                             fontSize: 11.5,
                             fontWeight: subActive ? 600 : 400,
                             textAlign: "left",
                             transition: "all 0.1s",
                             marginBottom: 1,
                           }}
-                          onMouseEnter={(e) => { if (!subActive) { (e.currentTarget as HTMLElement).style.color = "#7a7a8a"; (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)"; } }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = subActive ? "#d4d4d4" : "#383848"; (e.currentTarget as HTMLElement).style.background = subActive ? "rgba(255,255,255,0.06)" : "transparent"; }}
+                          onMouseEnter={(e) => { if (!subActive) { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.05)"; } }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = subActive ? "var(--accent-deep)" : "var(--text-subtle)"; (e.currentTarget as HTMLElement).style.background = subActive ? "var(--accent-soft)" : "transparent"; }}
                         >
                           {s.icon && <span style={{ opacity: 0.6 }}>{s.icon}</span>}
                           {s.label}
@@ -277,7 +293,7 @@ export function CanvasLayout() {
           })}
 
           {/* divider */}
-          <div style={{ margin: "10px 4px", borderTop: "1px solid rgba(255,255,255,0.04)" }} />
+          <div style={{ margin: "10px 4px", borderTop: "1px solid var(--border)" }} />
 
           {BOTTOM_NAV.map((item) => {
             const active = view === item.id;
@@ -296,32 +312,32 @@ export function CanvasLayout() {
                   background: "transparent",
                   border: "none",
                   cursor: item.soon ? "default" : "pointer",
-                  color: item.soon ? "#252535" : "#4a4a5a",
+                  color: item.soon ? "var(--text-subtle)" : "var(--text-subtle)",
                   fontSize: 12.5,
                   fontWeight: 500,
                   textAlign: "left",
                   transition: "all 0.12s",
                   marginBottom: 1,
                 }}
-                onMouseEnter={(e) => { if (!item.soon) { (e.currentTarget as HTMLElement).style.color = "#7a7a9a"; (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)"; } }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = item.soon ? "#252535" : "#4a4a5a"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                onMouseEnter={(e) => { if (!item.soon) { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.05)"; } }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = item.soon ? "var(--text-subtle)" : "var(--text-subtle)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
               >
                 <span style={{ flexShrink: 0, opacity: item.soon ? 0.3 : 1 }}>{item.icon}</span>
                 <span style={{ flex: 1 }}>{item.label}</span>
-                {item.soon && <span style={{ fontSize: 8.5, fontWeight: 700, color: "#2a2a3a", background: "rgba(255,255,255,0.04)", padding: "2px 5px", borderRadius: 4 }}>SOON</span>}
+                {item.soon && <span style={{ fontSize: 8.5, fontWeight: 700, color: "var(--text-subtle)", background: "var(--border)", padding: "2px 5px", borderRadius: 4 }}>SOON</span>}
               </button>
             );
           })}
         </nav>
 
         {/* bottom section */}
-        <div style={{ padding: "10px 10px 14px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+        <div style={{ padding: "10px 10px 14px", borderTop: "1px solid var(--border)" }}>
           {/* pro plan button */}
           <button style={{
             width: "100%", padding: "9px 0", borderRadius: 10,
-            background: "rgba(255,255,255,0.08)",
-            border: "1px solid rgba(255,255,255,0.1)", cursor: "pointer", display: "flex", alignItems: "center",
-            justifyContent: "center", gap: 6, color: "#d4d4d4", fontSize: 12, fontWeight: 600,
+            background: "var(--bg-inset)",
+            border: "1px solid var(--bg-inset)", cursor: "pointer", display: "flex", alignItems: "center",
+            justifyContent: "center", gap: 6, color: "var(--text)", fontSize: 12, fontWeight: 600,
             marginBottom: 8,
           }}>
             <Crown size={12} /> Pro Plan
@@ -331,12 +347,12 @@ export function CanvasLayout() {
           <div style={{ display: "flex", gap: 6 }}>
             <button style={{
               flex: 1, padding: "7px 0", borderRadius: 8,
-              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)",
+              background: "var(--border)", border: "1px solid var(--border)",
               cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-              gap: 5, color: "#383848", fontSize: 11, fontWeight: 500,
+              gap: 5, color: "var(--text-subtle)", fontSize: 11, fontWeight: 500,
             }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#ef4444"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(239,68,68,0.2)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#383848"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.05)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-subtle)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; }}
             >
               <LogOut size={11} /> Logout
             </button>
@@ -358,13 +374,19 @@ export function CanvasLayout() {
           <div className="flex-1 flex min-h-0">
             <div className="flex-1 min-w-0 flex flex-col relative canvas-bg">
               <div className="px-6 pt-5 pb-2 shrink-0">
-                <span className="text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: "#1e1e1e" }}>Posts</span>
+                <span className="text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: "var(--text-subtle)" }}>Posts</span>
               </div>
               <PostCanvas />
             </div>
-            <div className="w-[280px] shrink-0 flex flex-col px-5 py-5" style={{ borderLeft: "1px solid #111", background: "rgba(8,8,8,0.7)" }}>
+            <div className="w-[280px] shrink-0 flex flex-col px-5 py-5" style={{ borderLeft: "1px solid var(--border)", background: "var(--bg-elev)" }}>
               <MiraFeed />
             </div>
+          </div>
+        )}
+
+        {view === "brain" && (
+          <div className="flex-1 min-h-0">
+            <NeuralBrainCanvas />
           </div>
         )}
 
@@ -374,8 +396,20 @@ export function CanvasLayout() {
           </div>
         )}
 
-        {(view === "inbox" || view === "contacts" || view === "ai-studio" || view === "analytics" || view === "channels" || view === "billing") && (
-          <div className="flex-1 flex items-center justify-center flex-col gap-3" style={{ color: "#2a2a3a" }}>
+        {view === "inbox" && (
+          <div className="flex-1 min-h-0">
+            <InboxView />
+          </div>
+        )}
+
+        {view === "opportunities" && (
+          <div className="flex-1 min-h-0">
+            <OpportunitiesView />
+          </div>
+        )}
+
+        {(view === "contacts" || view === "ai-studio" || view === "analytics" || view === "channels" || view === "billing") && (
+          <div className="flex-1 flex items-center justify-center flex-col gap-3" style={{ color: "var(--text-subtle)" }}>
             <Sparkles size={28} style={{ opacity: 0.3 }} />
             <span style={{ fontSize: 13, fontWeight: 600 }}>Coming soon</span>
           </div>
@@ -386,25 +420,25 @@ export function CanvasLayout() {
 
       <style>{`
         .canvas-bg {
-          background-color: #07070f;
-          background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+          background-color: #ffffff;
+          background-image: radial-gradient(circle, rgba(0,0,0,0.05) 1px, transparent 1px);
           background-size: 28px 28px;
         }
         .scrollbar-thin::-webkit-scrollbar { width: 3px; }
         .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
-        .scrollbar-thin::-webkit-scrollbar-thumb { background: #1a1a1a; border-radius: 2px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 2px; }
       `}</style>
     </div>
   );
 }
 
-// Loader shown in the main area while a lazily-loaded view chunk arrives. Matches
-// the dark app shell (which is intentionally not theme-tokened).
+// Loader shown in the main area while a lazily-loaded view chunk arrives. Uses
+// the app theme tokens so it renders correctly in light mode.
 function PanelBoot() {
   return (
-    <div className="flex-1 h-full flex items-center justify-center" style={{ background: "#07070f" }}>
+    <div className="flex-1 h-full flex items-center justify-center" style={{ background: "var(--bg-frame)" }}>
       <motion.div animate={{ opacity: [0.25, 0.7, 0.25] }} transition={{ duration: 1.6, repeat: Infinity }}>
-        <MiraLogo size={30} color="#5a5a6a" />
+        <MiraLogo size={30} color="var(--text-subtle)" />
       </motion.div>
     </div>
   );

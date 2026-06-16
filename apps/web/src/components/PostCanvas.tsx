@@ -66,7 +66,7 @@ export function PostCanvas() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <Loader2 size={20} className="animate-spin" style={{ color: "#333" }} />
+        <Loader2 size={20} className="animate-spin" style={{ color: "var(--text-subtle)" }} />
       </div>
     );
   }
@@ -74,8 +74,8 @@ export function PostCanvas() {
   if (posts.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <p className="text-[13px]" style={{ color: "#444" }}>No posts synced yet.</p>
-        <p className="text-[11px]" style={{ color: "#333" }}>Open Settings → Sync posts</p>
+        <p className="text-[13px]" style={{ color: "var(--text-subtle)" }}>No posts synced yet.</p>
+        <p className="text-[11px]" style={{ color: "var(--text-subtle)" }}>Open Settings → Sync posts</p>
       </div>
     );
   }
@@ -161,7 +161,7 @@ function PostCard({
     <motion.div
       layout
       className="rounded-2xl overflow-hidden"
-      style={{ background: "#111", border: expanded ? "1px solid #2a2a2a" : "1px solid #1a1a1a" }}
+      style={{ background: "var(--bg-elev)", border: expanded ? "1px solid var(--bg-inset)" : "1px solid var(--border)" }}
     >
       {/* collapsed header — always visible */}
       <button
@@ -171,35 +171,35 @@ function PostCard({
         {/* thumbnail */}
         <div
           className="w-10 h-10 rounded-xl shrink-0 overflow-hidden flex items-center justify-center"
-          style={{ background: "#0d0d0d" }}
+          style={{ background: "var(--bg-elev)" }}
         >
           {post.thumbnailUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={post.thumbnailUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           ) : (
-            <span className="text-[8px] font-bold tracking-widest" style={{ color: "#333" }}>POST</span>
+            <span className="text-[8px] font-bold tracking-widest" style={{ color: "var(--text-subtle)" }}>POST</span>
           )}
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold truncate" style={{ color: "#e5e5e5" }}>{title}</p>
+          <p className="text-[13px] font-semibold truncate" style={{ color: "var(--text)" }}>{title}</p>
           <div className="flex items-center gap-2 mt-0.5">
             {hasLink ? (
-              <span className="flex items-center gap-1 text-[10px]" style={{ color: "#3b82f6" }}>
+              <span className="flex items-center gap-1 text-[10px]" style={{ color: "var(--accent)" }}>
                 <LinkIcon size={9} /> {post.links[0].label}
               </span>
             ) : (
-              <span className="text-[10px]" style={{ color: "#333" }}>no link</span>
+              <span className="text-[10px]" style={{ color: "var(--text-subtle)" }}>no link</span>
             )}
             {tags.slice(0, 2).map((t) => (
-              <span key={t} className="text-[10px]" style={{ color: "#3a3a3a" }}>{t}</span>
+              <span key={t} className="text-[10px]" style={{ color: "var(--text-subtle)" }}>{t}</span>
             ))}
           </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {replyBusy && <Loader2 size={12} className="animate-spin" style={{ color: "#3b82f6" }} />}
-          {expanded ? <ChevronUp size={14} style={{ color: "#444" }} /> : <ChevronDown size={14} style={{ color: "#444" }} />}
+          {replyBusy && <Loader2 size={12} className="animate-spin" style={{ color: "var(--accent)" }} />}
+          {expanded ? <ChevronUp size={14} style={{ color: "var(--text-subtle)" }} /> : <ChevronDown size={14} style={{ color: "var(--text-subtle)" }} />}
         </div>
       </button>
 
@@ -213,7 +213,7 @@ function PostCard({
             transition={{ duration: 0.2 }}
             style={{ overflow: "hidden" }}
           >
-            <div className="px-4 pb-4 space-y-4" style={{ borderTop: "1px solid #1a1a1a" }}>
+            <div className="px-4 pb-4 space-y-4" style={{ borderTop: "1px solid var(--border)" }}>
 
               {/* reply all section */}
               <div className="pt-4">
@@ -222,7 +222,7 @@ function PostCard({
                     onClick={replyAll}
                     disabled={replyBusy}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-semibold disabled:opacity-50"
-                    style={{ background: replyBusy ? "#1a1a1a" : "#3b82f6", color: "#fff" }}
+                    style={{ background: replyBusy ? "var(--border)" : "var(--accent)", color: "var(--accent-fg)" }}
                   >
                     {replyBusy ? <><Loader2 size={11} className="animate-spin" /> Replying…</> : <><Send size={11} /> Reply all</>}
                   </button>
@@ -230,7 +230,7 @@ function PostCard({
                     <button
                       onClick={stopReplyAll}
                       className="px-3 py-2 rounded-xl text-[12px] font-semibold"
-                      style={{ background: "#1a1a1a", color: "#ef4444", border: "1px solid #2a1a1a" }}
+                      style={{ background: "var(--border)", color: "#ef4444", border: "1px solid var(--border)" }}
                     >
                       Stop
                     </button>
@@ -241,47 +241,47 @@ function PostCard({
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px]"
-                      style={{ background: "#1a1a1a", color: "#555" }}
+                      style={{ background: "var(--border)", color: "var(--text-subtle)" }}
                     >
                       <ExternalLink size={11} /> open
                     </a>
                   )}
                 </div>
                 {replyResult && (
-                  <p className="text-[11px] mt-2" style={{ color: "#555" }}>{replyResult}</p>
+                  <p className="text-[11px] mt-2" style={{ color: "var(--text-subtle)" }}>{replyResult}</p>
                 )}
               </div>
 
               {/* link vault */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#333" }}>Link Vault</span>
+                  <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "var(--text-subtle)" }}>Link Vault</span>
                   <button
                     onClick={() => setAddingLink((v) => !v)}
                     className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg"
-                    style={{ color: "#3b82f6", background: "#0d1a2a" }}
+                    style={{ color: "var(--accent)", background: "var(--bg-inset)" }}
                   >
                     <Plus size={10} /> add
                   </button>
                 </div>
 
                 {post.links.length === 0 && !addingLink && (
-                  <p className="text-[11px]" style={{ color: "#2a2a2a" }}>No links yet — add one to enable Reply all.</p>
+                  <p className="text-[11px]" style={{ color: "var(--text-subtle)" }}>No links yet — add one to enable Reply all.</p>
                 )}
 
                 {post.links.map((l) => (
                   <div
                     key={l.id}
                     className="flex items-center gap-2 px-3 py-2 rounded-xl mb-1.5"
-                    style={{ background: "#0d0d0d", border: "1px solid #1e1e1e" }}
+                    style={{ background: "var(--bg-elev)", border: "1px solid var(--border)" }}
                   >
-                    <LinkIcon size={11} style={{ color: "#3b82f6" }} />
-                    <span className="text-[11.5px] font-semibold flex-1 truncate" style={{ color: "#e5e5e5" }}>{l.label}</span>
+                    <LinkIcon size={11} style={{ color: "var(--accent)" }} />
+                    <span className="text-[11.5px] font-semibold flex-1 truncate" style={{ color: "var(--text)" }}>{l.label}</span>
                     <a href={l.url} target="_blank" rel="noreferrer">
-                      <ExternalLink size={10} style={{ color: "#555" }} />
+                      <ExternalLink size={10} style={{ color: "var(--text-subtle)" }} />
                     </a>
                     <button onClick={() => removeLink(l.id)}>
-                      <Trash2 size={10} style={{ color: "#333" }} />
+                      <Trash2 size={10} style={{ color: "var(--text-subtle)" }} />
                     </button>
                   </div>
                 ))}
@@ -301,20 +301,20 @@ function PostCard({
 
               {/* owner notes */}
               <div>
-                <span className="text-[10px] font-bold tracking-widest uppercase mb-2 block" style={{ color: "#333" }}>Notes</span>
+                <span className="text-[10px] font-bold tracking-widest uppercase mb-2 block" style={{ color: "var(--text-subtle)" }}>Notes</span>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
                   placeholder="Context for Mira about this post…"
                   className="w-full px-3 py-2 rounded-xl text-[12px] outline-none resize-none bg-transparent"
-                  style={{ border: "1px solid #1e1e1e", color: "#aaa", caretColor: "#3b82f6" }}
+                  style={{ border: "1px solid var(--border)", color: "var(--text-muted)", caretColor: "var(--accent)" }}
                 />
                 <button
                   onClick={saveNotes}
                   disabled={savingNotes}
                   className="mt-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold disabled:opacity-50"
-                  style={{ background: "#1a1a1a", color: "#555" }}
+                  style={{ background: "var(--border)", color: "var(--text-subtle)" }}
                 >
                   {savingNotes ? "Saving…" : "Save notes"}
                 </button>
@@ -342,26 +342,26 @@ function AddLinkForm({
   const [type, setType]   = useState<typeof LINK_TYPES[number]>("other");
 
   return (
-    <div className="rounded-xl p-3 space-y-2 mt-2" style={{ background: "#0d0d0d", border: "1px solid #1e1e1e" }}>
+    <div className="rounded-xl p-3 space-y-2 mt-2" style={{ background: "var(--bg-elev)", border: "1px solid var(--border)" }}>
       <input
         value={label}
         onChange={(e) => setLabel(e.target.value)}
         placeholder="Label (e.g. YC LEVEL EDITING PROCESS)"
         className="w-full px-2.5 py-1.5 rounded-lg text-[12px] bg-transparent outline-none"
-        style={{ border: "1px solid #1e1e1e", color: "#e5e5e5" }}
+        style={{ border: "1px solid var(--border)", color: "var(--text)" }}
       />
       <input
         value={url}
         onChange={(e) => setUrl(e.target.value)}
         placeholder="https://..."
         className="w-full px-2.5 py-1.5 rounded-lg text-[12px] bg-transparent outline-none"
-        style={{ border: "1px solid #1e1e1e", color: "#e5e5e5" }}
+        style={{ border: "1px solid var(--border)", color: "var(--text)" }}
       />
       <select
         value={type}
         onChange={(e) => setType(e.target.value as typeof LINK_TYPES[number])}
         className="w-full px-2.5 py-1.5 rounded-lg text-[12px] bg-transparent outline-none"
-        style={{ border: "1px solid #1e1e1e", color: "#555", background: "#0d0d0d" }}
+        style={{ border: "1px solid var(--border)", color: "var(--text-subtle)", background: "var(--bg-elev)" }}
       >
         {LINK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
       </select>
@@ -370,14 +370,14 @@ function AddLinkForm({
           onClick={() => label && url && onAdd({ label, url, type })}
           disabled={!label || !url}
           className="flex-1 py-1.5 rounded-lg text-[11.5px] font-semibold disabled:opacity-40"
-          style={{ background: "#3b82f6", color: "#fff" }}
+          style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
         >
           Add link
         </button>
         <button
           onClick={onCancel}
           className="px-3 py-1.5 rounded-lg text-[11.5px]"
-          style={{ background: "#1a1a1a", color: "#555" }}
+          style={{ background: "var(--border)", color: "var(--text-subtle)" }}
         >
           Cancel
         </button>

@@ -13,11 +13,11 @@ type FeedEvent = {
 };
 
 const KIND_META: Record<FeedEvent["kind"], { icon: string; color: string; label: string }> = {
-  link_sent:       { icon: "🔗", color: "#3b82f6", label: "link sent" },
+  link_sent:       { icon: "🔗", color: "var(--accent)", label: "link sent" },
   comment_replied: { icon: "↩",  color: "#a78bfa", label: "replied" },
   dm_sent:         { icon: "📩", color: "#60a5fa", label: "DM sent" },
   follow_pending:  { icon: "⏳", color: "#fbbf24", label: "waiting" },
-  skipped:         { icon: "—",  color: "#444",    label: "skipped" },
+  skipped:         { icon: "—",  color: "var(--text-subtle)",    label: "skipped" },
 };
 
 function ago(ts: number): string {
@@ -85,15 +85,15 @@ export function MiraFeed() {
     >
       {/* header */}
       <div className="flex items-center justify-between mb-4 px-1">
-        <span className="text-[11px] font-bold tracking-[0.15em] uppercase" style={{ color: "#555" }}>
+        <span className="text-[11px] font-bold tracking-[0.15em] uppercase" style={{ color: "var(--text-subtle)" }}>
           Live Activity
         </span>
         <div className="flex items-center gap-1.5">
           <span
             className="w-1.5 h-1.5 rounded-full"
-            style={{ background: paused ? "#333" : "#3b82f6", boxShadow: paused ? "none" : "0 0 6px #3b82f6" }}
+            style={{ background: paused ? "var(--text-subtle)" : "var(--accent)", boxShadow: paused ? "none" : "0 0 6px var(--accent)" }}
           />
-          <span className="text-[10px]" style={{ color: "#444" }}>{paused ? "paused" : "live"}</span>
+          <span className="text-[10px]" style={{ color: "var(--text-subtle)" }}>{paused ? "paused" : "live"}</span>
         </div>
       </div>
 
@@ -101,7 +101,7 @@ export function MiraFeed() {
       <div className="flex-1 flex flex-col gap-2 overflow-hidden">
         {visible.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-[11px] text-center" style={{ color: "#333" }}>
+            <p className="text-[11px] text-center" style={{ color: "var(--text-subtle)" }}>
               No activity yet.<br />Click "Reply all" on a post.
             </p>
           </div>
@@ -114,8 +114,8 @@ export function MiraFeed() {
                 key={ev.id}
                 className="flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-700"
                 style={{
-                  background: "#111",
-                  border: "1px solid #1e1e1e",
+                  background: "var(--bg-elev)",
+                  border: "1px solid var(--border)",
                   opacity: Math.max(0.3, opacity),
                 }}
               >
@@ -126,18 +126,18 @@ export function MiraFeed() {
                       {meta.label}
                     </span>
                     {ev.username && (
-                      <span className="text-[11px] truncate" style={{ color: "#666" }}>
+                      <span className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
                         @{ev.username}
                       </span>
                     )}
                   </div>
                   {ev.detail && ev.kind !== "skipped" && (
-                    <p className="text-[10px] truncate mt-0.5" style={{ color: "#3a3a3a" }}>
+                    <p className="text-[10px] truncate mt-0.5" style={{ color: "var(--text-subtle)" }}>
                       {ev.detail}
                     </p>
                   )}
                 </div>
-                <span className="text-[10px] shrink-0" style={{ color: "#333" }}>
+                <span className="text-[10px] shrink-0" style={{ color: "var(--text-subtle)" }}>
                   {ago(ev.ts)}
                 </span>
               </div>
@@ -149,7 +149,7 @@ export function MiraFeed() {
       {/* counter */}
       {events.length > 0 && (
         <div className="mt-3 text-center">
-          <span className="text-[10px]" style={{ color: "#333" }}>
+          <span className="text-[10px]" style={{ color: "var(--text-subtle)" }}>
             {events.length} total events
           </span>
         </div>

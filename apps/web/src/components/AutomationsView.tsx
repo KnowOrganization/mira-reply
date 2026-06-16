@@ -97,10 +97,10 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
         className="auto-rail"
         style={{
           flexShrink: 0,
-          borderRight: "1px solid rgba(255,255,255,0.04)",
+          borderRight: "1px solid var(--border)",
           display: "flex",
           flexDirection: "column",
-          background: "#09090f",
+          background: "var(--bg-sidebar)",
         }}
       >
         {/* top controls */}
@@ -111,7 +111,7 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
             flexDirection: "column",
             alignItems: "center",
             gap: 2,
-            borderBottom: "1px solid rgba(255,255,255,0.04)",
+            borderBottom: "1px solid var(--border)",
           }}
         >
           {onBack && (
@@ -122,15 +122,15 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
                 background: "none",
                 border: "none",
                 cursor: "pointer",
-                color: "#2a2a3a",
+                color: "var(--text-subtle)",
                 width: 44,
                 height: 30,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}
-              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#666")}
-              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#2a2a3a")}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-subtle)")}
             >
               <ChevronDown size={13} style={{ transform: "rotate(90deg)" }} />
             </button>
@@ -143,15 +143,15 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
               background: "none",
               border: "none",
               cursor: "pointer",
-              color: "#2a2a3a",
+              color: "var(--text-subtle)",
               width: 44,
               height: 30,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
             }}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#666")}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#2a2a3a")}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-subtle)")}
           >
             <Plus size={13} />
           </button>
@@ -159,12 +159,12 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
 
         <div style={{ flex: 1, overflow: "auto", padding: "4px 0" }}>
           {loading && (
-            <div style={{ padding: "12px 0", color: "#252535", fontSize: 11, textAlign: "center" }}>
+            <div style={{ padding: "12px 0", color: "var(--text-subtle)", fontSize: 11, textAlign: "center" }}>
               ·
             </div>
           )}
           {!loading && automations.length === 0 && (
-            <div style={{ padding: "10px 0", color: "#252535", fontSize: 10, textAlign: "center" }}>
+            <div style={{ padding: "10px 0", color: "var(--text-subtle)", fontSize: 10, textAlign: "center" }}>
               —
             </div>
           )}
@@ -185,17 +185,17 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
                   padding: "0",
                   height: 32,
                   cursor: "pointer",
-                  background: selected === a.id ? "rgba(255,255,255,0.06)" : "transparent",
+                  background: selected === a.id ? "var(--bg-inset)" : "transparent",
                   transition: "background 0.1s",
                   marginBottom: 1,
                 }}
                 onMouseEnter={(e) => {
                   if (selected !== a.id)
-                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)";
+                    (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.05)";
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLElement).style.background =
-                    selected === a.id ? "rgba(255,255,255,0.06)" : "transparent";
+                    selected === a.id ? "var(--bg-inset)" : "transparent";
                 }}
               >
                 {/* dot */}
@@ -246,12 +246,12 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
                       onClick={(e) => e.stopPropagation()}
                       style={{
                         flex: 1,
-                        background: "rgba(255,255,255,0.05)",
-                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "var(--bg-inset)",
+                        border: "1px solid var(--border)",
                         borderRadius: 4,
                         padding: "1px 4px",
                         fontSize: 11,
-                        color: "#e5e5e5",
+                        color: "var(--text)",
                         outline: "none",
                       }}
                     />
@@ -261,7 +261,7 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
                         flex: 1,
                         fontSize: 11,
                         fontWeight: 500,
-                        color: selected === a.id ? "#ccc" : "#444",
+                        color: selected === a.id ? "var(--text)" : "var(--text-subtle)",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                       }}
@@ -283,7 +283,7 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
                         background: "none",
                         border: "none",
                         cursor: "pointer",
-                        color: "#333",
+                        color: "var(--text-subtle)",
                         padding: "2px 3px",
                         display: "flex",
                       }}
@@ -296,7 +296,7 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
                         background: "none",
                         border: "none",
                         cursor: "pointer",
-                        color: a.enabled ? "#22c55e" : "#333",
+                        color: a.enabled ? "#22c55e" : "var(--text-subtle)",
                         padding: "2px 3px",
                         display: "flex",
                       }}
@@ -327,7 +327,7 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
                             background: "none",
                             border: "none",
                             cursor: "pointer",
-                            color: "#444",
+                            color: "var(--text-subtle)",
                             padding: "2px 1px",
                             display: "flex",
                           }}
@@ -342,7 +342,7 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
                           background: "none",
                           border: "none",
                           cursor: "pointer",
-                          color: "#333",
+                          color: "var(--text-subtle)",
                           padding: "2px 3px",
                           display: "flex",
                         }}
@@ -367,11 +367,11 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
           <div
             style={{
               padding: "9px 14px",
-              borderBottom: "1px solid rgba(255,255,255,0.04)",
+              borderBottom: "1px solid var(--border)",
               display: "flex",
               alignItems: "center",
               gap: 9,
-              background: "rgba(6,6,14,0.9)",
+              background: "var(--bg-frame)",
               backdropFilter: "blur(8px)",
               flexShrink: 0,
             }}
@@ -381,16 +381,16 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
                 width: 22,
                 height: 22,
                 borderRadius: 6,
-                background: "rgba(255,255,255,0.07)",
-                border: "1px solid rgba(255,255,255,0.1)",
+                background: "var(--bg-inset)",
+                border: "1px solid var(--border)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Zap size={11} color="#888" />
+              <Zap size={11} color="var(--text-muted)" />
             </div>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: "#aaa" }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)" }}>
               {currentAuto.name}
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: 2 }}>
@@ -399,14 +399,14 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
                   width: 5,
                   height: 5,
                   borderRadius: "50%",
-                  background: currentAuto.enabled ? "#22c55e" : "#2a2a3a",
+                  background: currentAuto.enabled ? "#22c55e" : "var(--text-subtle)",
                   boxShadow: currentAuto.enabled ? "0 0 4px #22c55e" : "none",
                 }}
               />
               <span
                 style={{
                   fontSize: 10,
-                  color: currentAuto.enabled ? "#22c55e" : "#2a2a3a",
+                  color: currentAuto.enabled ? "#22c55e" : "var(--text-subtle)",
                 }}
               >
                 {currentAuto.enabled ? "Active" : "Inactive"}
@@ -446,7 +446,7 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
             justifyContent: "center",
             flexDirection: "column",
             gap: 14,
-            backgroundColor: "#07070f",
+            backgroundColor: "var(--bg-frame)",
             backgroundImage:
               "radial-gradient(circle, rgba(139,92,246,0.4) 1.2px, transparent 1.2px)",
             backgroundSize: "26px 26px",
@@ -457,20 +457,20 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
               width: 50,
               height: 50,
               borderRadius: 14,
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.08)",
+              background: "var(--border)",
+              border: "1px solid var(--bg-inset)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Zap size={22} color="#444" />
+            <Zap size={22} color="var(--text-subtle)" />
           </div>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#333", marginBottom: 5 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-subtle)", marginBottom: 5 }}>
               No automation selected
             </div>
-            <div style={{ fontSize: 11, color: "#1a1a2a" }}>
+            <div style={{ fontSize: 11, color: "var(--text-subtle)" }}>
               Create one or select from the list
             </div>
           </div>
@@ -484,7 +484,7 @@ export function AutomationsView({ onBack }: { onBack?: () => void }) {
               borderRadius: 50,
               background: "rgba(124,58,237,0.9)",
               border: "none",
-              color: "#fff",
+              color: "var(--accent-fg)",
               fontSize: 12.5,
               fontWeight: 600,
               cursor: "pointer",

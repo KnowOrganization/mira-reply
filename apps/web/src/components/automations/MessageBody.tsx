@@ -18,8 +18,8 @@ export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) =
           width: 36,
           height: 20,
           borderRadius: 10,
-          background: on ? "rgba(34,197,94,0.25)" : "rgba(255,255,255,0.06)",
-          border: `1px solid ${on ? "rgba(34,197,94,0.4)" : "rgba(255,255,255,0.1)"}`,
+          background: on ? "rgba(34,197,94,0.25)" : "var(--border)",
+          border: `1px solid ${on ? "rgba(34,197,94,0.4)" : "var(--bg-inset)"}`,
           position: "relative",
           transition: "all 0.18s",
           boxShadow: on ? "0 0 8px rgba(34,197,94,0.2)" : "none",
@@ -33,7 +33,7 @@ export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) =
             width: 14,
             height: 14,
             borderRadius: "50%",
-            background: on ? "#22c55e" : "#444",
+            background: on ? "#22c55e" : "var(--text-subtle)",
             transition: "left 0.18s, background 0.18s",
             boxShadow: on ? "0 0 6px rgba(34,197,94,0.5)" : "none",
           }}
@@ -68,22 +68,20 @@ export function ButtonSuggestModal({
     >
       <div
         style={{
-          background:
-            "linear-gradient(160deg, rgba(18,18,30,0.99) 0%, rgba(10,10,18,0.99) 100%)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          background: "var(--bg-elev)",
+          border: "1px solid var(--bg-inset)",
           borderRadius: 22,
           width: 380,
           overflow: "hidden",
-          boxShadow:
-            "0 0 0 1px rgba(255,255,255,0.04), 0 32px 80px rgba(0,0,0,0.9)",
+          boxShadow: "var(--shadow-card)",
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div
           style={{
             padding: "20px 22px 14px",
-            background: "rgba(255,255,255,0.015)",
-            borderBottom: "1px solid rgba(255,255,255,0.05)",
+            background: "var(--bg-inset)",
+            borderBottom: "1px solid var(--border)",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -92,20 +90,20 @@ export function ButtonSuggestModal({
                 width: 32,
                 height: 32,
                 borderRadius: 10,
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.08)",
+                background: "var(--border)",
+                border: "1px solid var(--bg-inset)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Plus size={14} color="#888" />
+              <Plus size={14} color="var(--text-muted)" />
             </div>
             <div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: "#e8e8e8", letterSpacing: "-0.01em" }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.01em" }}>
                 Add Button
               </div>
-              <div style={{ fontSize: 11, color: "#383848", marginTop: 2 }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                 Quick pick or write your own
               </div>
             </div>
@@ -128,14 +126,14 @@ export function ButtonSuggestModal({
                   textAlign: "left",
                   cursor: "pointer",
                   fontSize: 11.5,
-                  color: hov === s ? "#d4d4d4" : "#666",
+                  color: hov === s ? "var(--text)" : "var(--text-muted)",
                   background:
-                    hov === s ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.03)",
-                  border: `1px solid ${hov === s ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.05)"}`,
+                    hov === s ? "var(--bg-inset)" : "var(--border)",
+                  border: `1px solid ${hov === s ? "var(--bg-inset)" : "var(--border)"}`,
                   borderRadius: 10,
                   transition: "all 0.13s",
                   transform: hov === s ? "translateY(-1px)" : "none",
-                  boxShadow: hov === s ? "0 4px 12px rgba(0,0,0,0.3)" : "none",
+                  boxShadow: hov === s ? "var(--shadow-card)" : "none",
                 }}
               >
                 {s}
@@ -159,12 +157,12 @@ export function ButtonSuggestModal({
               autoFocus
               style={{
                 flex: 1,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.08)",
+                background: "var(--border)",
+                border: "1px solid var(--bg-inset)",
                 borderRadius: 10,
                 padding: "9px 12px",
                 fontSize: 11.5,
-                color: "#ccc",
+                color: "var(--text-muted)",
                 outline: "none",
               }}
             />
@@ -177,11 +175,11 @@ export function ButtonSuggestModal({
               }}
               style={{
                 padding: "9px 16px",
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.12)",
+                background: "var(--bg-inset)",
+                border: "1px solid var(--bg-inset)",
                 borderRadius: 10,
                 cursor: "pointer",
-                color: "#ccc",
+                color: "var(--text-muted)",
                 fontSize: 11.5,
                 fontWeight: 600,
                 flexShrink: 0,
@@ -198,21 +196,21 @@ export function ButtonSuggestModal({
             style={{
               width: "100%",
               padding: "10px",
-              background: "rgba(255,255,255,0.03)",
-              border: "1px solid rgba(255,255,255,0.06)",
+              background: "var(--border)",
+              border: "1px solid var(--border)",
               borderRadius: 10,
               cursor: "pointer",
-              color: "#2a2a3a",
+              color: "var(--text-subtle)",
               fontSize: 11.5,
               fontWeight: 500,
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
-              (e.currentTarget as HTMLElement).style.color = "#555";
+              (e.currentTarget as HTMLElement).style.background = "var(--bg-inset)";
+              (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)";
-              (e.currentTarget as HTMLElement).style.color = "#2a2a3a";
+              (e.currentTarget as HTMLElement).style.background = "var(--border)";
+              (e.currentTarget as HTMLElement).style.color = "var(--text-subtle)";
             }}
           >
             Dismiss
@@ -245,13 +243,13 @@ export function SuggestButton({
           background: "none",
           border: "none",
           cursor: "pointer",
-          color: "#2a2a3a",
+          color: "var(--text-subtle)",
           fontSize: 10,
           padding: "2px 0",
           fontWeight: 600,
         }}
-        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#888")}
-        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#2a2a3a")}
+        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")}
+        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-subtle)")}
       >
         ✨ Suggest
       </button>
@@ -271,14 +269,12 @@ export function SuggestButton({
         >
           <div
             style={{
-              background:
-                "linear-gradient(160deg, rgba(18,18,30,0.99) 0%, rgba(10,10,18,0.99) 100%)",
-              border: "1px solid rgba(255,255,255,0.08)",
+              background: "var(--bg-elev)",
+              border: "1px solid var(--bg-inset)",
               borderRadius: 22,
               width: 400,
               overflow: "hidden",
-              boxShadow:
-                "0 0 0 1px rgba(255,255,255,0.04), 0 32px 80px rgba(0,0,0,0.9), 0 8px 24px rgba(0,0,0,0.6)",
+              boxShadow: "var(--shadow-card)",
             }}
             onMouseDown={(e) => e.stopPropagation()}
           >
@@ -286,8 +282,8 @@ export function SuggestButton({
             <div
               style={{
                 padding: "20px 22px 16px",
-                background: "rgba(255,255,255,0.015)",
-                borderBottom: "1px solid rgba(255,255,255,0.05)",
+                background: "var(--bg-inset)",
+                borderBottom: "1px solid var(--border)",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -296,8 +292,8 @@ export function SuggestButton({
                     width: 32,
                     height: 32,
                     borderRadius: 10,
-                    background: "rgba(255,255,255,0.06)",
-                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "var(--border)",
+                    border: "1px solid var(--bg-inset)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -311,13 +307,13 @@ export function SuggestButton({
                     style={{
                       fontSize: 13.5,
                       fontWeight: 700,
-                      color: "#e8e8e8",
+                      color: "var(--text)",
                       letterSpacing: "-0.01em",
                     }}
                   >
                     Message Templates
                   </div>
-                  <div style={{ fontSize: 11, color: "#383848", marginTop: 2 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                     Select one to prefill — you can edit after
                   </div>
                 </div>
@@ -341,13 +337,13 @@ export function SuggestButton({
                     textAlign: "left",
                     padding: "13px 15px",
                     background:
-                      hovered === i ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.025)",
-                    border: `1px solid ${hovered === i ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.05)"}`,
+                      hovered === i ? "var(--bg-inset)" : "var(--border)",
+                    border: `1px solid ${hovered === i ? "var(--bg-inset)" : "var(--border)"}`,
                     borderRadius: 12,
                     cursor: "pointer",
                     transition: "all 0.14s ease",
                     transform: hovered === i ? "translateY(-1px)" : "none",
-                    boxShadow: hovered === i ? "0 4px 16px rgba(0,0,0,0.3)" : "none",
+                    boxShadow: hovered === i ? "var(--shadow-card)" : "none",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
@@ -359,13 +355,13 @@ export function SuggestButton({
                         flexShrink: 0,
                         marginTop: 1,
                         background:
-                          hovered === i ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.06)",
+                          hovered === i ? "var(--bg-inset)" : "var(--border)",
+                        border: "1px solid var(--border)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         fontSize: 10,
-                        color: "#555",
+                        color: "var(--text-muted)",
                         fontWeight: 700,
                         transition: "all 0.14s",
                       }}
@@ -376,7 +372,7 @@ export function SuggestButton({
                       <div
                         style={{
                           fontSize: 11.5,
-                          color: hovered === i ? "#d4d4d4" : "#666",
+                          color: hovered === i ? "var(--text)" : "var(--text-muted)",
                           lineHeight: 1.65,
                           transition: "color 0.14s",
                           whiteSpace: "pre-wrap",
@@ -397,22 +393,22 @@ export function SuggestButton({
                 style={{
                   width: "100%",
                   padding: "10px",
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.06)",
+                  background: "var(--border)",
+                  border: "1px solid var(--border)",
                   borderRadius: 10,
                   cursor: "pointer",
-                  color: "#2a2a3a",
+                  color: "var(--text-subtle)",
                   fontSize: 11.5,
                   fontWeight: 500,
                   transition: "all 0.12s",
                 }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
-                  (e.currentTarget as HTMLElement).style.color = "#555";
+                  (e.currentTarget as HTMLElement).style.background = "var(--bg-inset)";
+                  (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)";
-                  (e.currentTarget as HTMLElement).style.color = "#2a2a3a";
+                  (e.currentTarget as HTMLElement).style.background = "var(--border)";
+                  (e.currentTarget as HTMLElement).style.color = "var(--text-subtle)";
                 }}
               >
                 Dismiss
@@ -461,12 +457,12 @@ export function MessageBody({
         rows={3}
         style={{
           width: "100%",
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.07)",
+          background: "var(--border)",
+          border: "1px solid var(--border)",
           borderRadius: 8,
           padding: "7px 9px",
           fontSize: 11,
-          color: "#ccc",
+          color: "var(--text-muted)",
           outline: "none",
           resize: "none",
           boxSizing: "border-box",
@@ -485,12 +481,12 @@ export function MessageBody({
               }}
               style={{
                 flex: 1,
-                background: "rgba(255,255,255,0.04)",
-                border: `1px solid rgba(255,255,255,0.08)`,
+                background: "var(--border)",
+                border: `1px solid var(--bg-inset)`,
                 borderRadius: 7,
                 padding: "5px 8px",
                 fontSize: 11,
-                color: "#ccc",
+                color: "var(--text-muted)",
                 outline: "none",
               }}
               placeholder="Button label"
@@ -503,7 +499,7 @@ export function MessageBody({
                 background: "none",
                 border: "none",
                 cursor: "pointer",
-                color: "#2a2a2a",
+                color: "var(--text-subtle)",
                 padding: 2,
                 display: "flex",
               }}
@@ -518,12 +514,12 @@ export function MessageBody({
             display: "flex",
             alignItems: "center",
             gap: 5,
-            background: "rgba(255,255,255,0.04)",
-            border: "1px dashed rgba(255,255,255,0.1)",
+            background: "var(--border)",
+            border: "1px dashed var(--bg-inset)",
             borderRadius: 7,
             padding: "6px 9px",
             fontSize: 10.5,
-            color: "#555",
+            color: "var(--text-muted)",
             cursor: "pointer",
           }}
         >

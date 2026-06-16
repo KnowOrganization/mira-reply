@@ -222,7 +222,7 @@ export function AutomationCanvas({
         style={{
           position: "absolute",
           inset: 0,
-          backgroundColor: "#07070f",
+          backgroundColor: "var(--bg-frame)",
           backgroundImage:
             "radial-gradient(circle, rgba(139,92,246,0.4) 1.2px, transparent 1.2px)",
           backgroundSize: "26px 26px",
@@ -239,8 +239,8 @@ export function AutomationCanvas({
           alignItems: "center",
           gap: 6,
           padding: "7px 14px",
-          borderBottom: "1px solid rgba(255,255,255,0.04)",
-          background: "rgba(7,7,15,0.7)",
+          borderBottom: "1px solid var(--border)",
+          background: "var(--bg-elev)",
           backdropFilter: "blur(8px)",
           flexShrink: 0,
         }}
@@ -248,7 +248,7 @@ export function AutomationCanvas({
         <span
           style={{
             fontSize: 10,
-            color: "#2a2a3a",
+            color: "var(--text-subtle)",
             fontWeight: 600,
             textTransform: "uppercase",
             letterSpacing: "0.1em",
@@ -267,9 +267,9 @@ export function AutomationCanvas({
               gap: 4,
               padding: "4px 10px",
               borderRadius: 7,
-              border: `1px solid ${freeMode === fm ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.06)"}`,
-              background: freeMode === fm ? "rgba(255,255,255,0.08)" : "transparent",
-              color: freeMode === fm ? "#e5e5e5" : "#383838",
+              border: `1px solid ${freeMode === fm ? "var(--border-strong)" : "var(--border)"}`,
+              background: freeMode === fm ? "var(--bg-inset)" : "transparent",
+              color: freeMode === fm ? "var(--text)" : "var(--text-subtle)",
               fontSize: 11,
               fontWeight: 500,
               cursor: "pointer",
@@ -292,9 +292,9 @@ export function AutomationCanvas({
             gap: 5,
             padding: "4px 12px",
             borderRadius: 7,
-            border: "1px solid rgba(255,255,255,0.07)",
-            background: testOpen ? "rgba(255,255,255,0.06)" : "transparent",
-            color: "#555",
+            border: "1px solid var(--border)",
+            background: testOpen ? "var(--bg-inset)" : "transparent",
+            color: "var(--text-muted)",
             fontSize: 11,
             fontWeight: 500,
             cursor: "pointer",
@@ -314,16 +314,16 @@ export function AutomationCanvas({
             background: savedFlash
               ? "rgba(34,197,94,0.15)"
               : isDirty
-              ? "rgba(255,255,255,0.1)"
+              ? "var(--bg-inset)"
               : "transparent",
             border: `1px solid ${
               savedFlash
                 ? "rgba(34,197,94,0.3)"
                 : isDirty
-                ? "rgba(255,255,255,0.15)"
-                : "rgba(255,255,255,0.05)"
+                ? "var(--border-strong)"
+                : "var(--border)"
             }`,
-            color: savedFlash ? "#22c55e" : isDirty ? "#e5e5e5" : "#2a2a3a",
+            color: savedFlash ? "#22c55e" : isDirty ? "var(--text)" : "var(--text-subtle)",
             fontSize: 11.5,
             fontWeight: 600,
             cursor: isDirty && !saving ? "pointer" : "default",
@@ -347,8 +347,8 @@ export function AutomationCanvas({
               position: "relative",
               zIndex: 6,
               overflow: "hidden",
-              background: "rgba(8,8,18,0.95)",
-              borderBottom: "1px solid rgba(255,255,255,0.06)",
+              background: "var(--bg-elev)",
+              borderBottom: "1px solid var(--border)",
               flexShrink: 0,
             }}
           >
@@ -363,7 +363,7 @@ export function AutomationCanvas({
               <div
                 style={{
                   fontSize: 10,
-                  color: "#444",
+                  color: "var(--text-subtle)",
                   fontWeight: 600,
                   textTransform: "uppercase",
                   letterSpacing: "0.1em",
@@ -379,12 +379,12 @@ export function AutomationCanvas({
                   placeholder='Type a comment to simulate, e.g. "send me the link"'
                   style={{
                     flex: 1,
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.07)",
+                    background: "var(--border)",
+                    border: "1px solid var(--border)",
                     borderRadius: 8,
                     padding: "6px 10px",
                     fontSize: 11,
-                    color: "#ccc",
+                    color: "var(--text-muted)",
                     outline: "none",
                   }}
                 />
@@ -394,9 +394,9 @@ export function AutomationCanvas({
                   style={{
                     padding: "6px 14px",
                     borderRadius: 8,
-                    background: "rgba(255,255,255,0.09)",
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    color: "#d4d4d4",
+                    background: "var(--bg-inset)",
+                    border: "1px solid var(--border-strong)",
+                    color: "var(--text)",
                     fontSize: 11,
                     fontWeight: 600,
                     cursor: "pointer",
@@ -438,10 +438,10 @@ export function AutomationCanvas({
                           {i + 1}
                         </span>
                         <div>
-                          <div style={{ fontSize: 10.5, color: "#555", marginBottom: 2 }}>
+                          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 2 }}>
                             {step.nodeType.replace(/_/g, " ")} → {step.action}
                           </div>
-                          <div style={{ fontSize: 11, color: "#ccc", lineHeight: 1.4 }}>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
                             {step.text.slice(0, 120)}
                             {step.text.length > 120 ? "…" : ""}
                           </div>
@@ -533,14 +533,14 @@ export function AutomationCanvas({
             gap: 8,
             padding: "11px 24px",
             borderRadius: 50,
-            background: "rgba(255,255,255,0.1)",
-            border: "1px solid rgba(255,255,255,0.18)",
-            color: "#e5e5e5",
+            background: "var(--bg-inset)",
+            border: "1px solid var(--border-strong)",
+            color: "var(--text)",
             fontSize: 13.5,
             fontWeight: 600,
             cursor: "pointer",
             backdropFilter: "blur(12px)",
-            boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
+            boxShadow: "var(--shadow-card)",
           }}
         >
           <Plus size={15} strokeWidth={2.5} /> Add Response
