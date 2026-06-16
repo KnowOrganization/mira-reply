@@ -5,6 +5,9 @@ import { NextResponse, type NextRequest } from "next/server";
 // the dashboard/app is never served publicly. Static assets, _next, fonts, and
 // favicon are excluded via the matcher so the landing renders correctly.
 export function middleware(req: NextRequest) {
+  // Only restrict on the public Vercel deploy. Locally (no VERCEL env) serve the
+  // full Mira app as normal.
+  if (!process.env.VERCEL) return NextResponse.next();
   const { pathname } = req.nextUrl;
   if (pathname === "/landing" || pathname.startsWith("/landing/")) {
     return NextResponse.next();
