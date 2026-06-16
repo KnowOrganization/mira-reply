@@ -1,0 +1,154 @@
+/* ── Mira landing — scoped world. Lives only under .mira-landing ───────── */
+
+.mira-landing {
+  --m-bg: #050505;
+  --m-bg-2: #0a0a0c;
+  --m-ink: #f2efe9;
+  --m-dim: rgba(242, 239, 233, 0.55);
+  --m-faint: rgba(242, 239, 233, 0.28);
+  --m-line: rgba(242, 239, 233, 0.12);
+  --m-blue: #0095f6;
+  --m-magenta: #ff2d78;
+  --m-amber: #ffb443;
+  --m-green: #29d98c;
+
+  --m-display: var(--font-m-display), sans-serif;
+  --m-serif: var(--font-m-serif), serif;
+  --m-mono: var(--font-m-mono), monospace;
+
+  background: var(--m-bg);
+  color: var(--m-ink);
+  font-family: var(--m-display);
+  -webkit-font-smoothing: antialiased;
+  cursor: none;
+}
+
+.mira-landing ::selection {
+  background: var(--m-blue);
+  color: #fff;
+}
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .mira-landing {
+    cursor: auto;
+  }
+}
+
+/* type voices */
+.m-display {
+  font-family: var(--m-display);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.92;
+}
+.m-serif-it {
+  font-family: var(--m-serif);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+.m-mono {
+  font-family: var(--m-mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+/* hairline rules */
+.m-rule {
+  height: 1px;
+  background: var(--m-line);
+}
+
+/* outlined giant type (finale) */
+.m-outline {
+  -webkit-text-stroke: 1.5px var(--m-faint);
+  color: transparent;
+  transition: color 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* grain — animated noise overlay */
+.m-grain {
+  position: fixed;
+  inset: -100%;
+  z-index: 80;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.05;
+  animation: m-grain-shift 0.9s steps(6) infinite;
+}
+@keyframes m-grain-shift {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-3%, 2%); }
+  40% { transform: translate(2%, -3%); }
+  60% { transform: translate(-2%, -2%); }
+  80% { transform: translate(3%, 3%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* marquee */
+.m-marquee {
+  display: flex;
+  overflow: hidden;
+  user-select: none;
+}
+.m-marquee-track {
+  display: flex;
+  flex-shrink: 0;
+  min-width: 100%;
+  align-items: center;
+  animation: m-marquee var(--m-marquee-speed, 28s) linear infinite;
+}
+@keyframes m-marquee {
+  to { transform: translateX(-100%); }
+}
+
+/* window-countdown ring motif */
+.m-ring {
+  transform: rotate(-90deg);
+}
+.m-ring circle {
+  fill: none;
+  stroke-linecap: round;
+}
+
+/* chat bubbles in vignettes */
+.m-bubble-in {
+  background: #1d1d21;
+  border: 1px solid var(--m-line);
+  border-radius: 18px 18px 18px 4px;
+}
+.m-bubble-out {
+  background: var(--m-blue);
+  color: #fff;
+  border-radius: 18px 18px 4px 18px;
+}
+
+/* caret for the typing draft */
+.m-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--m-blue);
+  vertical-align: -0.12em;
+  margin-left: 2px;
+  animation: m-blink 0.85s steps(1) infinite;
+}
+@keyframes m-blink {
+  50% { opacity: 0; }
+}
+
+/* reduced motion — flatten everything */
+@media (prefers-reduced-motion: reduce) {
+  .mira-landing *,
+  .mira-landing *::before,
+  .mira-landing *::after {
+    animation-duration: 0.001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001s !important;
+  }
+  .m-grain {
+    animation: none;
+  }
+}
