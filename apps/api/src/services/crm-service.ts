@@ -59,9 +59,9 @@ export async function listConversations(accountId: string, folder?: string) {
             c.ai_draft, c.ai_draft_at, c.referral, c.pending_slot,
             ct.id as contact_id, ct.igsid, ct.display_name, ct.tags, ct.lead_status,
             dl.decision as ai_decision, dl.confidence as ai_confidence, dl.risk_level as ai_risk, dl.reason as ai_reason,
-            (SELECT body->>'text' FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_text,
-            (SELECT m.direction FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_direction
-     FROM conversations c JOIN contacts ct ON ct.id = c.contact_id
+            (SELECT body->>'text' FROM crm_messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_text,
+            (SELECT m.direction FROM crm_messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_direction
+     FROM crm_conversations c JOIN contacts ct ON ct.id = c.contact_id
      LEFT JOIN LATERAL (
        SELECT decision, confidence, risk_level, reason FROM decision_log d
        WHERE d.conversation_id = c.id ORDER BY d.created_at DESC LIMIT 1
@@ -74,7 +74,7 @@ export async function listConversations(accountId: string, folder?: string) {
 
 export async function getConversation(accountId: string, conversationId: string) {
   const [conversation] = await query<ConversationRow & { igsid: string; display_name: string | null }>(
-    `SELECT c.*, ct.igsid, ct.display_name FROM conversations c
+    `SELECT c.*, ct.igsid, ct.display_name FROM crm_conversations c
      JOIN contacts ct ON ct.id = c.contact_id
      WHERE c.account_id = $1 AND c.id = $2`,
     [accountId, conversationId]
@@ -82,7 +82,7 @@ export async function getConversation(accountId: string, conversationId: string)
   if (!conversation) return null;
   const messages = await query(
     `SELECT id, mid, direction, type, body, sent_by, seen_at, created_at
-     FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 500`,
+     FROM crm_messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 500`,
     [conversationId]
   );
   return { conversation, messages };
@@ -100,7 +100,7 @@ export async function patchConversation(accountId: string, conversationId: strin
   }
   if (!sets.length) return null;
   const rows = await query<ConversationRow>(
-    `UPDATE conversations SET ${sets.join(", ")} WHERE account_id = $1 AND id = $2 RETURNING *`,
+    `UPDATE crm_conversations SET ${sets.join(", ")} WHERE account_id = $1 AND id = $2 RETURNING *`,
     args
   );
   return rows[0] ?? null;
@@ -165,7 +165,7 @@ export async function sendHumanReply(accountId: string, conversationId: string, 
   // the assisted draft is consumed by the human send (edited or not). The
   // folder is NOT changed — inbox folders are user-managed only.
   await query(
-    `UPDATE conversations SET ai_draft = NULL, ai_draft_at = NULL WHERE id = $1`,
+    `UPDATE crm_conversations SET ai_draft = NULL, ai_draft_at = NULL WHERE id = $1`,
     [conversationId]
   );
   await query(
@@ -185,11 +185,11 @@ export async function getCrmAnalytics(accountId: string) {
   const [rt] = await query<{ avg_ms: number | null; samples: number }>(
     `SELECT AVG(diff)::float8 AS avg_ms, COUNT(*)::int AS samples FROM (
        SELECT (
-         SELECT MIN(o.created_at) FROM messages o
+         SELECT MIN(o.created_at) FROM crm_messages o
          WHERE o.conversation_id = i.conversation_id
            AND o.direction = 'out' AND o.created_at > i.created_at
        ) - i.created_at AS diff
-       FROM messages i
+       FROM crm_messages i
        WHERE i.account_id = $1 AND i.direction = 'in' AND i.created_at > $2
      ) gaps WHERE diff IS NOT NULL AND diff < 86400000`,
     [accountId, since]
@@ -201,8 +201,8 @@ export async function getCrmAnalytics(accountId: string) {
   const [totals] = await query<{ contacts: number; conversations: number; drafts: number }>(
     `SELECT
        (SELECT COUNT(*)::int FROM contacts WHERE account_id = $1) AS contacts,
-       (SELECT COUNT(*)::int FROM conversations WHERE account_id = $1) AS conversations,
-       (SELECT COUNT(*)::int FROM conversations WHERE account_id = $1 AND ai_draft IS NOT NULL) AS drafts`,
+       (SELECT COUNT(*)::int FROM crm_conversations WHERE account_id = $1) AS conversations,
+       (SELECT COUNT(*)::int FROM crm_conversations WHERE account_id = $1 AND ai_draft IS NOT NULL) AS drafts`,
     [accountId]
   );
   return {

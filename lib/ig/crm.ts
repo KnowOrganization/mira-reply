@@ -66,10 +66,10 @@ export async function upsertContactAndConversation(
   const folder = "primary";
 
   const convRows = await query<{ id: string }>(
-    `INSERT INTO conversations (id, account_id, contact_id, ai_mode, folder, created_at, updated_at)
+    `INSERT INTO crm_conversations (id, account_id, contact_id, ai_mode, folder, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, $6, $6)
      ON CONFLICT (account_id, contact_id) DO UPDATE SET
-       updated_at = GREATEST(conversations.updated_at, EXCLUDED.updated_at)
+       updated_at = GREATEST(crm_conversations.updated_at, EXCLUDED.updated_at)
      RETURNING id`,
     [uuidv4(), accountId, contactId, aiMode, folder, ts]
   );
@@ -87,13 +87,13 @@ export async function recordInboundMessage(
   msg: { mid: string; text?: string; ts: number; type?: string }
 ): Promise<void> {
   await query(
-    `INSERT INTO messages (id, account_id, conversation_id, mid, direction, type, body, sent_by, created_at)
+    `INSERT INTO crm_messages (id, account_id, conversation_id, mid, direction, type, body, sent_by, created_at)
      VALUES ($1, $2, $3, $4, 'in', $5, $6, 'user', $7)
      ON CONFLICT (id) DO NOTHING`,
     [`msg_${msg.mid}`, accountId, conversationId, msg.mid, msg.type ?? "text", JSON.stringify({ text: msg.text ?? "" }), msg.ts]
   );
   await query(
-    `UPDATE conversations SET
+    `UPDATE crm_conversations SET
        window_expires_at = GREATEST(COALESCE(window_expires_at, 0), $1),
        human_agent_window_expires_at = GREATEST(COALESCE(human_agent_window_expires_at, 0), $2),
        updated_at = GREATEST(updated_at, $3),
@@ -123,7 +123,7 @@ export async function importDMThreads(
     for (const m of th.messages) {
       if (!m.text) continue;
       await query(
-        `INSERT INTO messages (id, account_id, conversation_id, mid, direction, type, body, sent_by, created_at)
+        `INSERT INTO crm_messages (id, account_id, conversation_id, mid, direction, type, body, sent_by, created_at)
          VALUES ($1, $2, $3, $4, $5, 'text', $6, $7, $8)
          ON CONFLICT (id) DO NOTHING`,
         [`msg_${m.id}`, accountId, ref.conversationId, m.id, m.fromOwn ? "out" : "in",
@@ -134,7 +134,7 @@ export async function importDMThreads(
     }
     if (latestInbound > 0) {
       await query(
-        `UPDATE conversations SET
+        `UPDATE crm_conversations SET
            window_expires_at = GREATEST(COALESCE(window_expires_at, 0), $1),
            human_agent_window_expires_at = GREATEST(COALESCE(human_agent_window_expires_at, 0), $2),
            updated_at = GREATEST(updated_at, $3)
@@ -142,7 +142,7 @@ export async function importDMThreads(
         [latestInbound + STANDARD_WINDOW_MS, latestInbound + HUMAN_AGENT_WINDOW_MS, convTs, ref.conversationId]
       );
     } else {
-      await query(`UPDATE conversations SET updated_at = GREATEST(updated_at, $1) WHERE id = $2`, [convTs, ref.conversationId]);
+      await query(`UPDATE crm_conversations SET updated_at = GREATEST(updated_at, $1) WHERE id = $2`, [convTs, ref.conversationId]);
     }
     nThreads++;
   }
@@ -157,12 +157,12 @@ export async function recordOutboundMessage(
 ): Promise<string> {
   const id = `msg_${msg.mid ?? uuidv4()}`;
   await query(
-    `INSERT INTO messages (id, account_id, conversation_id, mid, direction, type, body, sent_by, created_at)
+    `INSERT INTO crm_messages (id, account_id, conversation_id, mid, direction, type, body, sent_by, created_at)
      VALUES ($1, $2, $3, $4, 'out', $5, $6, $7, $8)
      ON CONFLICT (id) DO NOTHING`,
     [id, accountId, conversationId, msg.mid ?? null, msg.type ?? "text", JSON.stringify(msg.body), msg.sentBy, Date.now()]
   );
-  await query(`UPDATE conversations SET updated_at = $1 WHERE id = $2`, [Date.now(), conversationId]);
+  await query(`UPDATE crm_conversations SET updated_at = $1 WHERE id = $2`, [Date.now(), conversationId]);
   return id;
 }
 

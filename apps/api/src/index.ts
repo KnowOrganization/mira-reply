@@ -12,6 +12,7 @@ import { authRoute } from "./routes/auth";
 import { postsRoute } from "./routes/posts";
 import { inboxRoute } from "./routes/inbox";
 import { crmRoute } from "./routes/crm";
+import { opportunitiesRoute } from "./routes/opportunities";
 import { analyticsRoute } from "./routes/analytics";
 import { llmRoute } from "./routes/llm";
 import { controlRoute } from "./routes/control";
@@ -64,6 +65,7 @@ export const app = new Elysia()
   .use(postsRoute)
   .use(inboxRoute)
   .use(crmRoute)
+  .use(opportunitiesRoute)
   .use(analyticsRoute)
   .use(llmRoute)
   .use(controlRoute)
@@ -74,3 +76,10 @@ export const app = new Elysia()
   .listen({ port: PORT, hostname: "127.0.0.1" });
 
 console.log(`[api] mira backend listening on :${PORT}`);
+
+// Pre-warm the Postgres pool so the FIRST real request isn't paying the cold
+// TLS-handshake to Supabase (ap-northeast-1) — that was the ~6s first-load stall.
+import("@/lib/ig/pg")
+  .then(({ query }) => query("SELECT 1"))
+  .then(() => console.log("[api] db pool warm"))
+  .catch(() => {});

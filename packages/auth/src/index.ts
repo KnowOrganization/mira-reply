@@ -13,6 +13,12 @@ export const auth = betterAuth({
   baseURL,
   secret: process.env.BETTER_AUTH_SECRET || "dev-insecure-secret-change-me",
   database: drizzleAdapter(db, { provider: "pg", schema: authSchema }),
+  // Validate the session from a short-lived signed cookie instead of a DB lookup
+  // on every request — the DB is far (Supabase ap-northeast-1), so a per-request
+  // session query added ~200ms to EVERY authenticated call. 5-min cache, signed.
+  session: {
+    cookieCache: { enabled: true, maxAge: 5 * 60 },
+  },
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID || "",
