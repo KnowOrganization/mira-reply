@@ -11,6 +11,7 @@ import { streamRoute } from "./routes/stream";
 import { authRoute } from "./routes/auth";
 import { postsRoute } from "./routes/posts";
 import { inboxRoute } from "./routes/inbox";
+import { crmRoute } from "./routes/crm";
 import { analyticsRoute } from "./routes/analytics";
 import { llmRoute } from "./routes/llm";
 import { controlRoute } from "./routes/control";
@@ -62,6 +63,7 @@ export const app = new Elysia()
   .use(authRoute)
   .use(postsRoute)
   .use(inboxRoute)
+  .use(crmRoute)
   .use(analyticsRoute)
   .use(llmRoute)
   .use(controlRoute)

@@ -13,7 +13,7 @@ export type BusEvent =
   | { type: "comment"; commentId: string; mediaId: string; fromUserId: string; fromUsername?: string; text: string; ts: number }
   | { type: "message"; messageId: string; fromUserId: string; text: string; ts: number }
   | { type: "draft"; draftId: string; ts: number }
-  | { type: "sent"; replyId: string; ts: number }
+  | { type: "sent"; replyId: string; ts: number; accountId?: string; conversationId?: string }
   | { type: "log"; level: "info" | "warn" | "error"; msg: string; ts: number };
 
 const CHANNEL = "mira:bus";

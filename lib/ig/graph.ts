@@ -503,3 +503,75 @@ export async function sendCommentPrivateReply(
     token
   );
 }
+
+// ── recovered for CRM (from 764af50): DM threads + user profile ──
+export type DMThread = {
+  threadId: string;
+  updatedTime: number;
+  contact: { igsid: string; username?: string };
+  messages: { id: string; fromOwn: boolean; text: string; ts: number }[];
+};
+
+/**
+ * Fetch the most-recent DM threads (conversation list) with their latest
+ * messages + the other participant's handle. Used for the "import my last N
+ * DMs" inbox sync on login. `ownIds` = every id that identifies THIS account in
+ * the API (app-scoped id AND real IG id) — the conversations API tags the owner
+ * by its real IG id, so own-message detection must check both.
+ */
+
+export async function getUserProfile(
+  igsid: string,
+  token: string
+): Promise<{ name?: string; username?: string } | null> {
+  try {
+    const r = (await call(`/${igsid}?fields=name,username`, token)) as {
+      name?: string; username?: string; error?: unknown;
+    };
+    if (r.error || (!r.name && !r.username)) return null;
+    return { name: r.name, username: r.username };
+  } catch {
+    return null;
+  }
+}
+
+export async function getDMThreads(
+  igUserId: string,
+  token: string,
+  ownIds: string[],
+  limit = 50
+): Promise<DMThread[]> {
+  const fields = "id,updated_time,participants,messages.limit(25){id,from,message,created_time}";
+  const res = (await call(
+    `/${igUserId}/conversations?platform=instagram&fields=${encodeURIComponent(fields)}&limit=${limit}`,
+    token
+  )) as {
+    data?: Array<{
+      id: string;
+      updated_time?: string;
+      participants?: { data?: Array<{ id: string; username?: string }> };
+      messages?: { data?: Array<{ id: string; from?: { id: string; username?: string }; message?: string; created_time: string }> };
+    }>;
+  };
+  const own = new Set(ownIds.filter(Boolean));
+  const threads: DMThread[] = [];
+  for (const conv of res.data ?? []) {
+    const other = (conv.participants?.data ?? []).find((p) => !own.has(p.id));
+    if (!other) continue;
+    const messages = (conv.messages?.data ?? [])
+      .filter((m) => (m.message ?? "").trim().length > 0) // text only (skip media/stickers)
+      .map((m) => ({
+        id: m.id,
+        fromOwn: own.has(m.from?.id ?? "") || (m.from?.id !== other.id),
+        text: m.message ?? "",
+        ts: new Date(m.created_time).getTime(),
+      }));
+    threads.push({
+      threadId: conv.id,
+      updatedTime: conv.updated_time ? new Date(conv.updated_time).getTime() : Date.now(),
+      contact: { igsid: other.id, username: other.username },
+      messages,
+    });
+  }
+  return threads;
+}
