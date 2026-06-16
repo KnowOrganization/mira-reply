@@ -17,8 +17,8 @@ export const opportunitiesRoute = new Elysia()
               ct.igsid, ct.display_name, ct.lead_status,
               (SELECT m.body->>'text' FROM crm_messages m WHERE m.conversation_id = o.conversation_id ORDER BY m.created_at DESC LIMIT 1) AS last_text
        FROM opportunities o
-       JOIN crm_conversations cv ON cv.id = o.conversation_id
-       JOIN contacts ct ON ct.id = cv.contact_id
+       LEFT JOIN crm_conversations cv ON cv.id = o.conversation_id
+       LEFT JOIN contacts ct ON ct.id = cv.contact_id
        WHERE ${cond}
        ORDER BY o.detected_at DESC LIMIT 300`,
       args
@@ -31,8 +31,8 @@ export const opportunitiesRoute = new Elysia()
       `SELECT o.id, o.type, o.confidence, o.value_estimate, o.status, o.reason, o.notes, o.detected_at, o.conversation_id,
               ct.id AS contact_id, ct.igsid, ct.display_name, ct.lead_status, ct.tags, ct.email, ct.phone
        FROM opportunities o
-       JOIN crm_conversations cv ON cv.id = o.conversation_id
-       JOIN contacts ct ON ct.id = cv.contact_id
+       LEFT JOIN crm_conversations cv ON cv.id = o.conversation_id
+       LEFT JOIN contacts ct ON ct.id = cv.contact_id
        WHERE o.account_id = $1 AND o.id = $2`,
       [auth.accountId, params.id]
     );

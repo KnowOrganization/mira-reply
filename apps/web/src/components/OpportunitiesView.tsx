@@ -50,7 +50,7 @@ function Card({ o, onClick, onDragStart }: { o: Opportunity; onClick: () => void
         <span className="text-[11.5px] font-bold capitalize truncate" style={{ color: "var(--text)" }}>{o.type.replace("_", " ")}</span>
         <span className="text-[9px] font-bold px-1 py-px rounded-full ml-auto shrink-0" style={{ background: `${color}1e`, color }}>{Math.round(o.confidence * 100)}%</span>
       </div>
-      <div className="text-[10.5px] mt-1 truncate" style={{ color: "var(--text-muted)" }}>{o.display_name || o.igsid}</div>
+      <div className="text-[10.5px] mt-1 truncate" style={{ color: "var(--text-muted)" }}>{o.display_name || o.igsid || (o.reason ? `“${o.reason}”` : "flagged in DMs")}</div>
       <div className="flex items-center justify-between mt-1">
         {o.value_estimate != null ? <span className="text-[10px] font-semibold" style={{ color: "var(--text)" }}>{fmtVal(o.value_estimate)}</span> : <span />}
         <span className="text-[9px]" style={{ color: "var(--text-subtle)" }}>{ago(o.detected_at)}</span>
