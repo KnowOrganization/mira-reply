@@ -249,7 +249,7 @@ export function Comments() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.25 }}
-                    className="break-inside-avoid mb-5 rounded-3xl overflow-hidden"
+                    className="break-inside-avoid mb-5 rounded-2xl overflow-hidden"
                     style={{
                       background: "var(--bg-elev)",
                       border: "1px solid var(--border)",

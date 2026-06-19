@@ -46,59 +46,53 @@ export function SmartGridCanvas({
     });
   });
 
-  const cols = Math.max(
-    1,
-    Math.floor((containerW - SG_PAD_X * 2 + SG_HGAP) / (SG_NODE_W + SG_HGAP))
-  );
-
-  // compute positions — snake pattern
-  const positions: SGPos[] = [];
-  let rowY = SG_PAD_Y;
-  let ni = 0;
-  while (ni < nodes.length) {
-    const row = Math.floor(ni / cols);
-    const isOdd = row % 2 === 1;
-    let rowMaxH = 0;
-    for (let c = 0; c < cols && ni + c < nodes.length; c++)
-      rowMaxH = Math.max(rowMaxH, heights[nodes[ni + c].id] ?? 280);
-    for (let c = 0; c < cols && ni < nodes.length; c++, ni++) {
-      const xCol = isOdd ? cols - 1 - c : c;
-      positions.push({ x: SG_PAD_X + xCol * (SG_NODE_W + SG_HGAP), y: rowY, row, xCol });
-    }
-    rowY += rowMaxH + SG_VGAP;
-  }
-  const canvasH = rowY + SG_PAD_Y;
-  const canvasW = SG_PAD_X * 2 + cols * SG_NODE_W + (cols - 1) * SG_HGAP;
+  // Single-file flow — no 2-col snake. Wide canvas → one horizontal row (→);
+  // narrow canvas → one vertical column (↓). Either way, one node after another.
+  const horizontal = containerW >= SG_NODE_W * 2 + SG_HGAP + SG_PAD_X * 2 + 80;
 
   const CONN_Y = 44;
 
+  // compute positions
+  const positions: SGPos[] = [];
+  if (horizontal) {
+    let x = SG_PAD_X;
+    for (let i = 0; i < nodes.length; i++) {
+      positions.push({ x, y: SG_PAD_Y, row: 0, xCol: i });
+      x += SG_NODE_W + SG_HGAP;
+    }
+  } else {
+    let y = SG_PAD_Y;
+    for (let i = 0; i < nodes.length; i++) {
+      positions.push({ x: SG_PAD_X, y, row: i, xCol: 0 });
+      y += (heights[nodes[i].id] ?? 280) + SG_VGAP;
+    }
+  }
+
+  const lastH = nodes.length ? (heights[nodes[nodes.length - 1].id] ?? 280) : 0;
+  const canvasW = horizontal
+    ? SG_PAD_X * 2 + nodes.length * SG_NODE_W + Math.max(0, nodes.length - 1) * SG_HGAP
+    : SG_PAD_X * 2 + SG_NODE_W;
+  const canvasH = horizontal
+    ? SG_PAD_Y * 2 + Math.max(...nodes.map((n) => heights[n.id] ?? 280), 280)
+    : (positions.length ? positions[positions.length - 1].y + lastH + SG_PAD_Y : 400);
+
   function connPath(i: number): { d: string; dotX: number; dotY: number } {
     const src = positions[i], tgt = positions[i + 1];
-    const srcH = heights[nodes[i].id] ?? 80;
-
-    if (src.row === tgt.row) {
-      const isOdd = src.row % 2 === 1;
-      const x1 = isOdd ? src.x : src.x + SG_NODE_W;
+    if (horizontal) {
+      // straight right: src right-edge → tgt left-edge
+      const x1 = src.x + SG_NODE_W;
       const y1 = src.y + CONN_Y;
-      const x2 = isOdd ? tgt.x + SG_NODE_W : tgt.x;
+      const x2 = tgt.x;
       const y2 = tgt.y + CONN_Y;
       const mx = (x1 + x2) / 2;
-      return {
-        d: `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`,
-        dotX: x2,
-        dotY: y2,
-      };
+      return { d: `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`, dotX: x2, dotY: y2 };
     }
-
+    // straight down: src bottom-center → tgt top-center
     const x = src.x + SG_NODE_W / 2;
-    const y1 = src.y + srcH;
+    const y1 = src.y + (heights[nodes[i].id] ?? 80);
     const y2 = tgt.y;
     const cy = (y1 + y2) / 2;
-    return {
-      d: `M ${x} ${y1} C ${x} ${cy}, ${x} ${cy}, ${x} ${y2}`,
-      dotX: x,
-      dotY: y2,
-    };
+    return { d: `M ${x} ${y1} C ${x} ${cy}, ${x} ${cy}, ${x} ${y2}`, dotX: x, dotY: y2 };
   }
 
   return (
@@ -166,7 +160,7 @@ export function SmartGridCanvas({
                 <path
                   d={d}
                   fill="none"
-                  stroke="#7c3aed"
+                  stroke="var(--accent)"
                   strokeWidth="2"
                   strokeDasharray="5 4"
                   opacity="0.65"
@@ -175,8 +169,7 @@ export function SmartGridCanvas({
                   cx={dotX}
                   cy={dotY}
                   r="4"
-                  fill="#7c3aed"
-                  style={{ filter: "drop-shadow(0 0 4px #7c3aed)" }}
+                  fill="var(--accent)"
                 />
               </g>
             );

@@ -1,30 +1,31 @@
 "use client";
 // Opportunities — Kanban pipeline (Linear-style). Detected by the opportunity
 // engine on inbound DMs (sponsorships, brand deals, collabs…). Drag a card
-// between columns to move it through the pipeline; click a card → a right
-// slide-over detail panel that OVERLAYS the board (board stays fully visible).
-import { useEffect, useState } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Gem, AlertTriangle, X, MessageSquare, Inbox, ArrowUpRight } from "lucide-react";
+// between columns to move it through the pipeline; click a card → a centered
+// modal detail (Linear-style), rendered fixed so it can't be clipped by the board.
+import { useState } from "react";
+import { X, MessageSquare, Inbox, ArrowUpRight, AlertTriangle, Gem } from "lucide-react";
 import {
   useOpportunities, useOpportunity, usePatchOpportunity, useOpportunityStream,
   type Opportunity, type CrmMessage,
 } from "../lib/api/hooks";
 import { SkOppCard, SkOppDrawerBody, SkRepeat } from "./skeleton";
+import { BoardCard, ColumnHeader, StatusIcon, Modal, IconButton, type StatusVariant } from "./ui";
 
 const TYPE_COLORS: Record<string, string> = {
   sponsorship: "#8b5cf6", brand_deal: "#3b82f6", collab: "#10b981",
   podcast: "#f59e0b", investor: "#ef4444", partnership: "#14b8a6", media: "#64748b",
 };
 
-const COLUMNS = [
-  { id: "needs_review", label: "Needs Review", color: "#f59e0b" },
-  { id: "open", label: "Open", color: "#8b5cf6" },
-  { id: "in_progress", label: "In Progress", color: "#3b82f6" },
-  { id: "won", label: "Won", color: "#10b981" },
-  { id: "lost", label: "Lost", color: "#ef4444" },
-  { id: "archived", label: "Archived", color: "#94a3b8" },
-] as const;
+// column → Linear-style status glyph (color + variant). Presentation only.
+const COLUMNS: { id: string; label: string; color: string; variant: StatusVariant }[] = [
+  { id: "needs_review", label: "Needs Review", color: "var(--st-progress)", variant: "progress" },
+  { id: "open", label: "Open", color: "var(--st-review)", variant: "empty" },
+  { id: "in_progress", label: "In Progress", color: "var(--st-review)", variant: "progress" },
+  { id: "won", label: "Won", color: "var(--st-done)", variant: "done" },
+  { id: "lost", label: "Lost", color: "var(--st-blocked)", variant: "dashed" },
+  { id: "archived", label: "Archived", color: "var(--st-backlog)", variant: "dashed" },
+];
 
 function fmtVal(v: number | null) {
   return v != null ? `₹${v.toLocaleString("en-IN")}` : "";
@@ -38,32 +39,34 @@ function ago(ts: number) {
 
 function Card({ o, onClick, onDragStart }: { o: Opportunity; onClick: () => void; onDragStart: (e: React.DragEvent) => void }) {
   const color = TYPE_COLORS[o.type] ?? "#64748b";
-  const subtitle = o.display_name || o.igsid || (o.reason ? o.reason : "flagged in DMs");
+  const linked = o.display_name || o.igsid;
+  const subtitle = linked || (o.reason ? o.reason : "flagged in DMs");
   return (
-    <div
+    <BoardCard
       draggable
       onDragStart={onDragStart}
       onClick={onClick}
-      className="rounded-lg p-3 cursor-pointer transition-all duration-100"
-      style={{ background: "var(--bg-elev)", border: "1px solid var(--border)" }}
-      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "var(--shadow-card)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.transform = "none"; }}
-    >
-      <div className="flex items-center gap-2">
-        <span style={{ width: 7, height: 7, borderRadius: 999, background: color, flexShrink: 0 }} />
-        <span className="text-[12.5px] font-medium capitalize truncate" style={{ color: "var(--text)", letterSpacing: "-0.01em" }}>{o.type.replace("_", " ")}</span>
-        <span className="text-[10px] font-medium px-1.5 py-px rounded-md ml-auto shrink-0 tabular-nums" style={{ background: "var(--bg-inset)", color: "var(--text-muted)" }}>{Math.round(o.confidence * 100)}%</span>
-      </div>
-      <div className={`text-[11.5px] mt-1.5 line-clamp-2 leading-snug ${o.display_name || o.igsid ? "" : "italic"}`} style={{ color: "var(--text-muted)" }}>
-        {o.display_name || o.igsid ? subtitle : `“${subtitle}”`}
-      </div>
-      <div className="flex items-center justify-between mt-2">
-        {o.value_estimate != null
-          ? <span className="text-[10.5px] font-semibold tabular-nums" style={{ color: "var(--text)" }}>{fmtVal(o.value_estimate)}</span>
-          : <span />}
-        <span className="text-[10px] tabular-nums" style={{ color: "var(--text-subtle)" }}>{ago(o.detected_at)}</span>
-      </div>
-    </div>
+      breadcrumb={
+        <span className="inline-flex items-center gap-1.5">
+          <span style={{ width: 7, height: 7, borderRadius: 999, background: color, display: "inline-block" }} />
+          <span className="capitalize">{o.type.replace("_", " ")}</span>
+        </span>
+      }
+      title={
+        <span className={linked ? "" : "italic font-normal"} style={!linked ? { color: "var(--text-muted)" } : undefined}>
+          {linked ? subtitle : `“${subtitle}”`}
+        </span>
+      }
+      chips={
+        <>
+          <span className="text-[10.5px] font-medium px-1.5 h-[18px] inline-flex items-center rounded-md tabular-nums" style={{ background: "var(--bg-inset)", color: "var(--text-muted)" }}>{Math.round(o.confidence * 100)}%</span>
+          {o.value_estimate != null && (
+            <span className="text-[10.5px] font-semibold tabular-nums" style={{ color: "var(--text)" }}>{fmtVal(o.value_estimate)}</span>
+          )}
+        </>
+      }
+      footer={`Detected ${ago(o.detected_at)} ago`}
+    />
   );
 }
 
@@ -73,18 +76,9 @@ export function OpportunitiesView({ onOpenConversation }: { onOpenConversation?:
   const { connected: live } = useOpportunityStream();
   const [selected, setSelected] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
-  const reduce = useReducedMotion();
 
   const all = list.data?.opportunities ?? [];
   const byStatus = (s: string) => all.filter((o) => o.status === s);
-
-  // Esc closes the slide-over
-  useEffect(() => {
-    if (!selected) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSelected(null); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [selected]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 relative" style={{ background: "var(--bg-frame)" }}>
@@ -131,14 +125,14 @@ export function OpportunitiesView({ onOpenConversation }: { onOpenConversation?:
                     const id = e.dataTransfer.getData("opportunityId");
                     if (id) patch.mutate({ id, status: col.id });
                   }}
-                  className="w-[248px] shrink-0 flex flex-col rounded-xl transition-colors"
+                  className="w-[260px] shrink-0 flex flex-col rounded-xl transition-colors"
                   style={{ background: over ? "var(--accent-soft)" : "transparent", outline: over ? "1px dashed var(--accent)" : "none", outlineOffset: -1 }}
                 >
-                  <div className="px-1.5 py-2 flex items-center gap-2">
-                    <span style={{ width: 7, height: 7, borderRadius: 999, background: col.color }} />
-                    <span className="text-[11.5px] font-semibold" style={{ color: "var(--text)", letterSpacing: "-0.01em" }}>{col.label}</span>
-                    <span className="text-[11px] ml-auto tabular-nums" style={{ color: "var(--text-subtle)" }}>{items.length}</span>
-                  </div>
+                  <ColumnHeader
+                    icon={<StatusIcon color={col.color} variant={col.variant} />}
+                    label={col.label}
+                    count={items.length}
+                  />
                   <div className="flex-1 overflow-y-auto pt-1 pb-2 flex flex-col gap-2 scrollbar-thin">
                     {list.isLoading
                       ? <SkRepeat n={2 + (ci % 2)}>{(i) => <SkOppCard key={i} i={i} />}</SkRepeat>
@@ -153,30 +147,12 @@ export function OpportunitiesView({ onOpenConversation }: { onOpenConversation?:
         </div>
       )}
 
-      {/* slide-over detail */}
-      <AnimatePresence>
+      {/* centered modal detail (Linear-style) */}
+      <Modal open={!!selected} onClose={() => setSelected(null)}>
         {selected && (
-          <>
-            <motion.div
-              className="absolute inset-0 z-10"
-              style={{ background: "rgba(15,18,25,0.06)", backdropFilter: "blur(1px)" }}
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              onClick={() => setSelected(null)}
-            />
-            <motion.div
-              className="absolute inset-y-0 right-0 z-20 w-[384px] flex flex-col overflow-y-auto"
-              style={{ background: "var(--bg)", borderLeft: "1px solid var(--border)", boxShadow: "var(--shadow-pop)" }}
-              initial={reduce ? { opacity: 0 } : { x: 384 }}
-              animate={reduce ? { opacity: 1 } : { x: 0 }}
-              exit={reduce ? { opacity: 0 } : { x: 384 }}
-              transition={{ type: "spring", stiffness: 420, damping: 40 }}
-            >
-              <OpportunityDrawer id={selected} onClose={() => setSelected(null)} onOpenConversation={onOpenConversation} />
-            </motion.div>
-          </>
+          <OpportunityDrawer id={selected} onClose={() => setSelected(null)} onOpenConversation={onOpenConversation} />
         )}
-      </AnimatePresence>
+      </Modal>
     </div>
   );
 }
@@ -196,13 +172,10 @@ function OpportunityDrawer({ id, onClose, onOpenConversation }: { id: string; on
     <>
       <div className="px-5 h-12 flex items-center justify-between border-b shrink-0 sticky top-0 z-10" style={{ borderColor: "var(--border)", background: "var(--bg)" }}>
         <span className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: "var(--text-subtle)" }}>Opportunity</span>
-        <button onClick={onClose} className="w-7 h-7 -mr-1 rounded-md flex items-center justify-center" style={{ color: "var(--text-subtle)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-inset)")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-          <X size={15} />
-        </button>
+        <span className="-mr-1"><IconButton onClick={onClose} title="Close"><X size={15} /></IconButton></span>
       </div>
 
+      <div className="flex-1 overflow-y-auto">
       {detail.isLoading || !o ? (
         <SkOppDrawerBody />
       ) : (
@@ -285,6 +258,7 @@ function OpportunityDrawer({ id, onClose, onOpenConversation }: { id: string; on
           </div>
         </div>
       )}
+      </div>
     </>
   );
 }

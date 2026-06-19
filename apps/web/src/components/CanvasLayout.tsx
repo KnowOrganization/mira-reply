@@ -420,13 +420,13 @@ export function CanvasLayout() {
 
       <style>{`
         .canvas-bg {
-          background-color: #ffffff;
-          background-image: radial-gradient(circle, rgba(0,0,0,0.05) 1px, transparent 1px);
+          background-color: var(--bg);
+          background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
           background-size: 28px 28px;
         }
         .scrollbar-thin::-webkit-scrollbar { width: 3px; }
         .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
-        .scrollbar-thin::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 2px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
       `}</style>
     </div>
   );

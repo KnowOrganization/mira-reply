@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { MiraLogo } from "./MiraLogo";
 import type { Thread } from "@/lib/types";
 import { useStatus, useClarifications, useDisconnect, qk, type IgStatus } from "@/lib/api/hooks";
+import { SectionLabel } from "./ui";
 
 type View = "dashboard" | "chat" | "comments" | "brain" | "settings" | "automations";
 
@@ -123,22 +124,22 @@ export function Sidebar({
           transition={SPRING}
           onClick={onNewChat}
           className={cn(
-            "w-full flex items-center gap-2.5 h-11 rounded-2xl text-[13.5px] font-semibold",
-            collapsed ? "justify-center px-0" : "px-3.5"
+            "w-full flex items-center gap-2 h-9 rounded-lg text-[13px] font-semibold",
+            collapsed ? "justify-center px-0" : "px-3"
           )}
           style={{
             background: "var(--accent)",
             color: "var(--accent-fg)",
-            boxShadow: "var(--shadow-soft)",
+            boxShadow: "var(--shadow-card)",
           }}
         >
-          <Plus size={16} strokeWidth={2.6} />
+          <Plus size={16} strokeWidth={2.4} />
           {!collapsed && <span>New chat</span>}
         </motion.button>
       </div>
 
       {/* main nav */}
-      <nav className="px-3 mt-4 space-y-1.5">
+      <nav className="px-3 mt-3 space-y-0.5">
         <NavItem
           icon={<LayoutDashboard size={16} />}
           label="Dashboard"
@@ -173,13 +174,8 @@ export function Sidebar({
 
       {!collapsed && (
         <>
-          <div
-            className="px-4 mt-7 mb-2 text-[10.5px] font-semibold uppercase tracking-[0.1em]"
-            style={{ color: "var(--text-subtle)" }}
-          >
-            Chats
-          </div>
-          <div className="flex-1 overflow-y-auto scrollbar-thin px-3 space-y-1">
+          <div className="px-1 mt-2"><SectionLabel>Chats</SectionLabel></div>
+          <div className="flex-1 overflow-y-auto scrollbar-thin px-3 space-y-0.5">
             {threads.length === 0 && (
               <div
                 className="px-3 py-2 text-xs"
@@ -213,16 +209,17 @@ export function Sidebar({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="card-soft mx-3 mb-3 mt-3 rounded-3xl p-4"
+            className="mx-3 mb-3 mt-3 rounded-xl p-3.5"
+            style={{ background: "var(--accent-soft)", border: "1px solid var(--border)" }}
           >
             <div
-              className="w-9 h-9 rounded-2xl flex items-center justify-center mb-2.5"
+              className="w-7 h-7 rounded-lg flex items-center justify-center mb-2.5"
               style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
             >
-              <Sparkles size={16} />
+              <Sparkles size={14} />
             </div>
             <div
-              className="text-[13px] font-bold leading-tight"
+              className="text-[12.5px] font-semibold leading-tight"
               style={{ color: "var(--accent-deep)" }}
             >
               Replies that sound like you
@@ -240,14 +237,14 @@ export function Sidebar({
       {collapsed && <div className="flex-1" />}
 
       {/* footer */}
-      <div className="px-3 py-3 space-y-1.5">
+      <div className="px-3 py-3 space-y-0.5">
         {account ? (
           collapsed ? (
             <motion.button
               whileTap={{ scale: 0.92 }}
               onClick={logout}
               title={`@${account.username} — log out`}
-              className="w-full h-10 flex items-center justify-center rounded-2xl transition-colors"
+              className="w-full h-8 flex items-center justify-center rounded-md transition-colors"
               style={{ color: "var(--text-muted)" }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-inset)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -257,7 +254,7 @@ export function Sidebar({
             </motion.button>
           ) : (
             <div
-              className="flex items-center gap-2.5 px-3 h-11 rounded-2xl"
+              className="flex items-center gap-2.5 px-2.5 h-9 rounded-lg"
               style={{ background: "var(--bg-inset)" }}
             >
               <span className="glow-dot shrink-0" />
@@ -290,13 +287,13 @@ export function Sidebar({
             href="/api/ig/connect"
             title="Sign in with Instagram"
             className={cn(
-              "w-full flex items-center gap-2 h-11 rounded-2xl text-[13.5px] font-semibold transition active:scale-[0.98]",
-              collapsed ? "justify-center px-0" : "px-3.5"
+              "w-full flex items-center gap-2 h-9 rounded-lg text-[13px] font-semibold transition active:scale-[0.98]",
+              collapsed ? "justify-center px-0" : "px-3"
             )}
             style={{
               background: "var(--accent)",
               color: "var(--accent-fg)",
-              boxShadow: "var(--shadow-soft)",
+              boxShadow: "var(--shadow-card)",
             }}
           >
             <LogIn size={16} />
@@ -332,22 +329,18 @@ function ThemeToggle({ collapsed }: { collapsed?: boolean }) {
     }
   }
   return (
-    <motion.button
-      whileHover={{ x: collapsed ? 0 : 2 }}
-      whileTap={{ scale: 0.97 }}
-      transition={SPRING}
+    <button
       onClick={toggle}
       title={dark ? "Switch to light" : "Switch to dark"}
       className={cn(
-        "w-full flex items-center gap-3 h-12 rounded-2xl text-[13.5px] transition-colors",
-        collapsed ? "justify-center px-0" : "px-2.5"
+        "w-full flex items-center gap-2.5 h-8 rounded-md text-[13px] font-medium transition-colors",
+        collapsed ? "justify-center px-0" : "px-2"
       )}
       style={{ color: "var(--text-muted)" }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-inset)"; e.currentTarget.style.color = "var(--text)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-muted)"; }}
     >
-      <span
-        className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center"
-        style={{ background: "var(--bg-inset)", color: "var(--text-muted)" }}
-      >
+      <span className="shrink-0 flex items-center justify-center" style={{ color: "var(--text-subtle)" }}>
         {dark ? <Sun size={16} /> : <Moon size={16} />}
       </span>
       {!collapsed && (
@@ -355,7 +348,7 @@ function ThemeToggle({ collapsed }: { collapsed?: boolean }) {
           {dark ? "Light mode" : "Dark mode"}
         </span>
       )}
-    </motion.button>
+    </button>
   );
 }
 
@@ -377,44 +370,30 @@ function NavItem({
   onClick?: () => void;
 }) {
   return (
-    <motion.button
-      whileHover={!active ? { x: collapsed ? 0 : 2 } : undefined}
-      whileTap={{ scale: 0.97 }}
-      transition={SPRING}
+    <button
       onClick={onClick}
       title={collapsed ? label : undefined}
       className={cn(
-        "relative w-full flex items-center gap-3 h-12 rounded-2xl text-[13.5px] transition-colors",
-        collapsed ? "justify-center px-0" : "px-2.5"
+        "relative w-full flex items-center gap-2.5 h-8 rounded-md text-[13px] font-medium transition-colors",
+        collapsed ? "justify-center px-0" : "px-2"
       )}
       style={
         active
-          ? {
-              background: "var(--bg-elev)",
-              color: "var(--text)",
-              fontWeight: 700,
-              boxShadow: "var(--shadow-card)",
-            }
+          ? { background: "var(--bg-inset)", color: "var(--text)" }
           : { color: "var(--text-muted)" }
       }
+      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "var(--bg-inset)"; e.currentTarget.style.color = "var(--text)"; }}
+      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = active ? "var(--text)" : "var(--text-muted)"; }}
     >
-      {/* icon tile */}
       <span
-        className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center relative transition-colors"
-        style={
-          active
-            ? { background: "var(--accent)", color: "var(--accent-fg)" }
-            : { background: "var(--bg-inset)", color: "var(--text-muted)" }
-        }
+        className="shrink-0 flex items-center justify-center relative"
+        style={{ color: active ? "var(--accent)" : "var(--text-subtle)" }}
       >
         {icon}
         {alert && (
           <span
-            className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full"
-            style={{
-              background: "var(--accent)",
-              boxShadow: "0 0 0 2px var(--bg-sidebar)",
-            }}
+            className="absolute -top-1 -right-1 w-2 h-2 rounded-full"
+            style={{ background: "var(--accent)", boxShadow: "0 0 0 2px var(--bg-sidebar)" }}
           />
         )}
       </span>
@@ -423,11 +402,11 @@ function NavItem({
           <span className="truncate flex-1 text-left">{label}</span>
           {badge && badge > 0 && (
             <span
-              className="text-[10.5px] px-2 py-0.5 rounded-full font-bold tabular-nums shrink-0"
+              className="text-[10.5px] px-1.5 py-0.5 rounded-md font-semibold tabular-nums shrink-0"
               style={
                 alert
                   ? { background: "var(--accent)", color: "var(--accent-fg)" }
-                  : { background: "var(--bg-inset)", color: "var(--text-muted)" }
+                  : { background: "var(--bg-elev)", color: "var(--text-muted)", border: "1px solid var(--border)" }
               }
             >
               {badge}
@@ -435,7 +414,7 @@ function NavItem({
           )}
         </>
       )}
-    </motion.button>
+    </button>
   );
 }
 
@@ -451,24 +430,16 @@ function ThreadRow({
   onDelete: () => void;
 }) {
   return (
-    <motion.div
-      whileHover={!active ? { x: 2 } : undefined}
-      whileTap={{ scale: 0.98 }}
-      transition={SPRING}
-      className={cn(
-        "group flex items-center gap-2.5 h-10 px-3 rounded-xl text-[13px] cursor-pointer transition-colors"
-      )}
+    <div
+      className="group flex items-center gap-2.5 h-8 px-2 rounded-md text-[13px] cursor-pointer transition-colors"
       style={
         active
-          ? {
-              background: "var(--bg-elev)",
-              color: "var(--text)",
-              fontWeight: 600,
-              boxShadow: "var(--shadow-card)",
-            }
+          ? { background: "var(--bg-inset)", color: "var(--text)", fontWeight: 500 }
           : { color: "var(--text-muted)" }
       }
       onClick={onSelect}
+      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "var(--bg-inset)"; }}
+      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
     >
       <MessageSquare
         size={14}
@@ -481,15 +452,15 @@ function ThreadRow({
           e.stopPropagation();
           onDelete();
         }}
-        className="opacity-0 group-hover:opacity-100 transition p-1 rounded-lg"
-        style={{ color: "var(--text-muted)" }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-inset)")}
+        className="opacity-0 group-hover:opacity-100 transition p-1 rounded-md"
+        style={{ color: "var(--text-subtle)" }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-elev)")}
         onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
         aria-label="Delete chat"
       >
         <Trash2 size={12} />
       </button>
-    </motion.div>
+    </div>
   );
 }
 

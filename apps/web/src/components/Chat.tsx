@@ -133,7 +133,7 @@ export function Chat({ thread, settings, onUpdateThread }: Props) {
       <div className="border-t" style={{ borderColor: "var(--border)" }}>
         <div className="max-w-3xl mx-auto px-4 py-4">
           <div
-            className="rounded-2xl border flex items-end gap-2 p-2.5 transition focus-within:border-strong"
+            className="rounded-xl border flex items-end gap-2 p-2.5 transition focus-within:border-strong"
             style={{ background: "var(--bg-elev)", borderColor: "var(--border-strong)" }}
           >
             <textarea

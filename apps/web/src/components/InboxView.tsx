@@ -18,6 +18,7 @@ import {
 } from "../lib/api/hooks";
 import { api } from "../lib/api/client";
 import { SkThreadRow, SkMessageBubble, SkCommentCard, SkMentionRow, SkRepeat } from "./skeleton";
+import { Avatar, Segmented } from "./ui";
 
 const FOLDERS = ["all", "primary", "general"] as const;
 const TABS = [
@@ -259,20 +260,13 @@ function DmsTab() {
               <span>{analytics.data.leadsCaptured} leads captured</span>
             </div>
           )}
-          <div className="flex gap-1 mt-2">
-            {FOLDERS.map((f) => (
-              <button
-                key={f}
-                onClick={() => setFolder(f)}
-                className="px-2 py-1 rounded-md text-[11px] font-semibold capitalize"
-                style={{
-                  background: folder === f ? "var(--accent-soft)" : "transparent",
-                  color: folder === f ? "var(--accent)" : "var(--text-muted)",
-                }}
-              >
-                {f}
-              </button>
-            ))}
+          <div className="mt-2">
+            <Segmented
+              size="sm"
+              options={FOLDERS.map((f) => ({ id: f, label: f.charAt(0).toUpperCase() + f.slice(1) }))}
+              value={folder}
+              onChange={(f) => setFolder(f)}
+            />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -293,24 +287,27 @@ function DmsTab() {
               <button
                 key={c.id}
                 onClick={() => setSelected(c.id)}
-                className="w-full text-left px-4 py-3 border-b"
-                style={{
-                  borderColor: "var(--border)",
-                  background: selected === c.id ? "var(--bg-elev)" : "transparent",
-                }}
+                className="w-full text-left px-4 py-2.5 flex gap-2.5 relative transition-colors"
+                style={{ background: selected === c.id ? "var(--bg-inset)" : "transparent" }}
+                onMouseEnter={(e) => { if (selected !== c.id) e.currentTarget.style.background = "var(--bg-inset)"; }}
+                onMouseLeave={(e) => { if (selected !== c.id) e.currentTarget.style.background = "transparent"; }}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-[12.5px] font-semibold truncate" style={{ color: "var(--text)" }}>
-                    {c.display_name || c.igsid}
-                  </span>
-                  <span className="text-[10px]" style={{ color: "var(--text-subtle)" }}>{fmtAgo(c.updated_at)}</span>
-                </div>
-                <div className="text-[11.5px] truncate mt-0.5" style={{ color: "var(--text-muted)" }}>
-                  {c.last_direction === "out" ? "↩ " : ""}{c.last_text || "—"}
-                </div>
-                <div className="flex items-center gap-1 mt-1">
-                  <Clock size={9} style={{ color: w.open ? "#22c55e" : "var(--text-subtle)" }} />
-                  <span className="text-[9.5px]" style={{ color: w.open ? "#22c55e" : "var(--text-subtle)" }}>{w.label}</span>
+                {selected === c.id && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full" style={{ background: "var(--accent)" }} />}
+                <Avatar name={c.display_name || c.igsid} size={30} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[12.5px] font-semibold truncate" style={{ color: "var(--text)" }}>
+                      {c.display_name || c.igsid}
+                    </span>
+                    <span className="text-[10px] shrink-0 tabular-nums" style={{ color: "var(--text-subtle)" }}>{fmtAgo(c.updated_at)}</span>
+                  </div>
+                  <div className="text-[11.5px] truncate mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    {c.last_direction === "out" ? "↩ " : ""}{c.last_text || "—"}
+                  </div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <Clock size={9} style={{ color: w.open ? "var(--st-done)" : "var(--text-subtle)" }} />
+                    <span className="text-[9.5px]" style={{ color: w.open ? "var(--st-done)" : "var(--text-subtle)" }}>{w.label}</span>
+                  </div>
                 </div>
               </button>
             );
@@ -369,7 +366,7 @@ function DmsTab() {
               const conf = conv.ai_confidence != null ? Math.round(conv.ai_confidence * 100) : null;
               const riskColor = conv.ai_risk === "high" ? "#ef4444" : conv.ai_risk === "medium" ? "#f59e0b" : "#22c55e";
               return (
-              <div className="mx-3 mb-1 rounded-xl p-3" style={{ background: "rgba(0,149,246,0.07)", border: "1px solid rgba(0,149,246,0.25)" }}>
+              <div className="mx-3 mb-1 rounded-lg p-3" style={{ background: "var(--accent-soft)", border: "1px solid var(--border)" }}>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] font-bold flex items-center gap-1.5" style={{ color: "var(--accent)" }}>
                     <Sparkles size={10} /> {waiting ? "Mira is asking which one" : "Mira's draft"}
@@ -389,7 +386,7 @@ function DmsTab() {
                 </div>
                 <div className="text-[12px] leading-[1.45]" style={{ color: "var(--text)" }}>{conv.ai_draft}</div>
                 {conv.ai_reason && (
-                  <div className="mt-1.5 pt-1.5 text-[10px] leading-[1.4] flex items-start gap-1" style={{ color: "var(--text-subtle)", borderTop: "1px solid rgba(0,149,246,0.12)" }}>
+                  <div className="mt-1.5 pt-1.5 text-[10px] leading-[1.4] flex items-start gap-1" style={{ color: "var(--text-subtle)", borderTop: "1px solid var(--border)" }}>
                     <span style={{ opacity: 0.6 }}>why:</span><span>{conv.ai_reason}</span>
                   </div>
                 )}
@@ -409,7 +406,7 @@ function DmsTab() {
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && doSend()}
                   disabled={!canType || send.isPending}
                   placeholder={canType ? "Reply (sent as you — human)" : "Window closed — replies blocked by Meta policy"}
-                  className="flex-1 rounded-xl px-3.5 py-2.5 text-[13px] outline-none"
+                  className="flex-1 rounded-lg px-3.5 py-2.5 text-[13px] outline-none"
                   style={{
                     background: "var(--bg-elev)", color: "var(--text)",
                     border: "1px solid var(--border)", opacity: canType ? 1 : 0.55,
@@ -418,7 +415,7 @@ function DmsTab() {
                 <button
                   onClick={doSend}
                   disabled={!canType || !draft.trim() || send.isPending}
-                  className="rounded-xl px-4 flex items-center gap-1.5 text-[12.5px] font-semibold"
+                  className="rounded-lg px-4 flex items-center gap-1.5 text-[12.5px] font-semibold"
                   style={{
                     background: canType && draft.trim() ? "var(--accent)" : "var(--bg-elev)",
                     color: canType && draft.trim() ? "#fff" : "var(--text-subtle)",

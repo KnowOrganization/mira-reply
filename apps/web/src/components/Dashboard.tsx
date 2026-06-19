@@ -139,7 +139,7 @@ function Hero({ d }: { d: Dash }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="rounded-3xl border p-7 relative overflow-hidden"
+      className="rounded-2xl border p-7 relative overflow-hidden"
       style={{
         borderColor: "var(--border)",
         background: "var(--bg-elev)",
@@ -209,7 +209,7 @@ function TodayStrip({ d }: { d: Dash }) {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 + i * 0.04 }}
-          className="rounded-2xl border p-3.5"
+          className="rounded-xl border p-3.5"
           style={{
             borderColor: "var(--border)",
             background: "var(--bg-elev)",
@@ -479,7 +479,7 @@ function ActivityLine({ d }: { d: Dash }) {
     : "Quiet so far today — Mira is watching for new comments.";
   return (
     <div
-      className="rounded-2xl border p-4 text-[12.5px] leading-5"
+      className="rounded-xl border p-4 text-[12.5px] leading-5"
       style={{
         borderColor: "var(--border)",
         background: "var(--bg-elev)",
@@ -508,7 +508,7 @@ function Card({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      className="rounded-2xl border p-5"
+      className="rounded-xl border p-5"
       style={{
         borderColor: "var(--border)",
         background: "var(--bg-elev)",

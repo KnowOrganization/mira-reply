@@ -224,7 +224,7 @@ export function AutomationCanvas({
           inset: 0,
           backgroundColor: "var(--bg-frame)",
           backgroundImage:
-            "radial-gradient(circle, rgba(139,92,246,0.4) 1.2px, transparent 1.2px)",
+            "radial-gradient(circle, color-mix(in srgb, var(--accent) 28%, transparent) 1.2px, transparent 1.2px)",
           backgroundSize: "26px 26px",
           zIndex: 0,
         }}
