@@ -16,6 +16,7 @@ import { chat } from "./llm";
 import { sanitizeReply } from "./variation";
 import { RULEBOOK_PROMPT } from "./rulebook";
 import { recallFact } from "./knowledge";
+import { catalogIntent, lookupProducts, catalogBlock } from "./catalog";
 import { quickPercept } from "./perception";
 import { tryDM } from "./dm";
 import { claimOnce, k, redis } from "./redis";
@@ -45,10 +46,11 @@ export type DmInput = {
   text: string;
 };
 
-/** Account-scope personal/general facts rendered for the prompt. */
+/** Account-scope persona facts rendered for the prompt. Includes `shop` facts
+ *  (shipping/returns/policy) so store-related questions are grounded too. */
 function personaBlock(s: IgStore): string {
   return s.knowledge
-    .filter((f) => f.scope === "account" && (f.topic === "personal" || f.topic === "general"))
+    .filter((f) => f.scope === "account" && (f.topic === "personal" || f.topic === "general" || f.topic === "shop"))
     .slice(0, 12)
     .map((f) => `- ${f.question} — ${f.answer}`)
     .join("\n");
@@ -58,7 +60,7 @@ function brainReady(s: IgStore): boolean {
   return s.knowledge.length >= MIN_BRAIN_FACTS;
 }
 
-function buildSystemPrompt(s: IgStore, persona: string, recalledAnswer: string | null, summary: string): string {
+function buildSystemPrompt(s: IgStore, persona: string, recalledAnswer: string | null, summary: string, catalog: string): string {
   return [
     `You ARE the person who runs the Instagram account @${s.account?.username || "this account"} — replying to your own DMs as yourself. You are a real human, not an assistant.`,
     "This is a 1:1 conversation — read the whole thread and continue it naturally, like texting.",
@@ -73,6 +75,7 @@ function buildSystemPrompt(s: IgStore, persona: string, recalledAnswer: string |
     s.toneSummary && `Your tone: ${s.toneSummary}`,
     persona && `ABOUT YOU (who you are):\n${persona}`,
     recalledAnswer && `KNOWN ANSWER to weave in naturally: ${recalledAnswer}`,
+    catalog,
     summary && `CONVERSATION SO FAR (summary): ${summary}`,
   ]
     .filter(Boolean)
@@ -138,7 +141,13 @@ export async function processDM(input: DmInput): Promise<void> {
   const turns = await recentTurns(conv.id, 12);
   const persona = personaBlock(store);
   const recalled = await recallFact(input.text).catch(() => null);
-  const sys = buildSystemPrompt(store, persona, recalled?.fact.answer ?? null, conv.summary);
+  // DM marketplace: ground the reply in the real catalog so "do you have X?" is
+  // answered truthfully (never invents stock). Pure in-memory over the loaded
+  // store; only runs when the message looks product-related (most DMs skip).
+  const intent = catalogIntent(input.text);
+  const prod = intent === "ask_specific" ? lookupProducts(store.products, input.text) : null;
+  const catalog = intent !== "none" ? catalogBlock(intent, prod?.match ?? null, store.products) : "";
+  const sys = buildSystemPrompt(store, persona, recalled?.fact.answer ?? null, conv.summary, catalog);
 
   // History already includes the just-recorded inbound as the final user turn.
   const reply = sanitizeReply(

@@ -135,6 +135,31 @@ export const postConfigs = pgTable("post_configs", {
   updatedAt: ms("updated_at").notNull().default(0),
 }, (t) => [uniqueIndex("uq_post_configs_post").on(t.accountId, t.igPostId)]);
 
+// ── products (DM marketplace catalog) ────────────────────────────────────────
+// Account-scoped. Checkout is link-out only (ctaUrl) — Mira never processes money.
+// priceText is a free string ("Rs 1,499" / "DM for price"); never numeric.
+export const products = pgTable("products", {
+  id: text("id").primaryKey(),
+  accountId: text("account_id").notNull(),
+  title: text("title").notNull(),
+  subtitle: text("subtitle").notNull().default(""),
+  description: text("description").notNull().default(""),
+  priceText: text("price_text"),
+  imageUrl: text("image_url"),
+  ctaUrl: text("cta_url"),                       // owner-set link-out — the only checkout
+  available: boolean("available").notNull().default(true),
+  aliases: jsonb("aliases").$type<string[]>().notNull().default([]),
+  embedding: jsonb("embedding").$type<number[]>(), // deferred-fill (v1 lookup is keyword/alias)
+  slug: text("slug"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: ms("created_at").notNull().default(0),
+  updatedAt: ms("updated_at").notNull().default(0),
+}, (t) => [
+  index("idx_products_account").on(t.accountId, t.sortOrder),
+  index("idx_products_available").on(t.accountId, t.available),
+  uniqueIndex("uq_products_slug").on(t.accountId, t.slug),
+]);
+
 export const processedComments = pgTable("processed_comments", {
   commentId: text("comment_id").primaryKey(),
   accountId: text("account_id").notNull(),
@@ -380,7 +405,8 @@ export type Schema = {
   accounts: typeof accounts; automations: typeof automations;
   webhookEvents: typeof webhookEvents;
   pendingResume: typeof pendingResume; feedEvents: typeof feedEvents;
-  postConfigs: typeof postConfigs; processedComments: typeof processedComments;
+  postConfigs: typeof postConfigs; products: typeof products;
+  processedComments: typeof processedComments;
   userStates: typeof userStates; messageLog: typeof messageLog;
   posts: typeof posts; knowledge: typeof knowledge; drafts: typeof drafts;
   history: typeof history; clarifications: typeof clarifications;

@@ -31,6 +31,7 @@ export const qk = {
   watcher: ["ig", "watcher"] as const,
   mentions: ["ig", "mentions"] as const,
   automations: ["ig", "automations"] as const,
+  products: ["ig", "products"] as const,
   conversations: (folder?: string) => ["ig", "crm", "conversations", { folder: folder ?? "" }] as const,
   conversation: (id: string) => ["ig", "crm", "conversations", id] as const,
 };
@@ -154,6 +155,55 @@ export function useKnowledge<T = unknown>(opts?: QOpts<T>) {
     queryKey: qk.knowledge,
     queryFn: () => api.get<T>("/api/ig/knowledge"),
     ...opts,
+  });
+}
+
+// ── products (DM marketplace) ───────────────────────────────────────────────
+export type Product = {
+  id: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  priceText: string | null;
+  imageUrl: string | null;
+  ctaUrl: string | null;
+  available: boolean;
+  aliases: string[];
+  slug: string | null;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export function useProducts(opts?: QOpts<{ products: Product[] }>) {
+  return useQuery<{ products: Product[] }>({
+    queryKey: qk.products,
+    queryFn: () => api.get<{ products: Product[] }>("/api/ig/products"),
+    ...opts,
+  });
+}
+
+export function useCreateProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<Product> & { title: string }) => api.post<{ product: Product }>("/api/ig/products", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.products }),
+  });
+}
+
+export function useUpdateProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...patch }: Partial<Product> & { id: string }) => api.patch<{ product: Product }>(`/api/ig/products/${id}`, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.products }),
+  });
+}
+
+export function useDeleteProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del(`/api/ig/products/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.products }),
   });
 }
 
@@ -619,13 +669,7 @@ export function useCrmAnalytics() {
   });
 }
 
-// ── Phase 3: products, opportunities ──────────────────────────────────────────
-
-export type Product = {
-  id: string; title: string; description: string; price: number | null;
-  currency: string; image_url: string | null; attachment_id: string | null;
-  sku: string | null; stock_status: string; tags: string[]; cta_url: string | null;
-};
+// ── opportunities ─────────────────────────────────────────────────────────────
 
 export type Opportunity = {
   id: string; type: string; confidence: number; value_estimate: number | null;
@@ -639,29 +683,6 @@ export type OpportunityDetail = {
   opportunity: Opportunity & { contact_id: string; tags: string[]; email: string | null; phone: string | null };
   messages: CrmMessage[];
 };
-
-export function useProducts() {
-  return useQuery({
-    queryKey: ["ig", "products"],
-    queryFn: () => api.get<{ products: Product[] }>("/api/ig/products"),
-  });
-}
-
-export function useAddProduct() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (p: Partial<Product> & { title: string }) => api.post<{ product: Product }>("/api/ig/products", p),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ig", "products"] }),
-  });
-}
-
-export function useDeleteProduct() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.del(`/api/ig/products/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ig", "products"] }),
-  });
-}
 
 export function useOpportunities(status?: string) {
   return useQuery({

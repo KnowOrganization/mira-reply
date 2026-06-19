@@ -6,7 +6,7 @@ import {
   CreditCard, Settings, ChevronDown, LogOut, Headphones,
   Crown, Images, MessagesSquare, AtSign, Tag, UserCheck,
   BookOpen, Sparkles, Mic2, TrendingUp, Heart,
-  MessageCircle, Send, Camera, BrainCircuit, Gem,
+  MessageCircle, Send, Camera, BrainCircuit, Gem, ShoppingBag,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
@@ -38,6 +38,10 @@ const OpportunitiesView = dynamic(() => import("./OpportunitiesView").then((m) =
   ssr: false,
   loading: () => <PanelBoot />,
 });
+const ProductsView = dynamic(() => import("./products/ProductsView").then((m) => m.ProductsView), {
+  ssr: false,
+  loading: () => <PanelBoot />,
+});
 
 type TopView =
   | "dashboard"
@@ -45,6 +49,7 @@ type TopView =
   | "automations"
   | "inbox"
   | "opportunities"
+  | "store"
   | "contacts"
   | "ai-studio"
   | "analytics"
@@ -67,6 +72,7 @@ const NAV: NavGroup[] = [
   { id: "dashboard", icon: <Home size={15} />, label: "Dashboard" },
   { id: "brain", icon: <BrainCircuit size={15} />, label: "Brain" },
   { id: "opportunities", icon: <Gem size={15} />, label: "Opportunities" },
+  { id: "store", icon: <ShoppingBag size={15} />, label: "Store" },
   {
     id: "automations", icon: <Zap size={15} />, label: "Automations",
     sub: [
@@ -405,6 +411,12 @@ export function CanvasLayout() {
         {view === "opportunities" && (
           <div className="flex-1 min-h-0">
             <OpportunitiesView />
+          </div>
+        )}
+
+        {view === "store" && (
+          <div className="flex-1 min-h-0">
+            <ProductsView />
           </div>
         )}
 

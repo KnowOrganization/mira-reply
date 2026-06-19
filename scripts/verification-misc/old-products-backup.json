@@ -1,0 +1,22 @@
+[
+  {
+    "id": "d2d6e0c3-9f2f-4a87-a239-313691a103bf",
+    "account_id": "26872366029122415",
+    "catalog_id": null,
+    "title": "Cortisol Glow Serum",
+    "description": "Calms stressed skin. E2E seeded product.",
+    "price": 499,
+    "currency": "INR",
+    "image_url": null,
+    "attachment_id": null,
+    "sku": null,
+    "stock_status": "in_stock",
+    "tags": [
+      "skincare",
+      "serum"
+    ],
+    "cta_url": "https://unveiled-walrus-blade.ngrok-free.dev/p/d2d6e0c3-9f2f-4a87-a239-313691a103bf",
+    "created_at": "1781310941431",
+    "updated_at": "1781310941431"
+  }
+]

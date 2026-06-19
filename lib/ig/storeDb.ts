@@ -11,7 +11,7 @@ export async function assembleStore(accountId: string): Promise<IgStore> {
   const s = freshStore(); // defaults for fields not persisted per-row
   s.schemaVersion = SCHEMA_VERSION;
 
-  const [acctRows, posts, knowledge, drafts, history, clar, training, mentions, commenters, daily, cache, autos, feed] =
+  const [acctRows, posts, knowledge, drafts, history, clar, training, mentions, commenters, daily, cache, autos, feed, prods] =
     await Promise.all([
       query<Record<string, unknown>>("SELECT * FROM accounts WHERE ig_user_id=$1", [accountId]),
       query<Record<string, unknown>>("SELECT * FROM posts WHERE account_id=$1", [accountId]),
@@ -26,6 +26,7 @@ export async function assembleStore(accountId: string): Promise<IgStore> {
       query<Record<string, unknown>>("SELECT * FROM comments_cache WHERE account_id=$1 ORDER BY ts ASC", [accountId]),
       query<Record<string, unknown>>("SELECT * FROM automations WHERE account_id=$1", [accountId]),
       query<Record<string, unknown>>("SELECT * FROM feed_events WHERE account_id=$1 ORDER BY ts ASC", [accountId]),
+      query<Record<string, unknown>>("SELECT * FROM products WHERE account_id=$1 ORDER BY sort_order ASC, created_at ASC", [accountId]),
     ]);
 
   const a = acctRows[0];
@@ -139,6 +140,15 @@ export async function assembleStore(accountId: string): Promise<IgStore> {
   }));
 
   s.feedEvents = feed.map((f) => ({ ...(f.payload as object), id: String(f.id), kind: f.kind as never, ts: Number(f.ts ?? 0) } as never));
+
+  s.products = prods.map((p) => ({
+    id: String(p.id), title: String(p.title ?? ""), subtitle: String(p.subtitle ?? ""),
+    description: String(p.description ?? ""), priceText: (p.price_text as string) ?? null,
+    imageUrl: (p.image_url as string) ?? null, ctaUrl: (p.cta_url as string) ?? null,
+    available: Boolean(p.available), aliases: (p.aliases as string[]) ?? [],
+    slug: (p.slug as string) ?? null, sortOrder: Number(p.sort_order ?? 0),
+    createdAt: Number(p.created_at ?? 0), updatedAt: Number(p.updated_at ?? 0),
+  }));
 
   return s;
 }

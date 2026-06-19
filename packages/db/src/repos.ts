@@ -5,7 +5,7 @@
 import { eq, and, desc, count } from "drizzle-orm";
 import { db } from "./client";
 import {
-  accounts, automations, postConfigs, processedComments, userStates, knowledge,
+  accounts, automations, postConfigs, processedComments, userStates, knowledge, products,
 } from "./schema";
 import type { Settings } from "../../../lib/ig/store";
 
@@ -166,4 +166,79 @@ export async function funnelStats(igPostId: string) {
   const states = await db.select({ state: userStates.state }).from(userStates).where(eq(userStates.postId, igPostId));
   const delivered = states.filter((s) => s.state === "delivered").length;
   return { total: proc.length, delivered, awaiting: states.length - delivered };
+}
+
+// ── products (DM marketplace catalog) ────────────────────────────────────────
+type ProductRow = typeof products.$inferSelect;
+export type ProductApi = {
+  id: string; title: string; subtitle: string; description: string;
+  priceText: string | null; imageUrl: string | null; ctaUrl: string | null;
+  available: boolean; aliases: string[]; slug: string | null; sortOrder: number;
+  createdAt: number; updatedAt: number;
+};
+function toProductApi(r: ProductRow): ProductApi {
+  return {
+    id: r.id, title: r.title, subtitle: r.subtitle, description: r.description,
+    priceText: r.priceText, imageUrl: r.imageUrl, ctaUrl: r.ctaUrl,
+    available: r.available, aliases: r.aliases, slug: r.slug, sortOrder: r.sortOrder,
+    createdAt: r.createdAt, updatedAt: r.updatedAt,
+  };
+}
+
+export async function listProducts(accountId: string): Promise<ProductApi[]> {
+  const rows = await db.select().from(products).where(eq(products.accountId, accountId)).orderBy(products.sortOrder, desc(products.createdAt));
+  return rows.map(toProductApi);
+}
+
+export async function getProduct(accountId: string, id: string): Promise<ProductApi | null> {
+  const [r] = await db.select().from(products).where(and(eq(products.accountId, accountId), eq(products.id, id)));
+  return r ? toProductApi(r) : null;
+}
+
+export async function createProduct(accountId: string, input: Partial<ProductApi> & { title: string }): Promise<ProductApi> {
+  const now = Date.now();
+  const row = {
+    id: crypto.randomUUID(), accountId, title: input.title,
+    subtitle: input.subtitle ?? "", description: input.description ?? "",
+    priceText: input.priceText ?? null, imageUrl: input.imageUrl ?? null, ctaUrl: input.ctaUrl ?? null,
+    available: input.available ?? true, aliases: input.aliases ?? [],
+    embedding: null, slug: input.slug ?? null, sortOrder: input.sortOrder ?? now,
+    createdAt: now, updatedAt: now,
+  };
+  await db.insert(products).values(row);
+  return toProductApi(row as ProductRow);
+}
+
+export async function updateProduct(accountId: string, id: string, patch: Partial<ProductApi>): Promise<ProductApi | null> {
+  const existing = await getProduct(accountId, id);
+  if (!existing) return null;
+  const set: Partial<ProductRow> = { updatedAt: Date.now() };
+  if (patch.title !== undefined) set.title = patch.title;
+  if (patch.subtitle !== undefined) set.subtitle = patch.subtitle;
+  if (patch.description !== undefined) set.description = patch.description;
+  if (patch.priceText !== undefined) set.priceText = patch.priceText;
+  if (patch.imageUrl !== undefined) set.imageUrl = patch.imageUrl;
+  if (patch.ctaUrl !== undefined) set.ctaUrl = patch.ctaUrl;
+  if (patch.available !== undefined) set.available = patch.available;
+  if (patch.aliases !== undefined) set.aliases = patch.aliases;
+  if (patch.slug !== undefined) set.slug = patch.slug;
+  if (patch.sortOrder !== undefined) set.sortOrder = patch.sortOrder;
+  await db.update(products).set(set).where(and(eq(products.accountId, accountId), eq(products.id, id)));
+  return getProduct(accountId, id);
+}
+
+export async function deleteProduct(accountId: string, id: string): Promise<boolean> {
+  const rows = await db.delete(products).where(and(eq(products.accountId, accountId), eq(products.id, id))).returning({ id: products.id });
+  return rows.length > 0;
+}
+
+// Resolve a public storefront slug → accountId (used by the unauthenticated /api/store route).
+// Scans accounts.settings.storefrontSlug; returns null if none/unpublished.
+export async function getAccountByStorefrontSlug(slug: string): Promise<string | null> {
+  const rows = await db.select({ id: accounts.igUserId, settings: accounts.settings }).from(accounts);
+  for (const r of rows) {
+    const s = r.settings as Settings | null;
+    if (s?.storefrontSlug === slug && s?.storefrontEnabled) return r.id;
+  }
+  return null;
 }

@@ -192,6 +192,10 @@ export type Settings = {
   sendJitter: boolean;
   selectiveReplyRate: number; // 0-1, fraction of low-value acks to skip
   uniquenessThreshold: number; // similarity above this → regenerate
+  // ── DM marketplace storefront (flat keys — patchSettings is a shallow merge) ──
+  storefrontSlug?: string;     // owner-chosen, uniqueness-checked at write time
+  storefrontEnabled?: boolean; // published flag for the public /s/<slug> page
+  storefrontTitle?: string;    // display title on the storefront
 };
 
 /** Collapse the legacy replyMode into the three-state per-channel ReplyMode. */
@@ -250,6 +254,26 @@ export type IgStore = {
   // Retry pending — automations parked mid-flow by an Instagram rate-limit (613),
   // to be re-run from their remaining nodes once `notBefore` passes.
   automationRetryPending: AutomationRetryPending[];
+  // DM marketplace catalog — owner's products. Linked to the brain for truthful
+  // "do you have X?" answers and rendered into the DM card carousel.
+  products: Product[];
+};
+
+// DM marketplace product. Checkout is link-out only (ctaUrl) — never numeric price.
+export type Product = {
+  id: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  priceText: string | null;   // free string ("Rs 1,499" / "DM for price")
+  imageUrl: string | null;
+  ctaUrl: string | null;       // owner-set link-out — the only checkout
+  available: boolean;
+  aliases: string[];
+  slug: string | null;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
 };
 
 export type CachedComment = {
@@ -440,6 +464,7 @@ export function freshStore(): IgStore {
     automationFollowPending: [],
     automationButtonPending: [],
     automationRetryPending: [],
+    products: [],
   };
 }
 

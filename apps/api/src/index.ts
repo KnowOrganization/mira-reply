@@ -7,6 +7,7 @@ import { statusRoute } from "./routes/status";
 import { settingsRoute } from "./routes/settings";
 import { automationsRoute } from "./routes/automations";
 import { postConfigsRoute } from "./routes/postConfigs";
+import { productsRoute } from "./routes/products";
 import { streamRoute } from "./routes/stream";
 import { authRoute } from "./routes/auth";
 import { postsRoute } from "./routes/posts";
@@ -60,6 +61,7 @@ export const app = new Elysia()
   .use(settingsRoute)
   .use(automationsRoute)
   .use(postConfigsRoute)
+  .use(productsRoute)
   .use(streamRoute)
   .use(authRoute)
   .use(postsRoute)
