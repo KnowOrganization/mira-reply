@@ -12,6 +12,8 @@ import {
   ClipboardList,
   Clock,
   Plus,
+  Reply,
+  X,
 } from "lucide-react";
 import type { AutomationNodeData, AutomationNode } from "@shaiz/shared";
 import { NodeShell, NodeHeader } from "./NodeShell";
@@ -107,6 +109,69 @@ export function TextMessageNode({
   );
 }
 
+// ── CommentReplyNode ───────────────────────────────────────────────────────
+// Public reply posted UNDER the user's comment (not a DM). Keep the DM copy in
+// the message nodes; this is just the visible "Check your DMs!" acknowledgement.
+
+export function CommentReplyNode({
+  data,
+  onUpdate,
+  onDelete,
+  canDelete,
+  dragMode,
+}: NodeCardProps) {
+  return (
+    <NodeShell color="#0ea5e9" dragMode={dragMode}>
+      <NodeHeader
+        icon={<Reply size={14} />}
+        title="Comment Reply"
+        subtitle="Public reply posted under the comment"
+        color="#0ea5e9"
+        onDelete={onDelete}
+        canDelete={canDelete}
+      />
+      <div style={{ padding: "9px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div
+            style={{
+              fontSize: 9.5,
+              color: "var(--text-subtle)",
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.1em",
+            }}
+          >
+            Public reply
+          </div>
+          <SuggestButton nodeType="comment_reply" onSelect={(t) => onUpdate({ text: t })} />
+        </div>
+        <textarea
+          value={data.text ?? ""}
+          onChange={(e) => onUpdate({ text: e.target.value })}
+          placeholder="Just sent you a DM 📩"
+          rows={2}
+          style={{
+            width: "100%",
+            background: "var(--border)",
+            border: "1px solid rgba(14,165,233,0.2)",
+            borderRadius: 8,
+            padding: "7px 9px",
+            fontSize: 11,
+            color: "var(--text-muted)",
+            outline: "none",
+            resize: "none",
+            boxSizing: "border-box",
+            lineHeight: 1.5,
+          }}
+        />
+        <div style={{ fontSize: 9.5, color: "var(--text-subtle)", lineHeight: 1.4 }}>
+          Publicly replies to the comment. Keep the DM copy in the message nodes.
+        </div>
+      </div>
+    </NodeShell>
+  );
+}
+
 // ── CardMessageNode ────────────────────────────────────────────────────────
 
 export function CardMessageNode({
@@ -127,23 +192,25 @@ export function CardMessageNode({
         canDelete={canDelete}
       />
       <div style={{ padding: "9px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
-        <div
+        <input
+          value={data.imageUrl ?? ""}
+          onChange={(e) => onUpdate({ imageUrl: e.target.value })}
+          placeholder="Image URL (https://…) — optional"
           style={{
-            height: 68,
-            border: "1px dashed rgba(236,72,153,0.2)",
-            borderRadius: 9,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexDirection: "column",
-            gap: 4,
-            color: "var(--text-subtle)",
-            background: "rgba(236,72,153,0.04)",
+            width: "100%",
+            background: "var(--border)",
+            border: "1px solid rgba(236,72,153,0.2)",
+            borderRadius: 8,
+            padding: "6px 9px",
+            fontSize: 11,
+            color: "var(--text-muted)",
+            outline: "none",
+            boxSizing: "border-box",
           }}
-        >
-          <ImageIcon size={15} />
-          <span style={{ fontSize: 10 }}>Select an image · Max 15MB</span>
-        </div>
+        />
+        {data.imageUrl?.trim() && (
+          <img src={data.imageUrl.trim()} alt="" style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid var(--border)" }} />
+        )}
         {(["title", "subtitle"] as const).map((key) => (
           <div key={key} style={{ position: "relative" }}>
             <input
@@ -177,6 +244,49 @@ export function CardMessageNode({
             </span>
           </div>
         ))}
+        {(data.buttons ?? []).map((b, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              value={b.label}
+              onChange={(e) => {
+                const next = [...(data.buttons ?? [])];
+                next[i] = { ...next[i], label: e.target.value };
+                onUpdate({ buttons: next });
+              }}
+              placeholder="Button label"
+              style={{
+                flex: 1,
+                background: "var(--border)",
+                border: "1px solid rgba(236,72,153,0.2)",
+                borderRadius: 8,
+                padding: "6px 9px",
+                fontSize: 11,
+                color: "var(--text-muted)",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+            <button
+              onClick={() => onUpdate({ buttons: (data.buttons ?? []).filter((_, j) => j !== i) })}
+              aria-label="Remove button"
+              style={{
+                width: 24,
+                height: 24,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 6,
+                border: "none",
+                background: "transparent",
+                color: "var(--text-subtle)",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ))}
         <button
           onClick={() =>
             onUpdate({ buttons: [...(data.buttons ?? []), { label: "", payload: "" }] })
@@ -204,7 +314,8 @@ export function CardMessageNode({
 
 // ── ImageMessageNode ───────────────────────────────────────────────────────
 
-export function ImageMessageNode({ onDelete, canDelete, dragMode }: NodeCardProps) {
+export function ImageMessageNode({ data, onUpdate, onDelete, canDelete, dragMode }: NodeCardProps) {
+  const url = data.imageUrl?.trim();
   return (
     <NodeShell color="#14b8a6" dragMode={dragMode}>
       <NodeHeader
@@ -215,24 +326,30 @@ export function ImageMessageNode({ onDelete, canDelete, dragMode }: NodeCardProp
         onDelete={onDelete}
         canDelete={canDelete}
       />
-      <div style={{ padding: "9px 12px" }}>
-        <div
+      <div style={{ padding: "9px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+        <input
+          value={data.imageUrl ?? ""}
+          onChange={(e) => onUpdate({ imageUrl: e.target.value })}
+          placeholder="Paste image URL (https://…)"
           style={{
-            height: 78,
-            border: "1.5px dashed rgba(20,184,166,0.25)",
-            borderRadius: 9,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexDirection: "column",
-            gap: 5,
-            background: "rgba(20,184,166,0.04)",
-            cursor: "pointer",
+            width: "100%",
+            background: "var(--border)",
+            border: "1px solid rgba(20,184,166,0.2)",
+            borderRadius: 8,
+            padding: "7px 9px",
+            fontSize: 11,
+            color: "var(--text-muted)",
+            outline: "none",
+            boxSizing: "border-box",
           }}
-        >
-          <ImageIcon size={17} color="#14b8a6" />
-          <span style={{ fontSize: 10, color: "#14b8a6" }}>Click or drag image here</span>
-        </div>
+        />
+        {url ? (
+          <img src={url} alt="" style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid var(--border)" }} />
+        ) : (
+          <div style={{ fontSize: 9.5, color: "var(--text-subtle)", lineHeight: 1.4 }}>
+            Direct image link. Sent to the user as a DM attachment.
+          </div>
+        )}
       </div>
     </NodeShell>
   );
@@ -656,6 +773,8 @@ export function RenderNode({
       return <CardMessageNode {...props} />;
     case "image_message":
       return <ImageMessageNode {...props} />;
+    case "comment_reply":
+      return <CommentReplyNode {...props} />;
     case "ask_follow":
       return <AskFollowNode {...props} />;
     case "follow_gate":

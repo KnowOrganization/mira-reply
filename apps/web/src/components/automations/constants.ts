@@ -43,6 +43,11 @@ export const MESSAGE_TEMPLATES: Record<string, string[]> = {
     "Following up! 😊 Hope it was helpful — any questions at all?",
     "Hey! Just wanted to make sure everything arrived okay ✨ Let me know!",
   ],
+  comment_reply: [
+    "Just sent you a DM 📩 Check your inbox!",
+    "Replied in your DMs 💬 Go check!",
+    "Sent! 👀 Check your messages 💜",
+  ],
 };
 
 export const NODE_DEFAULTS: Partial<Record<string, string>> = {
@@ -52,6 +57,7 @@ export const NODE_DEFAULTS: Partial<Record<string, string>> = {
   follow_gate: "Hey! 👋 This content is for our community 💜\n\nFollow @[username] to unlock it — once you do, reply \"done\" and I'll send it right over! 🙏",
   lead_form: "What's the best email to send this to? 📩",
   followup_message: "Hey! 👋 Just checking in — did you get a chance to look at what I sent?",
+  comment_reply: "Just sent you a DM 📩 Check your inbox!",
 };
 
 export const TRIGGER_OPTIONS = [

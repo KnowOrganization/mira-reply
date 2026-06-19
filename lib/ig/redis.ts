@@ -98,6 +98,10 @@ export const k = {
   // re-enqueues, so a single inbound can never be answered twice.
   replied: (acct: string, targetId: string) => `replied:${acct}:${targetId}`,
   fired: (acct: string, automationId: string, commentId: string) => `fired:${acct}:${automationId}:${commentId}`,
+  // per-(automation, comment, node) idempotency — a node sent once for a comment never re-sends on resume/retry.
+  sentNode: (acct: string, automationId: string, commentId: string, nodeId: string) => `autosent:${acct}:${automationId}:${commentId}:${nodeId}`,
+  // recipient + content-hash backstop — identical text to the same recipient suppressed within TTL.
+  sentHash: (acct: string, recipient: string, hash: string) => `autohash:${acct}:${recipient}:${hash}`,
   resumeLock: (acct: string, userId: string) => `lock:resume:${acct}:${userId}`,
   dmWatermark: (acct: string) => `dmwm:${acct}`,
   commentWatermark: (acct: string) => `cwm:${acct}`,

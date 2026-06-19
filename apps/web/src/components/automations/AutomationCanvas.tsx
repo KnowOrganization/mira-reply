@@ -77,6 +77,33 @@ export function AutomationCanvas({
       };
       ns.splice(idx + 1, 0, pf);
     }
+    // comment_post default chain: trigger → post_filter → comment_reply → opening_message.
+    // Each .some()-guarded so reloads never duplicate. live_comment seeds post_filter only.
+    if (trigger && triggerType === "comment_post") {
+      if (!ns.some((n) => n.type === "comment_reply")) {
+        const pfIdx = ns.findIndex((n) => n.type === "post_filter");
+        const at = (pfIdx === -1 ? ns.indexOf(trigger) : pfIdx) + 1;
+        const cr: import("@shaiz/shared").AutomationNode = {
+          id: `node_comment_reply_${Date.now().toString(36)}`,
+          type: "comment_reply",
+          position: { x: 0, y: 0 },
+          data: { enabled: true, text: NODE_DEFAULTS.comment_reply },
+        };
+        ns.splice(at, 0, cr);
+      }
+      if (!ns.some((n) => n.type === "opening_message")) {
+        const crIdx = ns.findIndex((n) => n.type === "comment_reply");
+        const pfIdx = ns.findIndex((n) => n.type === "post_filter");
+        const at = (crIdx !== -1 ? crIdx : pfIdx !== -1 ? pfIdx : ns.indexOf(trigger)) + 1;
+        const om: import("@shaiz/shared").AutomationNode = {
+          id: `node_opening_message_${Date.now().toString(36)}`,
+          type: "opening_message",
+          position: { x: 0, y: 0 },
+          data: { enabled: true, text: NODE_DEFAULTS.opening_message },
+        };
+        ns.splice(at, 0, om);
+      }
+    }
     setNodes(ns);
     setIsDirty(false);
     setTestSteps(null);
@@ -105,22 +132,35 @@ export function AutomationCanvas({
       const trigger = updated.find((n) => n.type === "trigger");
       if (trigger && trigger.id === id && "text" in patch) {
         const triggerType = patch.text ?? trigger.data.text;
-        const needsPostFilter =
-          triggerType === "comment_post" || triggerType === "live_comment";
-        const hasPostFilter = updated.some((n) => n.type === "post_filter");
-        if (needsPostFilter && !hasPostFilter) {
-          const pfId = `node_post_filter_${Date.now().toString(36)}`;
-          const pfNode: import("@shaiz/shared").AutomationNode = {
-            id: pfId,
-            type: "post_filter",
-            position: { x: 0, y: 0 },
-            data: { postIds: [] },
-          };
-          return [updated[0], pfNode, ...updated.slice(1)];
+        if (triggerType === "comment_post") {
+          // Seed the full default chain in order: post_filter → comment_reply → opening_message.
+          // Each added only if absent. updated[0] is the trigger (index 0 by construction);
+          // edges are built from array order in save(), so this prefix = execution order.
+          const missing: import("@shaiz/shared").AutomationNode[] = [];
+          if (!updated.some((n) => n.type === "post_filter"))
+            missing.push({ id: `node_post_filter_${Date.now().toString(36)}`, type: "post_filter", position: { x: 0, y: 0 }, data: { postIds: [] } });
+          if (!updated.some((n) => n.type === "comment_reply"))
+            missing.push({ id: `node_comment_reply_${Date.now().toString(36)}`, type: "comment_reply", position: { x: 0, y: 0 }, data: { enabled: true, text: NODE_DEFAULTS.comment_reply } });
+          if (!updated.some((n) => n.type === "opening_message"))
+            missing.push({ id: `node_opening_message_${Date.now().toString(36)}`, type: "opening_message", position: { x: 0, y: 0 }, data: { enabled: true, text: NODE_DEFAULTS.opening_message } });
+          return missing.length ? [updated[0], ...missing, ...updated.slice(1)] : updated;
         }
-        if (!needsPostFilter) {
-          return updated.filter((n) => n.type !== "post_filter");
+        if (triggerType === "live_comment") {
+          // Live: post_filter only (no public comment reply / opening seed).
+          if (!updated.some((n) => n.type === "post_filter")) {
+            const pfNode: import("@shaiz/shared").AutomationNode = {
+              id: `node_post_filter_${Date.now().toString(36)}`,
+              type: "post_filter",
+              position: { x: 0, y: 0 },
+              data: { postIds: [] },
+            };
+            return [updated[0], pfNode, ...updated.slice(1)];
+          }
+          return updated;
         }
+        // dm / story_reply — strip the comment-only auto prefix (post_filter + comment_reply).
+        // opening_message is valid on any trigger, so it stays.
+        return updated.filter((n) => n.type !== "post_filter" && n.type !== "comment_reply");
       }
       return updated;
     });

@@ -1,5 +1,5 @@
 import { readStore, updateStore } from "./store";
-import { sendDM, sendDMWithButtons, sendDMImage, sendCommentPrivateReply, sendCommentPrivateReplyWithButtons, sendDMWithButtonTemplate, sendCommentPrivateReplyWithButtonTemplate, isRateLimitError } from "./graph";
+import { sendDM, sendDMWithButtons, sendDMImage, sendCommentPrivateReply, sendCommentPrivateReplyWithButtons, sendDMWithButtonTemplate, sendCommentPrivateReplyWithButtonTemplate, replyToComment, isRateLimitError } from "./graph";
 import type { ButtonTemplateButton } from "./graph";
 
 const ONE_DAY = 24 * 60 * 60 * 1000;
@@ -139,6 +139,29 @@ export async function tryPrivateReply(
     return {
       ok: false,
       reason: e instanceof Error ? e.message : "private reply failed",
+      rateLimited: isRateLimitError(e),
+    };
+  }
+}
+
+/** PUBLIC reply posted under the triggering comment (e.g. "Check your DMs!").
+ *  Not a DM — does not consume the cold-DM quota. replyToComment has no empty
+ *  guard, so we trim/cap here. */
+export async function tryReplyToComment(
+  commentId: string,
+  text: string
+): Promise<SendResult> {
+  const msg = text?.trim();
+  if (!msg) return { ok: false, reason: "empty message" };
+  const s = await readStore();
+  if (!s.account) return { ok: false, reason: "not connected" };
+  try {
+    await replyToComment(commentId, msg.slice(0, 1000), s.account.accessToken);
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      reason: e instanceof Error ? e.message : "comment reply failed",
       rateLimited: isRateLimitError(e),
     };
   }

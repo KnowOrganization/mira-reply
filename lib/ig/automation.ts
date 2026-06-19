@@ -1,4 +1,6 @@
 import type { Automation, IgStore } from "./store";
+import { readStore } from "./store";
+import { createHash } from "crypto";
 // followup_message schedules via the durable BullMQ outbound queue (delayed
 // job) — survives restarts, drained by the worker.
 import { enqueueOutbound } from "./ingestQueue";
@@ -9,6 +11,7 @@ import {
   tryDMWithButtons as _tryDMWithButtons,
   tryDMWithButtonTemplate as _tryDMWithButtonTemplate,
   tryDMImage as _tryDMImage,
+  tryReplyToComment as _tryReplyToComment,
 } from "./dm";
 import type { SendResult, SendOpts } from "./dm";
 import type { ButtonTemplateButton } from "./graph";
@@ -18,7 +21,7 @@ import { checkFollowStatus } from "./followCheck";
 // not the file store — so the worker and Next never race on ~/.mira/ig.json.
 import { parkPending, claimPending, claimDueRetries, bumpAutomationStats } from "./pending";
 import { getAutomation, currentAccountId } from "./accountsRepo";
-import { claimOnce, k } from "./redis";
+import { claimOnce, isClaimed, k } from "./redis";
 import { query } from "./pg";
 
 // Resolve the account once per call. Engine paths pass it explicitly (worker);
@@ -38,6 +41,29 @@ async function loadAccount(accountId: string): Promise<EngineAccount | null> {
   return r ? { igUserId: accountId, username: r.username, accessToken: r.access_token, followerCache: r.follower_cache ?? [] } : null;
 }
 
+// Auto-send scope. Reuses the DM auto-allowlist (dstrails today). Empty list =
+// legacy allow-all (back-compat); non-empty = scoped (igsid OR username match).
+async function automationSendAllowed(accountId: string, userId: string, username?: string): Promise<boolean> {
+  const s = await readStore(accountId);
+  const allow = s.settings.dmAutoAllowlist ?? [];
+  if (!allow.length) return true;
+  return allow.includes(userId) || (!!username && allow.includes(username));
+}
+
+// Content-hash dedup backstop — CLAIM-AFTER-SUCCESS. textAlreadySent is a
+// read-only peek (never burns a claim); markTextSent commits only after a send
+// is confirmed ok. This keeps the rate-limit park-and-retry working: a failed
+// send leaves nothing claimed, so the parked retry can re-deliver.
+function contentHash(s: string): string {
+  return createHash("sha1").update(s).digest("hex").slice(0, 12);
+}
+async function textAlreadySent(accountId: string, recipient: string, text: string): Promise<boolean> {
+  return isClaimed(k.sentHash(accountId, recipient, contentHash(text)));
+}
+async function markTextSent(accountId: string, recipient: string, text: string): Promise<void> {
+  await claimOnce(k.sentHash(accountId, recipient, contentHash(text)), 6 * 60 * 60);
+}
+
 // Every send from an automation is an in-funnel message to an already-engaged
 // user, so it bypasses the cold-DM 1-per-24h gate. Shadowing the imported names
 // with same-named wrappers means all existing call sites route through here
@@ -48,6 +74,8 @@ const tryDMImage = (id: string, url: string) => _tryDMImage(id, url, FUNNEL);
 const tryDMWithButtons = (id: string, text: string, b: { label: string; payload?: string }[]) => _tryDMWithButtons(id, text, b, FUNNEL);
 const tryDMWithButtonTemplate = (id: string, text: string, b: ButtonTemplateButton[]) => _tryDMWithButtonTemplate(id, text, b, FUNNEL);
 const tryPrivateReplyWithButtons = (commentId: string, id: string, text: string, b: { label: string; payload?: string }[]) => _tryPrivateReplyWithButtons(commentId, id, text, b, FUNNEL);
+// Public comment reply — no FUNNEL (it's not a cold DM, no rate gate to skip).
+const tryReplyToComment = (commentId: string, text: string) => _tryReplyToComment(commentId, text);
 
 export type AutomationEvent = {
   type: "comment_post" | "dm" | "live_comment" | "story_reply";
@@ -171,6 +199,15 @@ export async function executeAutomation(
     await bumpAutomationStats(automation.id, { triggered: 1, lastTriggered: Date.now() });
   }
 
+  // Auto-send scope (dstrails-only today). Placed AFTER the dedup claim so a
+  // skipped event keeps its token and won't re-fire on Meta re-delivery. dryRun
+  // (UI preview) is never gated. Retry path (resumeFrom) still hits this — it's
+  // outside the !resumeFrom block above.
+  if (!dryRun && !(await automationSendAllowed(accountId, event.fromUserId, event.fromUsername))) {
+    publish({ type: "log", level: "info", msg: `automation "${automation.name}" → @${event.fromUsername ?? event.fromUserId}: skip (not on auto-send allowlist)`, ts: Date.now() });
+    return steps;
+  }
+
   const nextNodes = new Map<string, string[]>();
   for (const edge of automation.edges) {
     const arr = nextNodes.get(edge.source) ?? [];
@@ -213,6 +250,17 @@ export async function executeAutomation(
       continue;
     }
 
+    // Per-(automation, comment, node) idempotency — a node that ALREADY delivered
+    // for this comment is skipped. Read-only peek (never burns a claim); the claim
+    // is committed AFTER a confirmed send below, so a rate-limited node stays
+    // unclaimed and the parked retry can re-deliver it. Guarded on commentId so
+    // DM-triggered runs (no stable commentId) rely on the content-hash backstop.
+    if (!dryRun && event.commentId && (await isClaimed(k.sentNode(accountId, automation.id, event.commentId, nodeId)))) {
+      bfsQueue.push(...(nextNodes.get(nodeId) ?? []));
+      continue;
+    }
+    const sentBefore = sentCount;
+
     switch (node.type) {
       case "opening_message":
       case "text_message": {
@@ -225,10 +273,11 @@ export async function executeAutomation(
             const pr = track(await tryPrivateReplyWithButtons(event.commentId, event.fromUserId, msg, d.buttons!));
             if (pr.ok) sentCount++; else failCount++;
           } else {
+            if (await textAlreadySent(accountId, event.fromUserId, `pr:${msg}`)) { sentCount++; break; }
             const pr = track(await tryPrivateReply(event.commentId, event.fromUserId, msg));
-            if (pr.ok) { sentCount++; } else {
+            if (pr.ok) { sentCount++; await markTextSent(accountId, event.fromUserId, `pr:${msg}`); } else {
               const dm = track(await tryDM(event.fromUserId, msg));
-              if (dm.ok) sentCount++; else failCount++;
+              if (dm.ok) { sentCount++; await markTextSent(accountId, event.fromUserId, `pr:${msg}`); } else failCount++;
             }
           }
           // Button present — stop BFS, wait for user to click (DM arrives)
@@ -263,13 +312,15 @@ export async function executeAutomation(
         if (textParts) {
           const hasButtons = (d.buttons?.length ?? 0) > 0;
           steps.push({ nodeType: "card_message", action: "private_reply", text: textParts });
-          if (!dryRun) {
+          if (!dryRun && (await textAlreadySent(accountId, event.fromUserId, `pr:${textParts}`))) {
+            sentCount++;
+          } else if (!dryRun) {
             const pr = track(await tryPrivateReply(event.commentId, event.fromUserId, textParts));
-            if (pr.ok) { sentCount++; } else {
+            if (pr.ok) { sentCount++; await markTextSent(accountId, event.fromUserId, `pr:${textParts}`); } else {
               const dm = track(hasButtons
                 ? await tryDMWithButtons(event.fromUserId, textParts, d.buttons!)
                 : await tryDM(event.fromUserId, textParts));
-              if (dm.ok) sentCount++; else failCount++;
+              if (dm.ok) { sentCount++; await markTextSent(accountId, event.fromUserId, `pr:${textParts}`); } else failCount++;
             }
           }
         }
@@ -286,6 +337,18 @@ export async function executeAutomation(
             const dm = track(await tryDMImage(event.fromUserId, url));
             if (dm.ok) sentCount++; else failCount++;
           }
+        }
+        break;
+      }
+
+      case "comment_reply": {
+        const msg = d.text?.trim();
+        if (!msg || !event.commentId) break; // no public-reply target on dm/story_reply
+        steps.push({ nodeType: "comment_reply", action: "public_comment_reply", text: msg });
+        if (!dryRun) {
+          if (await textAlreadySent(accountId, event.commentId, `creply:${msg}`)) { sentCount++; break; }
+          const r = track(await tryReplyToComment(event.commentId, msg));
+          if (r.ok) { sentCount++; await markTextSent(accountId, event.commentId, `creply:${msg}`); } else failCount++;
         }
         break;
       }
@@ -376,11 +439,13 @@ export async function executeAutomation(
         const q = d.question?.trim();
         if (!q) break;
         steps.push({ nodeType: "lead_form", action: "private_reply", text: q });
-        if (!dryRun) {
+        if (!dryRun && (await textAlreadySent(accountId, event.fromUserId, `pr:${q}`))) {
+          sentCount++;
+        } else if (!dryRun) {
           const pr = track(await tryPrivateReply(event.commentId, event.fromUserId, q));
-          if (pr.ok) { sentCount++; } else {
+          if (pr.ok) { sentCount++; await markTextSent(accountId, event.fromUserId, `pr:${q}`); } else {
             const dm = track(await tryDM(event.fromUserId, q));
-            if (dm.ok) sentCount++; else failCount++;
+            if (dm.ok) { sentCount++; await markTextSent(accountId, event.fromUserId, `pr:${q}`); } else failCount++;
           }
         }
         break;
@@ -404,6 +469,14 @@ export async function executeAutomation(
         }
         break;
       }
+    }
+
+    // Commit the per-node idempotency claim ONLY after a confirmed delivery and
+    // only if the node did not rate-limit — a throttled node stays unclaimed so
+    // the parked retry below re-runs it. A fully-delivered node is now marked so
+    // a duplicate webhook/poll delivery of the same comment can't re-send it.
+    if (!dryRun && event.commentId && sentCount > sentBefore && !rateLimited) {
+      await claimOnce(k.sentNode(accountId, automation.id, event.commentId, nodeId), 24 * 60 * 60);
     }
 
     // Rate-limited (613/429) mid-flow — park current node + everything still
@@ -458,6 +531,7 @@ export async function resumeAutomationAfterButtonClick(
   if (!claimed.length) return false;
   const account = await loadAccount(acct);
   if (!account) return false;
+  if (!(await automationSendAllowed(acct, userId, username))) return false;
 
   for (const p of claimed) {
     const automation = await getAutomation(acct, p.automationId);
@@ -591,6 +665,7 @@ export async function resumeAutomationAfterFollow(
   if (!claimed.length) return false;
   const account = await loadAccount(acct);
   if (!account) return false;
+  if (!(await automationSendAllowed(acct, userId, username))) return false;
 
   for (const p of claimed) {
     const automation = await getAutomation(acct, p.automationId);

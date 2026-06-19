@@ -9,6 +9,7 @@ import {
   UserPlus,
   ClipboardList,
   Clock,
+  Reply,
 } from "lucide-react";
 import type { AutomationNodeType } from "@shaiz/shared";
 import type React from "react";
@@ -77,5 +78,12 @@ export const RESPONSE_TYPES: {
     desc: "Send a delayed follow-up after the flow",
     color: "#f97316",
     icon: <Clock size={16} />,
+  },
+  {
+    type: "comment_reply",
+    label: "Comment Reply",
+    desc: "Publicly reply under the user's comment (e.g. 'Check your DMs!')",
+    color: "#0ea5e9",
+    icon: <Reply size={16} />,
   },
 ];

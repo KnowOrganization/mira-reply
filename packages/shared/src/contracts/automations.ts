@@ -18,6 +18,7 @@ export type AutomationNodeType =
   | "text_message"
   | "card_message"
   | "image_message"
+  | "comment_reply"
   | "ask_follow"
   | "follow_gate"
   | "lead_form"

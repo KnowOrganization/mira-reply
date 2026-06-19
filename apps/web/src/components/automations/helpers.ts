@@ -54,6 +54,17 @@ export function getNodeValidation(type: AutomationNodeType, nodes: AutomationNod
         return { status: "blocked", message: "Requires Opening Message to be enabled" };
       return { status: "available" };
 
+    case "comment_reply": {
+      // Public reply under the comment — only meaningful for comment triggers,
+      // unique per flow. Not a DM-window content node (excluded from CONTENT).
+      if (nodes.some((n) => n.type === "comment_reply"))
+        return { status: "blocked", message: "Comment Reply already in this flow" };
+      const isCommentTrigger = triggerData === "comment_post" || triggerData === "live_comment";
+      if (!isCommentTrigger)
+        return { status: "blocked", message: "Only for comment triggers (post/reel or Live)" };
+      return { status: "available" };
+    }
+
     default:
       return { status: "available" };
   }
