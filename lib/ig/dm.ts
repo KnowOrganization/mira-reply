@@ -1,6 +1,6 @@
 import { readStore, updateStore } from "./store";
-import { sendDM, sendDMWithButtons, sendDMImage, sendCommentPrivateReply, sendCommentPrivateReplyWithButtons, sendDMWithButtonTemplate, sendCommentPrivateReplyWithButtonTemplate, replyToComment, isRateLimitError } from "./graph";
-import type { ButtonTemplateButton } from "./graph";
+import { sendDM, sendDMWithButtons, sendDMImage, sendCommentPrivateReply, sendCommentPrivateReplyWithButtons, sendDMWithButtonTemplate, sendCommentPrivateReplyWithButtonTemplate, sendDMGenericTemplate, replyToComment, isRateLimitError } from "./graph";
+import type { ButtonTemplateButton, GenericElement } from "./graph";
 
 const ONE_DAY = 24 * 60 * 60 * 1000;
 
@@ -198,6 +198,35 @@ export async function tryDMWithButtonTemplate(
       .filter((b) => b.type === "postback")
       .map((b) => ({ label: b.title, payload: b.type === "postback" ? b.payload : b.title }));
     return tryDMWithButtons(recipientId, text, quickButtons.length ? quickButtons : [{ label: "Done", payload: "done" }], opts);
+  }
+}
+
+/**
+ * Send a generic-template CAROUSEL of cards. Mobile-only; on any non-rate-limit
+ * failure the caller should fall back to a plain-text list. Funnel sends pass
+ * skipRateGate (the user just asked). No logDM — one carousel, not a cold DM.
+ */
+export async function tryDMGenericTemplate(
+  recipientId: string,
+  elements: GenericElement[],
+  opts?: SendOpts
+): Promise<SendResult> {
+  if (!elements.length) return { ok: false, reason: "no elements" };
+  const s = await readStore();
+  if (!s.account) return { ok: false, reason: "not connected" };
+  if (!opts?.skipRateGate) {
+    const gate = await canDM(recipientId);
+    if (!gate.ok) return gate;
+  }
+  try {
+    await sendDMGenericTemplate(s.account.igUserId, recipientId, elements, s.account.accessToken);
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      reason: e instanceof Error ? e.message : "carousel failed",
+      rateLimited: isRateLimitError(e),
+    };
   }
 }
 

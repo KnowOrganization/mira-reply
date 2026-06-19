@@ -5,9 +5,13 @@
 import { useState } from "react";
 import { Plus, ShoppingBag, Trash2, X, Pencil, ExternalLink, AlertTriangle } from "lucide-react";
 import {
-  useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, type Product,
+  useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct,
+  useIgSettings, usePatchIgSettings, type Product,
 } from "../../lib/api/hooks";
 import { Modal, IconButton } from "../ui";
+
+type StorefrontSettings = { storefrontSlug?: string; storefrontEnabled?: boolean; storefrontTitle?: string };
+const slugify = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 
 type Draft = Partial<Product> & { aliasesText?: string };
 
@@ -40,6 +44,8 @@ export function ProductsView() {
           <Plus size={15} strokeWidth={2.4} /> Add product
         </button>
       </div>
+
+      <StorefrontBar />
 
       {list.isError && (
         <div className="px-6 py-8 text-[12px] flex items-center gap-2" style={{ color: "#ef4444" }}>
@@ -108,6 +114,46 @@ export function ProductsView() {
           />
         )}
       </Modal>
+    </div>
+  );
+}
+
+function StorefrontBar() {
+  const settings = useIgSettings<StorefrontSettings>();
+  const patch = usePatchIgSettings();
+  const s = settings.data ?? {};
+  const [slug, setSlug] = useState<string | null>(null);
+  const value = slug ?? s.storefrontSlug ?? "";
+  const enabled = !!s.storefrontEnabled;
+  const base = (process.env.NEXT_PUBLIC_BASE_URL as string | undefined)?.replace(/\/$/, "") || "";
+  const liveUrl = enabled && value ? `${base}/s/${value}` : null;
+
+  return (
+    <div className="mx-6 mb-3 px-4 py-3 rounded-xl flex flex-wrap items-center gap-3" style={{ background: "var(--bg-elev)", border: "1px solid var(--border)" }}>
+      <span className="text-[11px] font-semibold uppercase tracking-[0.06em]" style={{ color: "var(--text-subtle)" }}>Storefront</span>
+      <div className="flex items-center gap-1 text-[12.5px]" style={{ color: "var(--text-muted)" }}>
+        <span>/s/</span>
+        <input
+          value={value}
+          onChange={(e) => setSlug(slugify(e.target.value))}
+          onBlur={() => { if (slug !== null && slug !== (s.storefrontSlug ?? "")) patch.mutate({ storefrontSlug: slug }); }}
+          placeholder="your-shop"
+          className="rounded-md px-2 py-1 text-[12.5px] outline-none"
+          style={{ background: "var(--bg-inset)", color: "var(--text)", border: "1px solid var(--border)", width: 160 }}
+        />
+      </div>
+      <button
+        onClick={() => patch.mutate({ storefrontEnabled: !enabled })}
+        className="text-[11px] font-medium px-2 py-1 rounded-md"
+        style={enabled ? { background: "var(--accent-soft)", color: "var(--accent-deep)" } : { background: "var(--bg-inset)", color: "var(--text-subtle)" }}
+      >
+        {enabled ? "Published" : "Unpublished"}
+      </button>
+      {liveUrl && (
+        <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="ml-auto text-[11.5px] flex items-center gap-1" style={{ color: "var(--accent)" }}>
+          View shop <ExternalLink size={11} />
+        </a>
+      )}
     </div>
   );
 }

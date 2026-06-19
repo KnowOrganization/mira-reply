@@ -12,6 +12,10 @@ export function middleware(req: NextRequest) {
   if (pathname === "/landing" || pathname.startsWith("/landing/")) {
     return NextResponse.next();
   }
+  // Public storefront pages are served on the public deploy too.
+  if (pathname.startsWith("/s/")) {
+    return NextResponse.next();
+  }
   const url = req.nextUrl.clone();
   url.pathname = "/landing";
   return NextResponse.redirect(url);

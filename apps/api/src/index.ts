@@ -18,6 +18,7 @@ import { analyticsRoute } from "./routes/analytics";
 import { llmRoute } from "./routes/llm";
 import { controlRoute } from "./routes/control";
 import { webhookRoute } from "./routes/webhook";
+import { storeRoute } from "./routes/store";
 
 const PORT = Number(process.env.API_PORT || 4000);
 
@@ -73,6 +74,8 @@ export const app = new Elysia()
   .use(controlRoute)
   // public Meta endpoint (signature-verified, not session-authed)
   .use(webhookRoute)
+  // public storefront (no auth — field-whitelisted, slug-resolved server-side)
+  .use(storeRoute)
   // bind loopback only — the API is reached via the Next rewrite proxy, never
   // directly from the network (defense in depth; each route also requires auth).
   .listen({ port: PORT, hostname: "127.0.0.1" });

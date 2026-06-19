@@ -17,6 +17,7 @@ import { sanitizeReply } from "./variation";
 import { RULEBOOK_PROMPT } from "./rulebook";
 import { recallFact } from "./knowledge";
 import { catalogIntent, lookupProducts, catalogBlock } from "./catalog";
+import { sendCatalog } from "./storeDM";
 import { quickPercept } from "./perception";
 import { tryDM } from "./dm";
 import { claimOnce, k, redis } from "./redis";
@@ -147,6 +148,24 @@ export async function processDM(input: DmInput): Promise<void> {
   const intent = catalogIntent(input.text);
   const prod = intent === "ask_specific" ? lookupProducts(store.products, input.text) : null;
   const catalog = intent !== "none" ? catalogBlock(intent, prod?.match ?? null, store.products) : "";
+
+  // "show me everything" → deterministic engine-rendered carousel (never the LLM)
+  // for allowlisted contacts in an open window. Others / closed window / send
+  // failure fall through to the normal text reply below (which drafts for review).
+  if (intent === "ask_catalog" && store.products.some((p) => p.available)) {
+    const allow0 = store.settings.dmAutoAllowlist ?? [];
+    const onAllow0 = allow0.includes(input.igsid) || (!!input.username && allow0.includes(input.username));
+    if (onAllow0 && withinWindow(conv) && (await claimOnce(k.replied(input.accountId, `cat_${input.mid}`), 7 * 24 * 3600))) {
+      const sent = await sendCatalog(store, input.igsid);
+      if (sent.ok) {
+        await recordOutbound(conv, `out_${input.mid}`, "[catalog]", "ai");
+        publish({ type: "sent", replyId: `dm_${input.mid}`, ts: Date.now() });
+        publish({ type: "log", level: "info", msg: `DM catalog carousel sent to @${input.username || input.igsid}`, ts: Date.now() });
+        return;
+      }
+    }
+  }
+
   const sys = buildSystemPrompt(store, persona, recalled?.fact.answer ?? null, conv.summary, catalog);
 
   // History already includes the just-recorded inbound as the final user turn.

@@ -444,6 +444,64 @@ export async function sendCommentPrivateReplyWithButtonTemplate(
   );
 }
 
+// One card in a generic-template carousel. image + title + subtitle + ≤3 buttons.
+export type GenericElement = {
+  title: string;
+  subtitle?: string;
+  imageUrl?: string;
+  buttons?: ButtonTemplateButton[];
+};
+
+/**
+ * Send a horizontally-scrollable CAROUSEL via Meta's generic template.
+ * Max 10 elements; title/subtitle max 80 chars; max 3 buttons/element; web_url
+ * must be absolute https. Mobile-only (desktop web shows nothing — callers must
+ * pair this with a plain-text link fallback). Elements with no valid fields are
+ * dropped; throws if nothing renderable remains.
+ */
+export async function sendDMGenericTemplate(
+  igUserId: string,
+  recipientId: string,
+  elements: GenericElement[],
+  token: string
+) {
+  const built = elements
+    .slice(0, 10)
+    .map((el) => {
+      const title = (el.title || "").trim().slice(0, 80);
+      if (!title) return null;
+      const buttons = (el.buttons || [])
+        .filter((b) => (b.type === "web_url" ? /^https:\/\//i.test(b.url) : !!b.payload))
+        .slice(0, 3)
+        .map((b) =>
+          b.type === "web_url"
+            ? { type: "web_url", url: b.url, title: b.title.slice(0, 20) }
+            : { type: "postback", title: b.title.slice(0, 20), payload: b.payload }
+        );
+      const card: Record<string, unknown> = { title };
+      const sub = (el.subtitle || "").trim().slice(0, 80);
+      if (sub) card.subtitle = sub;
+      if (el.imageUrl && /^https:\/\//i.test(el.imageUrl)) card.image_url = el.imageUrl;
+      if (buttons.length) card.buttons = buttons;
+      return card;
+    })
+    .filter(Boolean) as Record<string, unknown>[];
+  if (!built.length) throw new Error("generic template: no renderable elements");
+  return postMessage(
+    igUserId,
+    {
+      recipient: { id: recipientId },
+      message: {
+        attachment: {
+          type: "template",
+          payload: { template_type: "generic", elements: built },
+        },
+      },
+    },
+    token
+  );
+}
+
 /**
  * Fetch ALL followers for igUserId, paginating until exhausted or maxPages reached.
  * Used for the background full-sync in the watcher. Returns {id, username} pairs.

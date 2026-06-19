@@ -2,6 +2,7 @@ import { matchAutomations, executeAutomation, resumeAutomationAfterButtonClick, 
 import { listAutomations } from "./accountsRepo";
 import { claimOwned, isClaimed, k, bumpCounter, withLock } from "./redis";
 import { processDM } from "./dmPipeline";
+import { handleStorePostback } from "./storeDM";
 import { readStore, updateStoreFor, type IgStore, type Mention } from "./store";
 import { getCommentInfo, getMentionedComment, getMentionedMedia } from "./graph";
 import { processInbound } from "./pipeline";
@@ -282,6 +283,12 @@ async function processPostback(job: Extract<IngestJob, { kind: "postback" }>) {
 
   publish({ type: "log", level: "info", msg: `postback from ${fromId}: "${pbPayload}"`, ts: Date.now() });
   await insertLog({ direction: "in", event_type: "postback", igsid: fromId, post_id: null, payload: JSON.stringify({ payload: pbPayload, title: data.title }), status: "received", error: null });
+
+  // ── DM marketplace postbacks (STORE_ALL / STORE_CAT_<tag>) ────────────────
+  if (/^STORE_/.test(pbPayload)) {
+    const handled = await handleStorePostback(accountId, fromId, pbPayload).catch(() => false);
+    if (handled) return;
+  }
 
   // ── post_configs postbacks (GET_LINK_ / RECHECK_FOLLOW_) ──────────────────
   const getLink = pbPayload.match(/^GET_LINK_(.+)$/);

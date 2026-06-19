@@ -202,7 +202,7 @@ export async function createProduct(accountId: string, input: Partial<ProductApi
     subtitle: input.subtitle ?? "", description: input.description ?? "",
     priceText: input.priceText ?? null, imageUrl: input.imageUrl ?? null, ctaUrl: input.ctaUrl ?? null,
     available: input.available ?? true, aliases: input.aliases ?? [],
-    embedding: null, slug: input.slug ?? null, sortOrder: input.sortOrder ?? now,
+    embedding: null, slug: input.slug ?? null, sortOrder: input.sortOrder ?? 0,
     createdAt: now, updatedAt: now,
   };
   await db.insert(products).values(row);

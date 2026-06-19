@@ -24,6 +24,7 @@ const nextConfig: NextConfig = {
     return {
       afterFiles: [
         { source: "/api/ig/:path*", destination: `${API_URL}/api/ig/:path*` },
+        { source: "/api/store/:path*", destination: `${API_URL}/api/store/:path*` },
         { source: "/api/chat", destination: `${API_URL}/api/chat` },
         { source: "/api/playground/:path*", destination: `${API_URL}/api/playground/:path*` },
       ],
