@@ -192,10 +192,23 @@ export type Settings = {
   sendJitter: boolean;
   selectiveReplyRate: number; // 0-1, fraction of low-value acks to skip
   uniquenessThreshold: number; // similarity above this → regenerate
-  // ── DM marketplace storefront (flat keys — patchSettings is a shallow merge) ──
+  // ── DM marketplace storefront (FLAT keys only — patchSettings is a shallow
+  //    merge, so a nested object would be clobbered on the next partial patch) ──
   storefrontSlug?: string;     // owner-chosen, uniqueness-checked at write time
   storefrontEnabled?: boolean; // published flag for the public /s/<slug> page
   storefrontTitle?: string;    // display title on the storefront
+  storefrontHeroHeadline?: string;   // derives to title when unset
+  storefrontHeroTagline?: string;
+  storefrontHeroImageUrl?: string;   // https; fallback chain → featured → first product → accent panel
+  storefrontHeroLayout?: "split" | "minimal";
+  storefrontAccent?: string;         // #rrggbb; sanitized server-side before use
+  storefrontFeaturedIds?: string[];  // ordered; derives to first 4 available
+  storefrontShowFeatured?: boolean;
+  storefrontShowDiscover?: boolean;
+  storefrontShowAbout?: boolean;
+  storefrontAbout?: string;
+  storefrontContactUrl?: string;     // https
+  storefrontBuyLabel?: "Buy" | "Shop" | "Order";
 };
 
 /** Collapse the legacy replyMode into the three-state per-channel ReplyMode. */

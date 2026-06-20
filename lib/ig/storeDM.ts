@@ -16,10 +16,11 @@ function baseUrl(): string {
   return (process.env.NEXT_PUBLIC_BASE_URL || "").replace(/\/$/, "");
 }
 
-function storefrontUrl(store: IgStore, productSlug?: string | null): string | null {
+function storefrontUrl(store: IgStore, productKey?: string | null): string | null {
   const slug = store.settings.storefrontSlug;
   if (!store.settings.storefrontEnabled || !slug || !baseUrl()) return null;
-  return `${baseUrl()}/s/${slug}${productSlug ? `#p-${productSlug}` : ""}`;
+  // product detail is a real route now (/s/<slug>/<productSlug-or-id>), not a #anchor.
+  return `${baseUrl()}/s/${slug}${productKey ? `/${encodeURIComponent(productKey)}` : ""}`;
 }
 
 function elementFor(store: IgStore, p: Product): GenericElement {
