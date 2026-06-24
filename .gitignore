@@ -51,3 +51,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# AI coding skills installed by `npx hyperframes skills` (tool artifacts, not source)
+/.agents/
+/agent/
+
+# brag video QA artifacts (keep the rendered mp4 + plan, drop throwaway snapshots)
+brag-output*/composition/snapshots/
