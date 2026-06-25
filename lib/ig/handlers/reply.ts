@@ -173,7 +173,7 @@ export async function handleReply(
   // ── Knowledge-backed reply ────────────────────────────────────────────────
   if (args.style === "knowledge" && args.knownAnswer) {
     // Try to recall the best matching fact (embeddings already done in ctx)
-    const recalled = await recallFact(input.text, input.postId);
+    const recalled = await recallFact(input.text, input.postId, ctx.kb);
     const factAnswer = recalled?.fact.answer ?? args.knownAnswer;
     const factLink = recalled?.fact.link ?? (args.knownLink ? { url: args.knownLink, label: "link" } : undefined);
 

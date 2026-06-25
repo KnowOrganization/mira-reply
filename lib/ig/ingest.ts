@@ -192,7 +192,7 @@ async function processComment(job: Extract<IngestJob, { kind: "comment" }>) {
         );
       }
     } else {
-      await processInbound({ kind: "comment", threadOrMediaId: cid, fromUserId: cfrom, fromUsername: cuser, text: ctext, postId: cmedia }).catch((e) =>
+      await processInbound({ accountId, kind: "comment", threadOrMediaId: cid, fromUserId: cfrom, fromUsername: cuser, text: ctext, postId: cmedia }).catch((e) =>
         publish({ type: "log", level: "error", msg: `pipeline: ${String(e)}`, ts: Date.now() })
       );
     }

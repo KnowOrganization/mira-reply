@@ -2,7 +2,7 @@
 // Handles: hide comment (troll/inappropriate), log to history,
 // publish SSE event, notify owner on business inquiry.
 
-import { updateStore, type IgStore } from "../store";
+import { updateStoreFor, type IgStore } from "../store";
 import { publish } from "../bus";
 import { hideComment } from "../graph";
 import { type DraftInput } from "../pipeline";
@@ -41,7 +41,7 @@ export async function handleSkip(
 
   // Record every skip in history so the Comments feed shows decisions
   if (input.kind === "comment") {
-    await updateStore((s) => ({
+    await updateStoreFor(input.accountId, (s) => ({
       ...s,
       history: [
         {

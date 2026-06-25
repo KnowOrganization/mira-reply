@@ -35,7 +35,7 @@ export function ProductsView() {
   const s = settingsQ.data ?? {};
 
   return (
-    <div className="flex-1 flex flex-col min-h-0" style={{ background: "var(--bg-frame)" }}>
+    <div className="h-full flex flex-col min-h-0" style={{ background: "var(--bg-frame)" }}>
       <div className="px-6 pt-5 pb-2 flex items-center gap-3 shrink-0">
         <span className="text-[15px] font-semibold" style={{ color: "var(--text)", letterSpacing: "-0.02em" }}>Store</span>
         <Segmented

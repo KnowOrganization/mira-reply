@@ -57,16 +57,21 @@ async function verifyMatch(comment: string, fact: Fact): Promise<boolean> {
  * Find a known fact that answers this comment. Searches account-scope facts
  * (recalled everywhere) plus this post's post-scope facts. Cross-post recall:
  * a fact learned on one post answers a comment on a different post.
+ *
+ * `facts` is the candidate set the caller already loaded for THIS account
+ * (store.knowledge or ctx.kb). recallFact never reads the store itself — that
+ * kept it tenant-ambiguous (it fell back to "newest account"); passing the
+ * account's own facts in makes recall tenant-correct by construction.
  */
 export async function recallFact(
   query: string,
-  postId?: string
+  postId: string | undefined,
+  facts: Fact[]
 ): Promise<RecallHit | null> {
   const text = query.trim();
   if (!text) return null;
-  const s = await readStore();
   const now = Date.now();
-  const cands = s.knowledge.filter(
+  const cands = facts.filter(
     (f) =>
       !(f.expiresAt && f.expiresAt < now) &&
       (f.scope === "account" || (f.scope === "post" && f.postId === postId))

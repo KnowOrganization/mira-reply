@@ -141,7 +141,7 @@ export async function processDM(input: DmInput): Promise<void> {
   // ── Build context: thread history + brain ─────────────────────────────────
   const turns = await recentTurns(conv.id, 12);
   const persona = personaBlock(store);
-  const recalled = await recallFact(input.text).catch(() => null);
+  const recalled = await recallFact(input.text, undefined, store.knowledge).catch(() => null);
   // DM marketplace: ground the reply in the real catalog so "do you have X?" is
   // answered truthfully (never invents stock). Pure in-memory over the loaded
   // store; only runs when the message looks product-related (most DMs skip).
@@ -217,6 +217,7 @@ export async function processDM(input: DmInput): Promise<void> {
 async function queueDmDraft(input: DmInput, text: string): Promise<void> {
   const pd: PendingDraft = {
     id: `d_dm_${input.mid}`,
+    accountId: input.accountId,
     kind: "dm",
     threadOrMediaId: input.mid,
     fromUserId: input.igsid,
@@ -226,7 +227,7 @@ async function queueDmDraft(input: DmInput, text: string): Promise<void> {
     intent: "dm_conversation",
     createdAt: Date.now(),
   };
-  await updateStore((s) => ({
+  await updateStoreFor(input.accountId, (s) => ({
     ...s,
     pendingDrafts: [pd, ...s.pendingDrafts.filter((d) => d.id !== pd.id)].slice(0, 200),
   }));

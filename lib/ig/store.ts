@@ -305,6 +305,7 @@ export type CachedComment = {
 
 export type PendingDraft = {
   id: string;
+  accountId: string; // owning IG account (ig_user_id) — the tenant this draft belongs to
   kind: "comment" | "dm";
   threadOrMediaId: string;
   fromUserId: string;
@@ -625,7 +626,21 @@ if (!gq.__mira_write_chain) gq.__mira_write_chain = Promise.resolve();
 
 function enqueueWrite<T>(task: () => Promise<T>): Promise<T> {
   const prev = gq.__mira_write_chain as Promise<unknown>;
+  // Run task after prev regardless of prev's outcome — one failed write must not
+  // wedge the chain. `run` still rejects to the caller (return run); the chain
+  // tail below swallows ONLY so the NEXT write isn't blocked, not to hide errors.
   const run = prev.then(task, task);
+  // Many callers `void` the write or `.catch(() => {})` it, so a failed persist
+  // (Postgres down, pool exhausted) would otherwise vanish without a trace. Log
+  // centrally. (The in-RAM cache is NOT corrupted on failure: dzCommit only
+  // updates the cache AFTER persistDelta resolves.)
+  run.catch((e) => {
+    try {
+      console.error("[store] write failed:", e instanceof Error ? e.message : e);
+    } catch {
+      /* logging must never throw */
+    }
+  });
   gq.__mira_write_chain = run.then(
     () => undefined,
     () => undefined

@@ -9,6 +9,7 @@
 import {
   readStore,
   updateStore,
+  updateStoreFor,
   normalizeMode,
   type PendingDraft,
   type ReplyLog,
@@ -46,6 +47,7 @@ import { handleSkip } from "./handlers/skip";
 // ── Public types (unchanged) ───────────────────────────────────────────────
 
 export type DraftInput = {
+  accountId: string; // owning IG account (ig_user_id) — the tenant this inbound belongs to
   kind: "comment" | "dm";
   threadOrMediaId: string;
   fromUserId: string;
@@ -77,12 +79,13 @@ async function recentRepliedTo(
 }
 
 async function bumpCommenter(
+  accountId: string,
   userId: string,
   username: string | undefined,
   s: IgStore
 ) {
   const ex = s.commenters[userId];
-  await updateStore((st) => ({
+  await updateStoreFor(accountId, (st) => ({
     ...st,
     commenters: {
       ...st.commenters,
@@ -99,8 +102,8 @@ async function bumpCommenter(
   }));
 }
 
-async function bumpReplied(userId: string) {
-  await updateStore((s) => {
+async function bumpReplied(accountId: string, userId: string) {
+  await updateStoreFor(accountId, (s) => {
     const ex = s.commenters[userId];
     if (!ex) return s;
     return {
@@ -146,6 +149,7 @@ export async function processInbound(input: DraftInput): Promise<void> {
 }
 
 export async function reprocessClarification(
+  accountId: string,
   c: import("./store").Clarification
 ): Promise<void> {
   const comments = [
@@ -159,6 +163,7 @@ export async function reprocessClarification(
   ];
   for (const cm of comments) {
     await processInbound({
+      accountId,
       kind: "comment",
       threadOrMediaId: cm.commentId,
       fromUserId: cm.fromUserId,
@@ -173,7 +178,7 @@ export async function reprocessClarification(
 
 async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
   // ── 1. Single store read — used everywhere below ──────────────────────────
-  const store = await readStore();
+  const store = await readStore(input.accountId);
   if (!store.account) return null;
   const settings = store.settings;
 
@@ -238,8 +243,8 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
   }
 
   // ── 4. Stats + commenter bump ──────────────────────────────────────────────
-  await bumpCommenter(input.fromUserId, input.fromUsername, store);
-  await recordDailyStat({ comments: 1 });
+  await bumpCommenter(input.accountId, input.fromUserId, input.fromUsername, store);
+  await recordDailyStat({ comments: 1 }, input.accountId);
 
   // ── 5. Cooldown for simple acks ───────────────────────────────────────────
   const cooldownMs = settings.cooldownMinutes * 60_000;
@@ -294,7 +299,7 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
 
   // ── 9. Memory search — does KB have an answer? ────────────────────────────
   const recalled = perception.is_safe_to_engage
-    ? await recallFact(input.text, input.postId)
+    ? await recallFact(input.text, input.postId, store.knowledge)
     : null;
   const hasKBHit = !!recalled;
 
@@ -466,6 +471,7 @@ function makeDraft(
 ): PendingDraft {
   return {
     id: `d_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    accountId: input.accountId,
     kind: input.kind,
     threadOrMediaId: input.threadOrMediaId,
     fromUserId: input.fromUserId,
@@ -480,7 +486,7 @@ function makeDraft(
 }
 
 async function queueDraft(pd: PendingDraft): Promise<void> {
-  await updateStore((s) => ({
+  await updateStoreFor(pd.accountId, (s) => ({
     ...s,
     pendingDrafts: [pd, ...s.pendingDrafts].slice(0, 200),
   }));
@@ -489,9 +495,9 @@ async function queueDraft(pd: PendingDraft): Promise<void> {
 // ── Paced auto-send ────────────────────────────────────────────────────────
 
 async function pacedAutoSend(pd: PendingDraft): Promise<void> {
-  const store = await readStore();
+  const store = await readStore(pd.accountId);
   if (!store.account) return;
-  await recordDailyStat({ autoReplied: 1 });
+  await recordDailyStat({ autoReplied: 1 }, pd.accountId);
   await awaitSendSlot(store.settings);
   await sendDraft(pd, store.account.accessToken, store.account.igUserId);
 }
@@ -503,7 +509,7 @@ export async function sendDraft(
   token: string,
   igUserId: string
 ) {
-  const cur0 = await readStore();
+  const cur0 = await readStore(pd.accountId);
   if (modeFor(cur0.settings, pd.kind) === "shadow") {
     publish({
       type: "log",
@@ -528,7 +534,7 @@ export async function sendDraft(
       msg: `Duplicate send suppressed for ${pd.kind} ${pd.threadOrMediaId}`,
       ts: Date.now(),
     });
-    await updateStore((s) => ({
+    await updateStoreFor(pd.accountId, (s) => ({
       ...s,
       pendingDrafts: s.pendingDrafts.filter((x) => x.id !== pd.id),
     }));
@@ -558,7 +564,7 @@ export async function sendDraft(
       if (posted?.id) primeSeen([posted.id]);
 
       if (pd.dmText) {
-        const cur = await readStore();
+        const cur = await readStore(pd.accountId);
         if (cur.settings.autoDMLinks) {
           const r = await tryPrivateReply(
             pd.threadOrMediaId,
@@ -588,17 +594,17 @@ export async function sendDraft(
     log.reason = e instanceof Error ? e.message : "unknown";
   }
 
-  await updateStore((s) => ({
+  await updateStoreFor(pd.accountId, (s) => ({
     ...s,
     pendingDrafts: s.pendingDrafts.filter((x) => x.id !== pd.id),
     history: [log, ...s.history].slice(0, 10000),
   }));
 
   if (log.status === "sent") {
-    await bumpReplied(pd.fromUserId);
-    await recordDailyStat({ sent: 1, dmSent: pd.dmText ? 1 : 0 });
+    await bumpReplied(pd.accountId, pd.fromUserId);
+    await recordDailyStat({ sent: 1, dmSent: pd.dmText ? 1 : 0 }, pd.accountId);
     // Invalidate account cache so next comment sees updated hitCounts
-    invalidateAccountCache();
+    invalidateAccountCache(pd.accountId);
     brain.invalidateAll();
   }
 
@@ -617,7 +623,7 @@ export async function decide(
   post: import("./store").Post | undefined
 ): Promise<DraftDecision> {
   const { readStore } = await import("./store");
-  const store = await readStore();
+  const store = await readStore(input.accountId);
 
   // Insert the playground post into a temporary store view
   const fakeStore = post
@@ -651,7 +657,7 @@ export async function decide(
     return { action: "skip", reason: "unsafe", intent: "unclear" };
   }
 
-  const recalled = await recallFact(input.text, input.postId);
+  const recalled = await recallFact(input.text, input.postId, fakeStore.knowledge);
   const actionPlan = await plan(perception, ctx, !!recalled, {
     text: input.text,
     fromUserId: input.fromUserId,

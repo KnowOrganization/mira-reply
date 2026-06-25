@@ -73,7 +73,7 @@ export async function assembleStore(accountId: string): Promise<IgStore> {
   }));
 
   s.pendingDrafts = drafts.map((d) => ({
-    id: String(d.id), kind: d.kind as never, threadOrMediaId: String(d.thread_or_media_id),
+    id: String(d.id), accountId, kind: d.kind as never, threadOrMediaId: String(d.thread_or_media_id),
     fromUserId: String(d.from_user_id), fromUsername: (d.from_username as string) ?? undefined,
     inboundText: String(d.inbound_text ?? ""), draftText: String(d.draft_text ?? ""),
     dmText: (d.dm_text as string) ?? undefined, intent: String(d.intent ?? ""),

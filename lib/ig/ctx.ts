@@ -75,12 +75,18 @@ type CommenterCacheEntry = {
   version: string; // `${commentCount}:${lastSeenAt}`
 };
 
+// All three caches are keyed by accountId (account cache) or `${accountId}:${id}`
+// (post/commenter). Before this they were process-global and unkeyed — under
+// multi-account in one process, account A's persona/KB could be served to
+// account B on a version-hash collision. Keying by account makes them
+// tenant-safe by construction. See memory: "ctx.ts caches not keyed by account".
 const g = globalThis as unknown as {
-  __mira_account_cache?: AccountCacheEntry;
+  __mira_account_cache?: Map<string, AccountCacheEntry>;
   __mira_post_cache?: Map<string, PostCacheEntry>;
   __mira_commenter_cache?: Map<string, CommenterCacheEntry>;
 };
 
+if (!g.__mira_account_cache) g.__mira_account_cache = new Map();
 if (!g.__mira_post_cache) g.__mira_post_cache = new Map();
 if (!g.__mira_commenter_cache) g.__mira_commenter_cache = new Map();
 
@@ -201,43 +207,48 @@ export async function assembleContext(
   s: IgStore
 ): Promise<AssembledContext> {
   if (!s.account) throw new Error("assembleContext: no account in store");
+  const acct = s.account.igUserId; // tenant key for every cache below
 
-  // ① Account cache — invalidated when KB or voice changes
+  // ① Account cache — keyed by account, invalidated when KB or voice changes
   const accountVersion = buildAccountVersion(s);
-  if (!g.__mira_account_cache || g.__mira_account_cache.version !== accountVersion) {
-    g.__mira_account_cache = buildAccountCache(s);
+  let accountEntry = g.__mira_account_cache!.get(acct);
+  if (!accountEntry || accountEntry.version !== accountVersion) {
+    accountEntry = buildAccountCache(s);
+    g.__mira_account_cache!.set(acct, accountEntry);
   }
-  const { personaContext, kb } = g.__mira_account_cache;
+  const { personaContext, kb } = accountEntry;
 
-  // ② Post cache — invalidated when post content changes
+  // ② Post cache — keyed by (account, post), invalidated when post content changes
   const post = postId ? s.posts[postId] : undefined;
   let postContext = "";
   if (post) {
+    const postKey = `${acct}:${postId}`;
     const postVersion = buildPostVersion(post);
-    const cached = g.__mira_post_cache!.get(postId!);
+    const cached = g.__mira_post_cache!.get(postKey);
     if (!cached || cached.version !== postVersion) {
       const entry: PostCacheEntry = {
         postContext: buildPostContext(post),
         version: postVersion,
       };
-      g.__mira_post_cache!.set(postId!, entry);
+      g.__mira_post_cache!.set(postKey, entry);
       postContext = entry.postContext;
     } else {
       postContext = cached.postContext;
     }
   }
 
-  // ③ Commenter cache — invalidated when their comment count or lastSeenAt changes
+  // ③ Commenter cache — keyed by (account, commenter), invalidated on count/lastSeen
   const rawCommenter = s.commenters[fromUserId];
   let commenter: Commenter | undefined;
   let superfanNote = "";
   let relationshipDepth: RelationshipDepth = "new";
   if (rawCommenter) {
+    const commKey = `${acct}:${fromUserId}`;
     const commVersion = buildCommenterVersion(rawCommenter);
-    const cached = g.__mira_commenter_cache!.get(fromUserId);
+    const cached = g.__mira_commenter_cache!.get(commKey);
     if (!cached || cached.version !== commVersion) {
       const entry = buildCommenterEntry(rawCommenter);
-      g.__mira_commenter_cache!.set(fromUserId, entry);
+      g.__mira_commenter_cache!.set(commKey, entry);
       commenter = entry.commenter;
       superfanNote = entry.superfanNote;
       relationshipDepth = entry.depth;
@@ -287,13 +298,24 @@ export async function assembleContext(
 
 /**
  * Evict the post cache entry for a given post (call after owner edits
- * notes/QA/links so the next comment sees fresh context).
+ * notes/QA/links so the next comment sees fresh context). Pass accountId to
+ * scope the eviction; without it, drops the post for every account.
  */
-export function invalidatePostCache(postId: string): void {
-  g.__mira_post_cache?.delete(postId);
+export function invalidatePostCache(postId: string, accountId?: string): void {
+  if (accountId) {
+    g.__mira_post_cache?.delete(`${accountId}:${postId}`);
+    return;
+  }
+  for (const key of g.__mira_post_cache?.keys() ?? []) {
+    if (key.endsWith(`:${postId}`)) g.__mira_post_cache!.delete(key);
+  }
 }
 
-/** Evict the account cache (call after KB changes). */
-export function invalidateAccountCache(): void {
-  g.__mira_account_cache = undefined;
+/**
+ * Evict the account cache (call after KB changes). Pass accountId to evict just
+ * that tenant; without it, clears every account (safe — forces a rebuild).
+ */
+export function invalidateAccountCache(accountId?: string): void {
+  if (accountId) g.__mira_account_cache?.delete(accountId);
+  else g.__mira_account_cache?.clear();
 }

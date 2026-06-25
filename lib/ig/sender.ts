@@ -1,7 +1,7 @@
 // Sender — paces outbound replies so Mira never bursts or hits a robotic
 // rhythm, and never exceeds a safe daily volume. Anti-ban, the timing half.
 
-import { readStore, updateStore, type Settings, type DailyStat } from "./store";
+import { readStore, updateStore, updateStoreFor, type Settings, type DailyStat } from "./store";
 
 function todayKey(d = new Date()): string {
   return d.toISOString().slice(0, 10);
@@ -44,10 +44,11 @@ export async function withinDailyCap(settings: Settings): Promise<boolean> {
 
 /** Atomically bump today's counters. */
 export async function recordDailyStat(
-  patch: Partial<Omit<DailyStat, "date">>
+  patch: Partial<Omit<DailyStat, "date">>,
+  accountId?: string | null
 ): Promise<void> {
   const key = todayKey();
-  await updateStore((s) => {
+  await updateStoreFor(accountId, (s) => {
     const cur: DailyStat = s.dailyStats[key] || {
       date: key,
       comments: 0,

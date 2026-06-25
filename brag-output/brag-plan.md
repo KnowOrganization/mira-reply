@@ -1,99 +1,96 @@
-# Brag Plan: Mira
+# Brag Plan: Mira — Cinematic Launch Film ("Inbox as a Universe")
 
 ## What is this app?
-Mira is a personal AI that runs your Instagram: it watches your comments and DMs, replies in your own voice while you sleep, quietly surfaces sponsorships and brand deals into a Kanban pipeline, and spins up a premium public storefront for your products — all from one connected account.
+Mira is a local AI that runs a creator's Instagram inbox — reads every DM and comment, understands intent, replies in the creator's own voice, and routes buyers, leads, and brand deals automatically. This is a brand launch FILM, not a SaaS demo.
 
 ## The angle
-Not "an Instagram tool." Mira is the operator behind the account. The video shows the account *running itself*: a real DM gets a real, on-brand reply; a brand deal materializes and lands in "Won"; a storefront builds itself at `/s/thedslabs`. The premise is calm confidence — you connect Instagram once, and the work just happens. Specific to Mira because every beat is an actual Mira surface (the indigo DM bubble, the Opportunities Kanban with confidence %, the "Powered by Mira" storefront), not a generic SaaS dashboard.
+An Instagram inbox rendered as a universe. A chaos of message-particles floods dark infinite space, then collapses gravitationally into one glowing gold Mira core that understands intent and routes every message. The reveal: every particle was always part of one intelligent network. Cinematic, After-Effects motion language — parallax depth, camera push, particle simulation, volumetric gold light, kinetic type.
 
 ## Hook (first 2-3 seconds)
-The Mira sunburst logo draws itself spoke-by-spoke on a near-black dot-grid canvas and rotates into place. The wordmark **Mira** settles in heavy display type, with one quiet subline: *the AI that runs your Instagram.* The mark is distinctive and the line is a promise — that earns the next 18 seconds.
+Black. One ping. The frame floods with streaming message-particles across parallax layers, camera drifting in. The line cuts through and HOLDS: **YOUR INBOX IS NOT NOISE.**
 
 ## Key moments (the middle)
-- **A DM answering itself** — an incoming grey bubble "do you ship to canada? 👀" then Mira's indigo reply types out "Yes — free shipping over $80, here's the link 🇨🇦". The product *doing* its core job.
-- **A brand deal closing** — an Opportunities Kanban; a card slides from "Needs Review" to "Won": **Brand Deal · 92% · $4,000**. Mira found money in the DMs.
-- **A storefront building itself** — the premium `/s/thedslabs` page assembles: big hero headline, then product cards pop in one by one with the real 4/5 image cards, "Powered by Mira" in the footer.
+- **Gravitational collapse** — the whole stream reverses and rushes inward, converging to a point that ignites gold: the Mira core. **MIRA UNDERSTANDS.**
+- **Intelligence / routing** — nodes snap out, pathways light, and a REAL Mira inbox row surfaces (avatar, handle, preview, `24h window` clock, green **live** dot), a gold **Buyer · high intent** tag locks on, then it routes along a lit path back into the network. Kinetic labels flick: intent · route · resolve.
+- **Outcomes** — value cards bloom from the core one by one: Question · Order ₹4,200 · Buyer · Lead captured · Brand deal inbound.
 
 ## Outro / punchline
-Back to black. The sunburst centers with the wordmark. One line lands and holds: **Connect Instagram. Mira does the rest.**
+Everything inhales back into the core, collapses to a point, and resolves into the **MIRA** wordmark, gold-on-black, with one heavy impact. Tagline: **One mind for every message.**
 
 ## User flow worth showing
-The real working-app flow, entry → action → result:
-1. **DM arrives → Mira replies in-voice** (Inbox 3-panel bubbles).
-2. **DM becomes a detected deal → moves to Won** (Opportunities Kanban card with confidence + value).
-3. **Products become a live storefront** (`/s/thedslabs` grid of 4/5 product cards).
-These three are the centerpiece. The logo hook and outro frame them.
+The real product moment is Scene 3: a faithful Mira inbox conversation row — pulled from the actual `InboxView.tsx` (avatar + display name, last-message preview with the `↩` outbound marker, the `24h window: …` Meta-policy clock, the green `live` SSE dot) — getting an intent tag locked on and routed. The intent/value vocabulary (Buyer, Lead, Brand deal, ₹ values) comes from the real `OpportunitiesView.tsx` classifier.
 
 ## Tone
-- Preset: polished
-- Creative direction: a quiet premium product film — "the AI that quietly runs your Instagram"
-- Interpretation: fewer scenes, longer holds, confident restraint. Motion is smooth (soft slides, crossfades), type is large and calm, the indigo accent does the talking. No hype words, no fast flashing.
+- Preset: cinematic
+- Creative direction: premium After-Effects launch film — particle universe, gravitational collapse, volumetric gold light, dramatic reveals over quick cuts, constant motion every frame.
+- Interpretation: big motion and dramatic holds; few words, each held long enough to read; pure-black void + a single gold accent; seamless flood→collapse→ignition rather than hard cuts.
 
 ## Format: landscape — 1920x1080
-## Duration: 20s (target)
+## Duration: 24.0s
 
-## Visual identity (from the project)
-- Background: `#ffffff` surface on `#f9f9fb` frame (light); near-black `#0c0c0f`/dot-grid for hook + outro
-- Accent: `#4f6bed` (Mira indigo). DM "sent" bubbles + CTAs use it.
-- Text: `#1a1a1f` primary, `#6b6f76` muted, `#9ca0a8` subtle
-- Display font: Inter, weight 800, letter-spacing -0.04em (the `.display` style)
-- Body font: Inter
-- Strongest visual element: the **Mira sunburst logo** (32-spoke, 6px core, accent squares every 3rd tip), the **indigo DM bubble**, the **Opportunities Kanban card**, and the **premium storefront grid**.
+## Visual identity (from the project — @thedslabs brand / landing)
+- Background: #0A0A0A (void)
+- Accent: #F4A623 (gold) — the core
+- Text: #F5F5F0 / muted #9A9A95
+- Display font: Archivo Black (bundled woff2)
+- Mono font: JetBrains Mono (bundled woff2) — UI/labels
+- Strongest visual element: a single glowing gold node (the core) + the real inbox row
 
 ## Share copy (draft)
-Mira runs your Instagram for you — replies in your voice, turns DMs into brand deals, and spins up a storefront. You just press connect. 🪩
+Your inbox is not noise. Mira reads the intent behind every Instagram DM and routes every buyer, lead, and brand deal — one mind for every message. 🟡
 
 ## Audio direction
-- Role: warm professional bed with sparse motion-matched accents
-- Music: `happy-beats-business-moves-vol-12-by-ende-dot-app.mp3` (~110 BPM, calm-confident business mood)
-- Music treatment: start at 0, low bed (~0.5), gentle swell into the storefront reveal, fade under the final logo line.
-- Music cue guidance: bundled preset `cues/...vol-12...music-cues.json`. Strong cues in window: 8.74, 13.11, 17.47, 18.56, 22.93. Target the deal-card slam near **8.74**, the storefront reveal near **13.11**, the outro wordmark near **17.47/18.56**. Beat grid for the sequential product cards: 13.64 / 14.20 / 14.73 / 15.29 (images, not text — fine to snap each beat).
-- Audio-reactive treatment: subtle — sunburst logo glow and storefront hero presence breathe with music RMS. No waveforms/equalizers.
-- SFX posture: sparse, polished. Soft key ticks under the typed reply, a soft UI tick on bubble send, a card "thunk" + a short announcement cue on the deal landing in Won, gentle pops on product cards, one soft logo hit on the outro.
-- Audio-coupled moments: typed DM reply (key ticks), deal card move (thunk on the strong cue), product cards (pops on beat grid), outro logo (single hit).
-- Restraint rule: audio must not get busy or hypey. One accent per moment, music stays a bed, never a beat-drop montage.
+- Role: SFX-driven cinematic sound design — NOT upbeat music. No suitable cinematic music track is bundled (only upbeat "Happy Beats"), and upbeat pop would fight the film, so this cut runs **music-free** with sparse, impactful trailer-style SFX. (Drop a dark cinematic bed into the composition's assets/music/ and it can be re-rendered with a bed under the same beats.)
+- Music: none (intentional — see above)
+- SFX posture: sparse, warm, low-HF — one single ping to open, an impact as particles compress, a heavy soft impact on core ignition (~7.6s), select-lock on the intent tag, light rollover flicks on the kinetic labels, casino card-place taps as value cards bloom, one heavy bell on the logo land (~22.2s).
+- Self-defined beats (no track): ignition ~7.6s; value cards every ~0.7s 16.5→19.3; logo land ~22.2s.
+- Audio-reactive treatment: N/A without a bed — the core glow breathes via a deterministic yoyo pulse instead (no waveform/EQ graphics, per direction).
+- Restraint rule: one sound per event; long stretches stay near-silent so the impacts land. No music, no busy ticking.
+
+## Music cue guidance
+- No music track (intentional). Beats are author-defined; the two anchor moments (ignition ~7.6s, logo land ~22.2s) carry the heavy impacts. If a cinematic track is later added, lock its rising-swell peak to 7.6s and its resolve to 22.2s.
 
 ## Storyboard
 
-### Scene 1 — Logo hook — 3s
-Near-black `#0c0c0f` canvas with faint dot-grid (28px, 1px dots). The Mira sunburst draws spoke-by-spoke (~0.8s) and rotates ~24° into rest. Wordmark **Mira** fades up in display 800 beside/below it; subline *the AI that runs your Instagram* settles under it. Hold ~1s.
-Sequential/interaction: yes — sunburst spokes draw in sequence, then wordmark, then subline.
-Audio intent: music enters soft; a single low presence as the mark lands.
-Audio-coupled idea: gentle logo settle tick.
-Music: low warm bed begins.
-Transition mood: soft crossfade → Scene 2
+### Scene 1 — Chaos / The Flood — 5.0s
+Black, one ping. The frame floods with ~120 message-particles (dots + 6 real-preview DM chips like "collab? we'd pay", "price for the tee?") streaming through dark space across 3 parallax depth layers; camera drifts in (slow scale push). Hook line cuts through and HOLDS: **YOUR INBOX IS NOT NOISE.**
+Sequential/interaction: none (continuous particle drift)
+Audio intent: a lone ping, then near-silent pressure.
+Audio-coupled idea: single ping at 0.3s.
+Music: none.
+Transition mood: seamless (same particle field) → Scene 2
 
-### Scene 2 — A DM answering itself — 5.5s
-Light surface, an inbox conversation crop (thread header "@thedslabs", a couple muted bubbles). Incoming grey bubble bottom-left: "do you ship to canada? 👀". Beat. Then Mira's **indigo** reply bubble types out bottom-right: "Yes — free shipping over $80, here's the link 🇨🇦" with a tiny "mira · now ✓" meta. Caption settles top: **Replies in your voice. While you sleep.**
-Sequential/interaction: yes — incoming bubble appears, then the reply types character-by-character.
-Audio intent: intimate, human; the reply feels alive.
-Audio-coupled idea: soft key ticks during typing, one UI tick on send.
-Music: bed continues under.
-Transition mood: soft slide → Scene 3
+### Scene 2 — Gravitational Pull / Core Ignition — 5.2s
+The stream reverses — every particle rushes inward, converging to a point that ignites GOLD: the Mira core. Volumetric gold bloom, camera push. Line: **MIRA UNDERSTANDS.**
+Sequential/interaction: collapse (staggered inward rush)
+Audio intent: compression → a single heavy ignition impact.
+Audio-coupled idea: soft impact ~6.9s (compression), heavy impact on ignition 7.6s.
+Music: none.
+Transition mood: dramatic bloom → Scene 3
 
-### Scene 3 — A brand deal closing — 4.5s
-Opportunities Kanban: columns "Needs Review · Open · In Progress · Won". A card sits in Needs Review: a colored dot + **Brand Deal**, **92%** confidence badge, **$4,000** value, "detected 3m ago". On the strong cue it slides across and snaps into **Won** with a soft flash. Caption: **Turns DMs into deals.**
-Sequential/interaction: yes — simulate the card moving column → column, settling in Won.
-Audio intent: a satisfying, understated "closed" moment.
-Audio-coupled idea: card thunk + short announcement cue as it lands in Won, on the 8.74s strong cue.
-Music: bed; small lift approaching the cue.
-Transition mood: clean crossfade → Scene 4
+### Scene 3 — Intelligence / Routing — 6.4s
+Nodes snap out from the core, connector pathways illuminate (SVG draw). A REAL Mira inbox row surfaces center (avatar "AK", @ayaan.k, preview "collab for our brand — we'd pay ↩", `24h window: 6h 12m left`, green live dot), a gold **Buyer · high intent** tag locks on. Hold row + tag ~1.4s, then it routes along a lit path back into the network. Kinetic labels flick along paths: intent · route · resolve.
+Sequential/interaction: yes — nodes snap out; tag locks (select sound); 3 labels flick one by one; row routes.
+Audio intent: precise, intelligent.
+Audio-coupled idea: tick as row surfaces; select-lock on tag (12.0s); rollover flick per label.
+Music: none.
+Transition mood: lit-path sweep → Scene 4
 
-### Scene 4 — A storefront building itself — 5s
-The premium `/s/thedslabs` storefront. Sticky header with accent dot + "thedslabs" + "Shop". Hero headline in big display type ("Made by hand. Sold direct." style) with eyebrow "Welcome" and an accent pill CTA. Then the product grid: 4/5 image cards pop in one by one (title + price, e.g. "Studio Tee · $48"), one card image scales on hover. Footer "Powered by Mira". A small URL chip reads **/s/thedslabs**.
-Sequential/interaction: yes — hero first (locked near 13.11 strong cue), then product cards arrive one by one on the beat grid (13.64 / 14.20 / 14.73 / 15.29).
-Audio intent: the swell — the product paying off.
-Audio-coupled idea: gentle pops as each card lands on the beat grid; music swells under the hero reveal.
-Music: gentle swell, fullest point of the bed.
-Transition mood: soft fade to black → Scene 5
+### Scene 4 — Outcomes / Value Cards — 5.0s
+Value cards bloom from the core one by one, every-other-beat (~0.7s apart, ~0.8s settle each, then hold the full set): **Question** · **Order · ₹4,200** · **Buyer · high intent** · **Lead · captured** · **Brand deal · inbound**.
+Sequential/interaction: yes — 5 cards bloom on the beat grid (card-place sounds), full set holds ~1.5s.
+Audio intent: results stacking, satisfying.
+Audio-coupled idea: casino card-place tap per card (16.5/17.2/17.9/18.6/19.3).
+Music: none.
+Transition mood: inhale → Scene 5
 
-### Scene 5 — Outro — 2.5s
-Black/dot-grid again. The sunburst centers with the **Mira** wordmark. One line: **Connect Instagram. Mira does the rest.** Hold, then a slow fade.
-Sequential/interaction: none — single settled hold.
-Audio intent: resolve; one soft logo hit, music fades out under the line.
-Audio-coupled idea: single logo hit near 17.47/18.56 strong cue; music fade-out.
-Music: fade under the final line.
-Transition mood: slow fade → end
+### Scene 5 — Convergence / Logo — 3.0s
+Every card and particle inhales back into the core; it collapses to a point and resolves into the **MIRA** wordmark (Archivo Black, gold-on-black, full-bleed). Tagline: **One mind for every message.** One heavy bell impact on the logo land.
+Sequential/interaction: convergence collapse.
+Audio intent: final resolve, one heavy hit.
+Audio-coupled idea: heavy bell impact on logo land ~22.2s.
+Music: none.
+Transition mood: fade to black — end
 
-**Music mood for this video:** polished / warm-confident business bed (not upbeat-hype)
-**Audio summary:** A calm warm bed enters under the logo, stays intimate through the DM reply, lifts slightly as the deal closes, swells once under the storefront reveal, then fades to a single soft logo hit on the outro line.
+**Music mood for this video:** none (intentional — SFX-driven cinematic)
+**Audio summary:** A lone ping opens a near-silent flood; the collapse compresses to one heavy ignition impact; sparse select/flick sounds carry the routing; casino card-place taps mark each value card; one heavy bell lands the logo. Silence between events makes the impacts cinematic.
