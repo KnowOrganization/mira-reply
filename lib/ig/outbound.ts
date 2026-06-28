@@ -1,4 +1,4 @@
-import { query } from "./pg";
+import { query } from "@shaiz/db";
 import { redis, k, bumpCounter } from "./redis";
 import { insertLog } from "./db";
 import { publish } from "./bus";

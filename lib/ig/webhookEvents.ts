@@ -1,4 +1,4 @@
-import { query } from "./pg";
+import { query } from "@shaiz/db";
 
 // Append-only raw webhook event log. The receiver writes here BEFORE returning
 // 200 to Meta — if this insert fails the receiver returns 5xx and Meta retries

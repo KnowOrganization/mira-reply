@@ -4,12 +4,11 @@
 // a message row. The DM engine (dmPipeline.ts) loads the recent turns + rolling
 // summary so a follow-up message is answered in context, not in isolation.
 //
-// Backed by raw Postgres (lib/ig/pg.ts) like db.ts / outbound.ts. The canonical
-// DDL lives in packages/db/src/schema.ts (conversations, messages); the
-// IF-NOT-EXISTS bootstrap below only guarantees the worker still runs if
-// migrations haven't been pushed yet — it never diverges from the Drizzle shape.
+// Backed by raw SQL on the shared postgres-js pool (@shaiz/db) like db.ts /
+// outbound.ts. DDL is owned solely by Drizzle (packages/db/src/schema.ts →
+// conversations, messages); apply it with `bun run db:push`. Single schema source.
 
-import { query, pool } from "./pg";
+import { query } from "@shaiz/db";
 
 const DM_WINDOW_MS = 24 * 60 * 60 * 1000; // Meta 24h standard messaging window
 
@@ -29,38 +28,6 @@ export type ConversationRow = {
 
 export type Turn = { direction: "in" | "out"; text: string; sentBy: string; createdAt: number };
 
-let ensured = false;
-async function ensureSchema(): Promise<void> {
-  if (ensured) return;
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS conversations (
-      id text PRIMARY KEY,
-      account_id text NOT NULL,
-      igsid text NOT NULL,
-      username text,
-      last_inbound_at bigint NOT NULL DEFAULT 0,
-      last_outbound_at bigint NOT NULL DEFAULT 0,
-      window_expires_at bigint NOT NULL DEFAULT 0,
-      summary text NOT NULL DEFAULT '',
-      status text NOT NULL DEFAULT 'open',
-      created_at bigint NOT NULL DEFAULT 0,
-      updated_at bigint NOT NULL DEFAULT 0
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_conversations_acct_igsid ON conversations (account_id, igsid);
-    CREATE TABLE IF NOT EXISTS messages (
-      id text PRIMARY KEY,
-      conversation_id text NOT NULL,
-      account_id text NOT NULL,
-      direction text NOT NULL,
-      text text NOT NULL DEFAULT '',
-      sent_by text NOT NULL DEFAULT 'user',
-      created_at bigint NOT NULL DEFAULT 0
-    );
-    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages (conversation_id, created_at);
-  `);
-  ensured = true;
-}
-
 const convId = (accountId: string, igsid: string) => `conv_${accountId}_${igsid}`;
 
 /** Find or create the conversation for one person; bumps username if provided. */
@@ -69,7 +36,6 @@ export async function getOrCreateConversation(
   igsid: string,
   username?: string
 ): Promise<ConversationRow> {
-  await ensureSchema();
   const id = convId(accountId, igsid);
   const now = Date.now();
   const rows = await query<ConversationRow>(
@@ -93,7 +59,6 @@ export async function appendMessage(m: {
   text: string;
   sentBy?: "user" | "ai" | "human";
 }): Promise<void> {
-  await ensureSchema();
   await query(
     `INSERT INTO messages (id, conversation_id, account_id, direction, text, sent_by, created_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -130,7 +95,6 @@ export async function recordOutbound(
 
 /** Last N turns of a thread, oldest → newest, for prompt context. */
 export async function recentTurns(conversationId: string, n = 12): Promise<Turn[]> {
-  await ensureSchema();
   const rows = await query<{ direction: "in" | "out"; text: string; sent_by: string; created_at: number }>(
     `SELECT direction, text, sent_by, created_at FROM messages
      WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT $2`,

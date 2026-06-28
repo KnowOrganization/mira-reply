@@ -1,0 +1,68 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev:web",
+      "type": "shell",
+      "command": "bun run dev:web",
+      "group": "build",
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "isBackground": true,
+      "problemMatcher": { "pattern": { "regexp": "." }, "background": { "activeOnStart": true, "beginsPattern": ".", "endsPattern": "Ready" } }
+    },
+    {
+      "label": "dev:api",
+      "type": "shell",
+      "command": "bun run dev:api",
+      "group": "build",
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "dev:all",
+      "dependsOn": ["dev:web", "dev:api"],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "panel": "shared", "reveal": "always" }
+    },
+    {
+      "label": "worker:watch",
+      "type": "shell",
+      "command": "bun run worker:watch",
+      "group": "build",
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "bun test tests/",
+      "group": { "kind": "test", "isDefault": true },
+      "presentation": { "panel": "shared", "reveal": "always" }
+    },
+    {
+      "label": "db:push",
+      "type": "shell",
+      "command": "bun run db:push",
+      "group": "none",
+      "presentation": { "panel": "shared", "reveal": "always" }
+    },
+    {
+      "label": "db:generate",
+      "type": "shell",
+      "command": "bun run db:generate",
+      "group": "none",
+      "presentation": { "panel": "shared", "reveal": "always" }
+    },
+    {
+      "label": "tunnel",
+      "type": "shell",
+      "command": "bun run tunnel",
+      "group": "none",
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}

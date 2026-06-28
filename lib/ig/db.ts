@@ -3,7 +3,7 @@
 // Supabase funnel). Same exported names/types as before, but async. account_id
 // is auto-stamped from the single connected account for the legacy webhook path.
 import { v4 as uuidv4 } from "uuid";
-import { query } from "./pg";
+import { query } from "@shaiz/db";
 import { currentAccountId } from "./accountsRepo";
 
 async function acct(): Promise<string> {

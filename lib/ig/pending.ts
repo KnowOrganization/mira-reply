@@ -4,10 +4,9 @@
 // transaction (SELECT → DELETE → return) preserves the exact dedup semantics the
 // file-store updateStore() gave us: one-per-automation, clear-all-on-claim.
 //
-// Raw SQL on the existing pg Pool (lib/ig/pg.ts) — keeps this off drizzle so the
-// Next-imported automation engine needs no transpilePackages. Same mira_app DB.
-import { pool, query, initSchema } from "./pg";
-import type { PoolClient } from "pg";
+// Raw SQL on the shared postgres-js pool (@shaiz/db). Transactions use sql.begin
+// so SELECT ... FOR UPDATE locks are held until commit (genuine atomic claim).
+import { sql } from "@shaiz/db";
 
 export type PendingKind = "button" | "follow" | "retry";
 
@@ -42,30 +41,24 @@ function rowToEntry(r: Row): PendingEntry {
   };
 }
 
-async function withTx<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
-  await initSchema();
-  const c = await pool.connect();
-  try {
-    await c.query("BEGIN");
-    const out = await fn(c);
-    await c.query("COMMIT");
-    return out;
-  } catch (e) {
-    await c.query("ROLLBACK").catch(() => {});
-    throw e;
-  } finally {
-    c.release();
-  }
+// In-transaction query fn handed to each operation; runs on the reserved
+// connection so FOR UPDATE locks hold until the transaction commits/rolls back.
+type TxQuery = <T = Record<string, unknown>>(text: string, params?: unknown[]) => Promise<T[]>;
+
+async function withTx<T>(fn: (q: TxQuery) => Promise<T>): Promise<T> {
+  return sql.begin((tx) =>
+    fn((text, params = []) => tx.unsafe(text, params as never[]) as unknown as Promise<never[]>)
+  ) as Promise<T>;
 }
 
 /** Park (or replace) one user+automation entry of a kind. */
 export async function parkPending(accountId: string, kind: PendingKind, e: PendingEntry): Promise<void> {
-  await withTx(async (c) => {
-    await c.query(
+  await withTx(async (q) => {
+    await q(
       "DELETE FROM pending_resume WHERE account_id=$1 AND kind=$2 AND from_user_id=$3 AND automation_id=$4",
       [accountId, kind, e.fromUserId, e.automationId]
     );
-    await c.query(
+    await q(
       `INSERT INTO pending_resume (account_id, kind, from_user_id, from_username, comment_id, automation_id, remaining_node_ids, not_before, attempts, ts)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [accountId, kind, e.fromUserId, e.fromUsername ?? null, e.commentId, e.automationId,
@@ -78,16 +71,16 @@ export async function parkPending(accountId: string, kind: PendingKind, e: Pendi
  *  dedup to one-per-automation (latest ts), delete ALL of the user's rows of
  *  that kind, return the claimed set. Mirrors the old updateStore claim. */
 export async function claimPending(accountId: string, kind: PendingKind, userId: string, windowMs: number): Promise<PendingEntry[]> {
-  return withTx(async (c) => {
+  return withTx(async (q) => {
     // FOR UPDATE locks the rows so a concurrent claim (webhook postback + DM
     // poll firing together) blocks here, then sees zero rows after our DELETE —
     // makes the claim genuinely atomic (no double-send), no Redis lock needed.
-    const { rows } = await c.query<Row>(
+    const rows = await q<Row>(
       "SELECT * FROM pending_resume WHERE account_id=$1 AND kind=$2 AND from_user_id=$3 FOR UPDATE",
       [accountId, kind, userId]
     );
     if (!rows.length) return [];
-    await c.query("DELETE FROM pending_resume WHERE account_id=$1 AND kind=$2 AND from_user_id=$3", [accountId, kind, userId]);
+    await q("DELETE FROM pending_resume WHERE account_id=$1 AND kind=$2 AND from_user_id=$3", [accountId, kind, userId]);
     const fresh = rows.filter((r) => Date.now() - Number(r.ts) < windowMs);
     const byAuto = new Map<string, Row>();
     for (const p of fresh) { const e = byAuto.get(p.automation_id); if (!e || Number(p.ts) > Number(e.ts)) byAuto.set(p.automation_id, p); }
@@ -97,13 +90,13 @@ export async function claimPending(accountId: string, kind: PendingKind, userId:
 
 /** Atomically claim due retries (not_before <= now). */
 export async function claimDueRetries(accountId: string, now: number): Promise<PendingEntry[]> {
-  return withTx(async (c) => {
-    const { rows } = await c.query<Row>(
+  return withTx(async (q) => {
+    const rows = await q<Row>(
       "SELECT * FROM pending_resume WHERE account_id=$1 AND kind='retry' AND not_before<=$2 FOR UPDATE",
       [accountId, now]
     );
     if (!rows.length) return [];
-    await c.query("DELETE FROM pending_resume WHERE account_id=$1 AND kind='retry' AND not_before<=$2", [accountId, now]);
+    await q("DELETE FROM pending_resume WHERE account_id=$1 AND kind='retry' AND not_before<=$2", [accountId, now]);
     return rows.map(rowToEntry);
   });
 }
@@ -113,8 +106,8 @@ export async function bumpAutomationStats(
   automationId: string,
   delta: { triggered?: number; completed?: number; failed?: number; lastTriggered?: number }
 ): Promise<void> {
-  await withTx(async (c) => {
-    const { rows } = await c.query<{ stats: Record<string, number> }>("SELECT stats FROM automations WHERE id=$1 FOR UPDATE", [automationId]);
+  await withTx(async (q) => {
+    const rows = await q<{ stats: Record<string, number> }>("SELECT stats FROM automations WHERE id=$1 FOR UPDATE", [automationId]);
     if (!rows.length) return;
     const s = rows[0].stats ?? {};
     const next = {
@@ -123,8 +116,6 @@ export async function bumpAutomationStats(
       failed: (s.failed ?? 0) + (delta.failed ?? 0),
       lastTriggered: delta.lastTriggered ?? s.lastTriggered ?? 0,
     };
-    await c.query("UPDATE automations SET stats=$2, updated_at=$3 WHERE id=$1", [automationId, JSON.stringify(next), Date.now()]);
+    await q("UPDATE automations SET stats=$2, updated_at=$3 WHERE id=$1", [automationId, JSON.stringify(next), Date.now()]);
   });
 }
-
-export { initSchema };

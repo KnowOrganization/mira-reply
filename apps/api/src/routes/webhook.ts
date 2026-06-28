@@ -6,7 +6,7 @@
 import { Elysia } from "elysia";
 import crypto from "node:crypto";
 import { ig } from "@/lib/ig/config";
-import { query } from "@/lib/ig/pg";
+import { query } from "@shaiz/db";
 import { redis, k, bumpCounter } from "@/lib/ig/redis";
 import { publish } from "@/lib/ig/bus";
 import { insertWebhookEvent } from "@/lib/ig/webhookEvents";

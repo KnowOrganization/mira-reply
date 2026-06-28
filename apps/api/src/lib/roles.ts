@@ -1,7 +1,7 @@
 // Team roles (spec Phase 4): account owner (accounts.user_id) is implicit
 // "owner"; everyone else resolves through team_members. Gates who may enable
 // autonomous mode (owner/admin) and, later, who sees revenue.
-import { query } from "@/lib/ig/pg";
+import { query } from "@shaiz/db";
 
 export type Role = "owner" | "admin" | "agent" | "viewer";
 

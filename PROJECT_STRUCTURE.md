@@ -1,210 +1,124 @@
-# Shaiz / Mira — Project Structure (End-to-End)
+# Mira — Project Structure
 
-> **Purpose:** hand-off map for a cleanup / production-hardening agent. Documents every
-> source directory, what each part does, the runtime topology, and the **known structural
-> problems** that need fixing before this is production-grade.
+> Instagram automation + AI dashboard. Webhooks pull IG comments + DMs → an
+> automation/funnel engine matches keywords + an LLM brain → sends DMs/replies via
+> the Meta Graph API. A Next.js dashboard configures automations, knowledge, and the agent.
 >
-> **What this is:** an Instagram automation + AI dashboard ("Mira"). Webhooks/polling pull
-> IG comments + DMs → an automation/funnel engine matches keywords → sends DMs/replies via
-> Meta Graph API. A Next.js dashboard configures automations, knowledge base, and an AI agent.
->
-> Generated 2026-06-11. Stack mid-migration (strangler pattern) — read "Known Issues" before refactoring.
+> Monorepo, **bun** workspaces. The old strangler migration (root `app/` → `apps/web` +
+> `apps/api`) is complete. This doc reflects the current layout.
 
 ---
 
-## 1. Runtime topology (the 4 processes)
+## 1. Runtime topology (3 processes + 2 stores)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Next.js (port 3000)                                                  │
-│   • Serves dashboard UI (app/, components/)                           │
-│   • proxy.ts        → optimistic BetterAuth gate on /api/ig/*         │
-│   • next.config.ts  → STRANGLER: rewrites /api/ig/* → Elysia :4000    │
-│   • Still hosts: /api/auth/[...all] (BetterAuth), /api/ig/webhook     │
-│   • instrumentation.ts → auto-boots the watcher loops on server start │
-└─────────────────────────────────────────────────────────────────────┘
-              │ rewrite (afterFiles catch-all)
-              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  Elysia API — apps/api (Bun, port 4000)                               │
-│   • All ported routes: posts, inbox, analytics, llm, automations,     │
-│     postConfigs, control, settings, status, stream, auth              │
-│   • Imports lib/ig/* via @/* path alias (resolves to repo root)       │
-└─────────────────────────────────────────────────────────────────────┘
-              │
-              ▼
-┌──────────────────────────┐      ┌──────────────────────────────────┐
-│  BullMQ worker            │      │  Watcher loops (in Next process)  │
-│  worker/index.ts (tsx)    │      │  lib/ig/watcher.ts                │
-│   • Drains "ingest" queue │      │   • 1s realtime comment poll      │
-│   • processIngestJob()    │      │   • DM poll, 7s full tick         │
-│   • Scale = more procs    │      │   • token refresh                 │
-└──────────────────────────┘      └──────────────────────────────────┘
-              │                                  │
-              ▼                                  ▼
-        Redis (BullMQ + dedup)            Postgres / Supabase
+Next.js web (apps/web :3000)          Elysia API (apps/api :4000)         Worker (worker/index.ts, tsx)
+  app router UI + /api/auth      ──▶    routes → controllers → services      drains BullMQ queues:
+  proxy.ts (auth gate)                  imports the @/lib/ig engine            ingest-comments, ingest-dm,
+  next.config.ts strangler              + @shaiz/{db,auth,shared}              outbound, reconcile (+ 2 DLQs)
+  rewrites /api/ig|store|chat|              │                                          │
+  playground/* ──▶ :4000                   ▼                                          ▼
+                                Postgres / Supabase                          Redis
+                                (Drizzle = single DDL source)                (BullMQ + dedup/locks)
 ```
 
-**External deps:** Redis (BullMQ + claimOnce dedup), Postgres/Supabase (state), Ollama
-(local LLM), ngrok/cloudflare tunnel (Meta webhook ingress), Meta Graph API (IG).
+External deps: Postgres/Supabase (state), Redis (queues + `claimOnce` dedup + locks), Ollama /
+Claude (LLM), ngrok/cloudflare tunnel (Meta webhook ingress), Meta Graph API.
 
 ---
 
 ## 2. Directory map
 
 ```
-Shaiz/
-├── app/                          # Next.js App Router (UI + the 2 surviving API routes)
-│   ├── layout.tsx, page.tsx, globals.css, favicon.ico
-│   ├── api/
-│   │   ├── auth/[...all]/route.ts # BetterAuth handler (stays in Next)
-│   │   └── ig/webhook/route.ts    # Meta webhook — 615 lines, INLINE processing (see issues)
-│   ├── oauth/complete/page.tsx
-│   ├── playground/page.tsx
-│   ├── privacy/page.tsx, terms/page.tsx   # Meta app-review legal pages
+mira-reply/
+├── apps/
+│   ├── web/                      # @shaiz/web — Next 16, React 19, TanStack Query
+│   │   ├── src/app/              # app router: page.tsx, landing, playground, oauth,
+│   │   │   ├── api/auth/[...all] #   privacy/terms, s/[slug] storefront; ONLY auth route left in Next
+│   │   ├── src/components/       # UI; split into automations/, workspace/, comments/,
+│   │   │   │                     #   landing/, skeleton/, ui/ subfolders
+│   │   │   ├── Brain.tsx (1025)        ★ still oversized — split candidate
+│   │   │   ├── InboxView.tsx (853)     ★ still oversized — split candidate
+│   │   │   ├── Dashboard.tsx (566), Sidebar.tsx (467), AutomationsView.tsx (500), …
+│   │   ├── src/lib/api/          # client.ts (apiFetch) + hooks.ts (759, TanStack Query)
+│   │   ├── proxy.ts, next.config.ts, instrumentation.ts (no-op), middleware.ts
+│   │
+│   └── api/                      # @shaiz/api — Elysia (Bun), port 4000
+│       └── src/
+│           ├── index.ts          # registers routes, CORS, health
+│           ├── routes/           # thin: posts, inbox, llm, analytics, crm, webhook,
+│           │   │                 #   auth, status, settings, stream(SSE), control,
+│           │   │                 #   automations, postConfigs, products, store, opportunities
+│           ├── controllers/<feat>/handlers/*.ts   # one tiny handler per endpoint (~12–25 LOC)
+│           ├── services/         # business logic: posts(807), inbox(400), llm(393),
+│           │                     #   analytics(382), crm(216)
+│           └── lib/{auth,roles}.ts, plugins/auth.ts
 │
-├── apps/api/                     # Elysia backend (Bun) — @shaiz/api
-│   ├── package.json, tsconfig.json
-│   └── src/
-│       ├── index.ts              # Elysia app: registers all route modules
-│       ├── lib/auth.ts           # requireUser guard helper
-│       └── routes/
-│           ├── posts.ts          (842)  ← largest; has syncPosts regression (see issues)
-│           ├── llm.ts            (437)
-│           ├── inbox.ts          (412)
-│           ├── analytics.ts      (385)
-│           ├── auth.ts           (142)
-│           ├── control.ts        (77)   watcher start/stop API
-│           ├── postConfigs.ts    (53)
-│           ├── automations.ts    (61)   node-graph store
-│           ├── status.ts, settings.ts, stream.ts (SSE)
+├── lib/ig/                       # ★ the automation engine (~8k LOC, 59 files), shared via @/*
+│   ├── automation.ts(799) store.ts(740) pipeline.ts(697) graph.ts(635) ingest.ts(460)
+│   ├── ctx, dm, knowledge, perception, planner, agent, variation, intent, rulebook,
+│   │   sender, links, outbound, reconcile, opportunity, crm, conversation, window, …
+│   ├── db.ts        # raw-SQL API: post_configs, processed_comments, user_states, message_log
+│   ├── storeDb.ts   # raw-SQL: assemble IgStore + delta write-through (perf-sensitive)
+│   ├── pending.ts   # raw-SQL: atomic automation resume claim (pending_resume)
+│   ├── conversation.ts # raw-SQL: DM thread memory (conversations, messages)
+│   ├── redis.ts, ingestQueue.ts   # BullMQ wiring + claimOnce/locks
+│   ├── seen.ts      # in-memory fast-path dedup (Redis claimOnce is the durable layer)
+│   ├── handlers/ {reply,link,skip,clarify}.ts
+│   ├── providers/ {claude,ollama}.ts
+│   └── mcp/         # in-process MCP "brain" tool server (brain*, router, server, client, loop)
 │
-├── packages/db/                  # @shaiz/db — Drizzle + postgres-js (the "new" DB stack)
-│   ├── drizzle.config.ts, package.json, tsconfig.json
-│   ├── src/
-│   │   ├── schema.ts             (349)  18 tables, app state
-│   │   ├── auth-schema.ts        (53)   BetterAuth tables
-│   │   ├── client.ts             postgres-js client (DATABASE_URL)
-│   │   ├── repos.ts, index.ts
-│   └── scripts/                  # one-off migration helpers (add-*.ts, import.ts)
+├── packages/
+│   ├── db/          # @shaiz/db — Drizzle + postgres-js. schema.ts = SINGLE DDL SOURCE (22 tables),
+│   │   │            #   auth-schema.ts, client.ts (pool), repos.ts (typed access), drizzle/ migrations
+│   │   └── scripts/import.ts   # data import (npm db:import)
+│   ├── auth/        # @shaiz/auth — BetterAuth singleton (Drizzle adapter)
+│   └── shared/      # @shaiz/shared — automation + storefront contracts (used by web AND engine)
 │
-├── lib/                          # shared library (imported by BOTH Next and Elysia via @/*)
-│   ├── ig/                       # ★ the automation engine — 9,200 LOC, the real product
-│   │   ├── watcher.ts      (574) polling loops (full tick + realtime + DM)
-│   │   ├── automation.ts   (737) keyword-match → action engine
-│   │   ├── store.ts        (704) in-memory node-graph store (IgStore)
-│   │   ├── pipeline.ts     (651) message processing pipeline
-│   │   ├── graph.ts        (505) automation node graph
-│   │   ├── ingest.ts       (435) processIngestJob — webhook→queue→action
-│   │   ├── ctx.ts          (299) per-account context
-│   │   ├── storeDb.ts      (295) raw pg.Pool persistence for store
-│   │   ├── planner.ts, perception.ts, agent.ts, dm.ts, knowledge.ts,
-│   │   │   variation.ts, training.ts, rulebook.ts (Mira reply/skip rules),
-│   │   │   pending.ts, sender.ts, outbound.ts, intent.ts, embed.ts,
-│   │   │   accountsRepo.ts, queue.ts (in-proc msg queue), seen.ts (in-mem dedup),
-│   │   │   bus.ts, links.ts, followCheck.ts, feedLog.ts, config.ts
-│   │   ├── db.ts           (154) post-config funnel store (now Postgres, async)
-│   │   ├── pg.ts           (91)  raw node-pg Pool + initSchema  ← 2nd DB stack
-│   │   ├── redis.ts, ingestQueue.ts  BullMQ wiring
-│   │   ├── webhookEvents.ts (NEW, untracked) webhook event persistence
-│   │   ├── handlers/       reply.ts, link.ts, skip.ts, clarify.ts
-│   │   └── mcp/            brain*.ts, router.ts, server.ts, client.ts, loop.ts (MCP "brain")
-│   ├── api/               client.ts, hooks.ts (TanStack Query)
-│   ├── auth/              client.ts, server.ts (BetterAuth shared instance)
-│   ├── storage.ts, types.ts, utils.ts
-│
-├── components/                   # React UI (TanStack Query)
-│   ├── Workspace.tsx      (3062) ★ MONOLITH — needs splitting
-│   ├── AutomationsView.tsx (1877) ★ visual canvas, also huge
-│   ├── Comments.tsx       (1332)
-│   ├── Brain.tsx          (750), Dashboard.tsx (566), Sidebar.tsx (496)
-│   ├── PostCanvas, CanvasLayout, ConnectGate, Chat, Views, Knowledge,
-│   │   BrainGraph, SettingsPanel, MiraFeed, MiraLogo, AuthGate, Providers
-│
-├── worker/index.ts               # BullMQ worker entrypoint (separate process)
-├── scripts/                      # mcp-brain.mjs, scale-{import,spike,verify}.ts, test-*
-├── proxy.ts                      # Next 16 middleware (auth gate)
-├── instrumentation.ts            # auto-boot watcher
-├── next.config.ts                # strangler rewrites
-├── docker-compose.yml            # Redis + Postgres for local dev
-│
-├── mira/                         # ⚠ UNRELATED Swift/iOS app, OWN git repo, gitignored
-├── data/                         # ⚠ runtime SQLite (shaiz.db) — gitignored, LEGACY artifact
-├── .agents/skills/               # vendored Supabase/Postgres best-practice skill docs
-├── MASTER_PLAN.md, README.md, AGENTS.md, CLAUDE.md
-└── package.json (root, bun workspaces: apps/*, packages/*)
+├── worker/index.ts  # BullMQ worker entrypoint (separate process; only place that sends to Meta)
+├── scripts/         # start-mira.sh (npm mira), mcp-brain.mjs (npm mcp:brain)
+├── tests/unit/      # 5 bun tests: variation, intent, threshold, rulebook, recall  (bun test tests/)
+├── docker-compose.yml   # Redis + Postgres for local dev
+└── package.json (bun workspaces: apps/*, packages/*)
 ```
 
 ---
 
-## 3. Data layer — **two parallel Postgres stacks** (key cleanup target)
+## 3. Data layer — single pool
 
-Same `DATABASE_URL`, **two different drivers + access patterns** — biggest source of drift:
+- **One connection pool**: `packages/db/src/client.ts` (postgres-js). Drizzle (`db`) and all
+  hand-written SQL (`query()` / `sql.begin()` transactions, exported from `@shaiz/db`) share it.
+  The old second pool (`lib/ig/pg.ts`, node-pg) is gone; the `pg` dependency is removed.
+- **Drizzle (`packages/db`)** owns all DDL via `schema.ts` + `drizzle/` migrations — the single
+  schema source. Apply with `bun run db:push`. `repos.ts` = typed access used by the API services.
+- **Raw SQL** still lives where hand-written queries are clearer (the automation engine + some API
+  routes): `lib/ig/{db,storeDb,pending,conversation,accountsRepo,…}.ts` call `query()`/`sql` from
+  `@shaiz/db` against the same Drizzle-owned tables. Transactions (pending claim, storeDb delta
+  write-through) use `sql.begin` with `FOR UPDATE` for atomic claims. No schema drift — Drizzle owns DDL.
 
-| Stack | Driver | Files | Used by |
-|-------|--------|-------|---------|
-| **A. Drizzle** | `postgres-js` | `packages/db/*`, `lib/auth/server.ts` | BetterAuth, Elysia routes (new) |
-| **B. raw node-pg** | `pg.Pool` | `lib/ig/pg.ts`, `storeDb.ts`, `pending.ts`, `db.ts`, `worker` | watcher, ingest, funnel store |
-
-- `lib/ig/pg.ts` → `new Pool({ connectionString: DATABASE_URL })`, has its own `initSchema()` (raw SQL).
-- `packages/db/src/client.ts` → `postgres(DATABASE_URL)` + Drizzle, schema in `schema.ts`.
-- **Schema is defined in two places** (Drizzle `schema.ts` AND raw `initSchema()`) → can diverge silently.
-- **better-sqlite3 is fully removed** — remaining hits are only historical comments + the gitignored `data/shaiz.db` artifact. Safe to delete `data/`.
-
-**Recommendation:** collapse onto Drizzle/`postgres-js`; delete `lib/ig/pg.ts` raw stack and the duplicate `initSchema`.
-
----
-
-## 4. Known issues / cleanup backlog
-
-**Architecture**
-1. **Two DB stacks** (§3) — unify on Drizzle.
-2. **Dual schema definitions** — Drizzle `schema.ts` vs raw `initSchema()` SQL drift.
-3. **Two queue systems** — BullMQ `ingest` (durable, Redis) + `lib/ig/queue.ts` (in-process). Pick one for the hot path.
-4. **Polling + webhooks both live** — watcher 1s poll AND webhook route both process events → race / double-send risk. Migration to webhook-first event queue is *planned* (see MASTER_PLAN) but not done.
-5. **Restart-fragile dedup** — `lib/ig/seen.ts` in-memory dedup is lost on restart (Redis `claimOnce` exists for the queue path but not everywhere).
-
-**Correctness**
-6. **`posts.ts` syncPosts regression** — `existing = next[m.id]` always undefined → loses preserved notes/qa/links (flagged obs 2369; verify fixed).
-7. **`webhook/route.ts` (615 lines) inline processing** — handles comments/mentions/follows/DMs/postbacks synchronously in the request handler; always returns 200. Should enqueue + return fast.
-8. **`is_echo` filtering** — page-sent messages must be filtered on the webhook (confirmed needed).
-
-**Code health**
-9. **God components** — `Workspace.tsx` (3062), `AutomationsView.tsx` (1877), `Comments.tsx` (1332) need decomposition.
-10. **`automation.ts` (737) + `store.ts` (704)** — large; store is in-memory node-graph, candidate to back with DB.
-11. **Untracked WIP** — `lib/ig/webhookEvents.ts`, `packages/db/scripts/add-webhook-events.ts` not committed; modified `ingestQueue.ts`, `pg.ts`, `redis.ts`, `schema.ts`.
-
-**Production-readiness**
-12. **Secrets / config** — dev fallbacks hardcoded: `BETTER_AUTH_SECRET="dev-insecure-secret-change-me"`, `DATABASE_URL` default to `localhost`. Must require env in prod.
-13. **Watcher in web process** — `instrumentation.ts` boots polling loops inside Next; won't survive serverless / multi-instance scale-out. Move to the worker tier.
-14. **Hardcoded ngrok URL** in `package.json` `start:all`/`tunnel` scripts.
-15. **No tests** — only `scripts/test-*.sh` smoke scripts; no real test suite.
-16. **Multi-tenancy** — `db.ts` auto-stamps `account_id` from "the single connected account" (legacy webhook path); per-account threading is incomplete (roadmap item).
-
----
-
-## 5. Entrypoints cheat-sheet
+## 4. Entrypoints
 
 | Process | Command | File |
 |---------|---------|------|
-| Web + UI | `bun run dev` (`next dev -p 3000`) | `app/`, boots `instrumentation.ts` |
-| API | `bun run dev:api` | `apps/api/src/index.ts` (Elysia :4000) |
-| Worker | `bun run worker` | `worker/index.ts` (BullMQ) |
-| Both web+api | `bun run dev:all` | — |
-| DB migrate | `bun run db:push` / `db:generate` | `packages/db` (drizzle-kit) |
+| Web + UI | `bun run dev` | `apps/web` (boots no-op `instrumentation.ts`) |
+| API | `bun run dev:api` | `apps/api/src/index.ts` (:4000) |
+| Worker | `bun run worker` | `worker/index.ts` |
+| Web + API | `bun run dev:all` | — |
+| DB migrate / import | `bun run db:push` / `db:import` | `packages/db` |
 | Local infra | `docker-compose up` | Redis + Postgres |
+| Tests | `bun test tests/` | `tests/unit/` |
 
-**Auth:** BetterAuth (cookies + Drizzle adapter), shared instance in `lib/auth/server.ts`,
-validated by both Next proxy and Elysia. Google OAuth needs client id/secret in env.
+Auth: BetterAuth (cookies + Drizzle adapter), singleton in `@shaiz/auth`, validated by both the
+Next proxy and Elysia (`requireUser`).
 
----
+## 5. Open items (architecture is otherwise sound)
 
-## 6. Suggested cleanup order (for the agent)
+1. **Tests:** only 5 unit-test files today (`tests/unit/`, 46 cases) — add coverage around
+   `automation.ts` / `pipeline.ts`.
+2. **Config hardening:** fail-fast on missing prod secrets; parameterize the tunnel URL in scripts.
+3. **Pre-existing typecheck debt:** `apps/web` `landing/` needs `gsap`/`three`/`@react-three/fiber`
+   installed; `apps/api` + `lib/ig` have a handful of latent type errors (the app runs via bun/tsx,
+   which don't typecheck). Worth clearing for a clean `tsc`.
 
-1. Delete dead artifacts: `data/` (gitignored SQLite), stale sqlite comments. Commit the untracked WIP or remove it.
-2. **Unify the DB stack** (§3) → single Drizzle source of truth, drop raw `pg.ts`/`initSchema`.
-3. Move the watcher out of `instrumentation.ts` into the worker tier (§13).
-4. Refactor `webhook/route.ts` to enqueue-and-return; kill the 1s poll once webhook-first lands (§4, §7).
-5. Decompose god components (§9).
-6. Lock down config: fail-fast on missing secrets, parameterize the tunnel URL (§12, §14).
-7. Add a real test suite around `automation.ts` / `pipeline.ts` (§15).
+Done in the last cleanup pass: dead-code/doc removal, god-component split (Brain→`brain/`,
+InboxView→`inbox/`), and the full DB unification onto a single postgres-js pool (`pg.ts` deleted).
