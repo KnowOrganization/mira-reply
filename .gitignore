@@ -52,6 +52,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# npm lockfile — bun is the package manager (bun.lock is authoritative)
+package-lock.json
+
 # AI coding skills installed by `npx hyperframes skills` (tool artifacts, not source)
 /.agents/
 /agent/
