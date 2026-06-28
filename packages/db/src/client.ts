@@ -20,3 +20,15 @@ export const db = g.__shaiz_db ?? drizzle(sql, { schema });
 if (!g.__shaiz_db) g.__shaiz_db = db;
 
 export type DB = typeof db;
+
+// Raw parameterized SQL on the SAME pool as Drizzle — the escape hatch the
+// automation engine (lib/ig) uses for its hand-written SQL. Collapses what used
+// to be a second node-pg Pool (lib/ig/pg.ts) onto this one postgres-js pool.
+// Uses $1.. placeholders, like the old pg.query(). Transactions: use `sql.begin`.
+export async function query<T extends Record<string, unknown> = Record<string, unknown>>(
+  text: string,
+  params: unknown[] = []
+): Promise<T[]> {
+  const rows = await sql.unsafe(text, params as never[]);
+  return rows as unknown as T[];
+}

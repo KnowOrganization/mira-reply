@@ -3,7 +3,7 @@
 // ingest processors — additive observers; a CRM failure must never break the
 // reply pipeline (callers wrap + log).
 import { v4 as uuidv4 } from "uuid";
-import { query } from "./pg";
+import { query } from "@shaiz/db";
 import { STANDARD_WINDOW_MS, HUMAN_AGENT_WINDOW_MS } from "./window";
 
 export type ContactRef = { contactId: string; conversationId: string };

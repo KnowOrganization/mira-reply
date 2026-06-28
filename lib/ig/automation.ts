@@ -22,7 +22,7 @@ import { checkFollowStatus } from "./followCheck";
 import { parkPending, claimPending, claimDueRetries, bumpAutomationStats } from "./pending";
 import { getAutomation, currentAccountId } from "./accountsRepo";
 import { claimOnce, isClaimed, k } from "./redis";
-import { query } from "./pg";
+import { query } from "@shaiz/db";
 
 // Resolve the account once per call. Engine paths pass it explicitly (worker);
 // webhook/test default to the single connected account.

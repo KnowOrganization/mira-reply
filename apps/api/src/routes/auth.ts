@@ -3,7 +3,7 @@
 // touch the caller's own account.
 import { Elysia } from "elysia";
 import { upsertAccount, getAccount, type StoredAccount } from "@/lib/ig/accountsRepo";
-import { query } from "@/lib/ig/pg";
+import { query } from "@shaiz/db";
 import type { Settings } from "@/lib/ig/store";
 import { requireUser, getSessionUserId, userOwnsAccount } from "../lib/auth";
 

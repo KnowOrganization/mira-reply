@@ -1,13 +1,14 @@
 // store→core engine: assemble the full IgStore for one account from the Drizzle
-// tables, and persist only the rows that changed (delta write-through). Raw pg
-// (importable from Next). Used by store.ts when MIRA_STORE=drizzle.
-import { pool, query, initSchema } from "./pg";
-import type { PoolClient } from "pg";
+// tables, and persist only the rows that changed (delta write-through). Raw SQL
+// on the shared postgres-js pool (@shaiz/db). Used by store.ts when MIRA_STORE=drizzle.
+import { query, sql } from "@shaiz/db";
 import { SCHEMA_VERSION, freshStore, type IgStore } from "./store";
+
+// In-transaction query fn (postgres-js sql.begin) — $1.. placeholders, returns rows.
+type TxQuery = <T = Record<string, unknown>>(text: string, params?: unknown[]) => Promise<T[]>;
 
 // ── assemble (read) ──────────────────────────────────────────────────────────
 export async function assembleStore(accountId: string): Promise<IgStore> {
-  await initSchema();
   const s = freshStore(); // defaults for fields not persisted per-row
   s.schemaVersion = SCHEMA_VERSION;
 
@@ -156,28 +157,28 @@ export async function assembleStore(accountId: string): Promise<IgStore> {
 // ── persist (delta write-through) ────────────────────────────────────────────
 const J = (v: unknown) => JSON.stringify(v ?? null);
 
-async function upsertRows(c: PoolClient, table: string, conflict: string[], rows: Record<string, unknown>[]) {
+async function upsertRows(q: TxQuery, table: string, conflict: string[], rows: Record<string, unknown>[]) {
   if (!rows.length) return;
   const cols = Object.keys(rows[0]);
   const updates = cols.filter((k) => !conflict.includes(k)).map((k) => `${k}=EXCLUDED.${k}`).join(", ");
   for (const r of rows) {
     const vals = cols.map((_, i) => `$${i + 1}`).join(", ");
-    await c.query(
+    await q(
       `INSERT INTO ${table} (${cols.join(",")}) VALUES (${vals}) ON CONFLICT (${conflict.join(",")}) DO UPDATE SET ${updates}`,
       cols.map((k) => r[k])
     );
   }
 }
 
-async function deleteIds(c: PoolClient, table: string, idCol: string, accountId: string, ids: string[]) {
+async function deleteIds(q: TxQuery, table: string, idCol: string, accountId: string, ids: string[]) {
   if (!ids.length) return;
-  await c.query(`DELETE FROM ${table} WHERE account_id=$1 AND ${idCol} = ANY($2::text[])`, [accountId, ids]);
+  await q(`DELETE FROM ${table} WHERE account_id=$1 AND ${idCol} = ANY($2::text[])`, [accountId, ids]);
 }
 
 // Sync an id-keyed list: upsert new/changed rows, delete removed. Only the delta
 // touches the network — unchanged rows (compared by serialized row) are skipped.
 async function syncList<T>(
-  c: PoolClient, table: string, idCol: string, accountId: string,
+  q: TxQuery, table: string, idCol: string, accountId: string,
   prev: T[], next: T[], idOf: (t: T) => string, toRow: (t: T) => Record<string, unknown>
 ) {
   const prevMap = new Map(prev.map((x) => [idOf(x), x]));
@@ -188,15 +189,13 @@ async function syncList<T>(
     if (!p || J(toRow(p)) !== J(toRow(item))) changed.push(toRow(item));
   }
   const removed = [...prevMap.keys()].filter((id) => !nextMap.has(id));
-  await upsertRows(c, table, [idCol], changed);
-  await deleteIds(c, table, idCol, accountId, removed);
+  await upsertRows(q, table, [idCol], changed);
+  await deleteIds(q, table, idCol, accountId, removed);
 }
 
 export async function persistDelta(accountId: string, prev: IgStore, next: IgStore): Promise<void> {
-  await initSchema();
-  const c = await pool.connect();
-  try {
-    await c.query("BEGIN");
+  await sql.begin(async (tx) => {
+    const q: TxQuery = (text, params = []) => tx.unsafe(text, params as never[]) as unknown as Promise<never[]>;
     const now = Date.now();
 
     // account row — folded fields. One row; update if any changed.
@@ -206,7 +205,7 @@ export async function persistDelta(accountId: string, prev: IgStore, next: IgSto
       s.fingerprints, s.followerCache, s.sendQueue, s.pollWatermark, s.dmLog, s.postDMsSent, s.dmBlocked, s.linkPending,
     ]);
     if (next.account && accFields(prev) !== accFields(next)) {
-      await c.query(
+      await q(
         `UPDATE accounts SET username=$2, access_token=$3, token_expires_at=$4, last_token=$5, settings=$6,
            owner_profile=$7, style_samples=$8, tone_summary=$9, blocklist=$10, trusted_contacts=$11,
            fingerprints=$12, follower_cache=$13, send_queue=$14, poll_watermark=$15, dm_log=$16,
@@ -218,78 +217,71 @@ export async function persistDelta(accountId: string, prev: IgStore, next: IgSto
       );
     }
 
-    await syncList(c, "posts", "id", accountId, Object.values(prev.posts), Object.values(next.posts),
+    await syncList(q, "posts", "id", accountId, Object.values(prev.posts), Object.values(next.posts),
       (p) => p.id, (p) => ({ id: p.id, account_id: accountId, caption: p.caption, media_type: p.mediaType,
         permalink: p.permalink ?? null, thumbnail_url: p.thumbnailUrl ?? null, timestamp: p.timestamp, notes: p.notes,
         qa: J(p.qa), links: J(p.links), insights: p.insights ? J(p.insights) : null, updated_at: p.updatedAt }));
 
-    await syncList(c, "knowledge", "id", accountId, prev.knowledge, next.knowledge, (f) => f.id, (f) => ({
+    await syncList(q, "knowledge", "id", accountId, prev.knowledge, next.knowledge, (f) => f.id, (f) => ({
       id: f.id, account_id: accountId, question: f.question, answer: f.answer, topic: f.topic, scope: f.scope,
       post_id: f.postId ?? null, aliases: J(f.aliases), embedding: f.embedding ? J(f.embedding) : null,
       link: f.link ? J(f.link) : null, hit_count: f.hitCount, confidence: f.confidence, durable: f.durable,
       expires_at: f.expiresAt ?? null, source_comment_id: f.sourceCommentId ?? null, created_at: f.createdAt,
       updated_at: f.updatedAt, last_used_at: f.lastUsedAt ?? null }));
 
-    await syncList(c, "drafts", "id", accountId, prev.pendingDrafts, next.pendingDrafts, (d) => d.id, (d) => ({
+    await syncList(q, "drafts", "id", accountId, prev.pendingDrafts, next.pendingDrafts, (d) => d.id, (d) => ({
       id: d.id, account_id: accountId, kind: d.kind, thread_or_media_id: d.threadOrMediaId, from_user_id: d.fromUserId,
       from_username: d.fromUsername ?? null, inbound_text: d.inboundText, draft_text: d.draftText, dm_text: d.dmText ?? null,
       intent: d.intent, post_id: d.postId ?? null, created_at: d.createdAt }));
 
-    await syncList(c, "history", "id", accountId, prev.history, next.history, (h) => h.id, (h) => ({
+    await syncList(q, "history", "id", accountId, prev.history, next.history, (h) => h.id, (h) => ({
       id: h.id, account_id: accountId, kind: h.kind, comment_id: h.commentId ?? null, inbound: h.inbound,
       outbound: h.outbound, intent: h.intent, post_id: h.postId ?? null, to_user_id: h.toUserId ?? null,
       sent_at: h.sentAt, status: h.status, reason: h.reason ?? null }));
 
-    await syncList(c, "clarifications", "id", accountId, prev.clarifications, next.clarifications, (x) => x.id, (x) => ({
+    await syncList(q, "clarifications", "id", accountId, prev.clarifications, next.clarifications, (x) => x.id, (x) => ({
       id: x.id, account_id: accountId, comment_id: x.commentId ?? null, post_id: x.postId, comment_text: x.commentText,
       question: x.question, kind: x.kind ?? null, draft_attempt: x.draftAttempt ?? null, from_user_id: x.fromUserId,
       from_username: x.fromUsername ?? null, status: x.status, answer: x.answer ?? null, waiters: J(x.waiters), created_at: x.createdAt }));
 
-    await syncList(c, "training", "id", accountId, prev.training, next.training, (t) => t.id, (t) => ({
+    await syncList(q, "training", "id", accountId, prev.training, next.training, (t) => t.id, (t) => ({
       id: t.id, account_id: accountId, comment: t.comment, caption: t.caption, notes: t.notes, mira_action: t.miraAction,
       mira_reply: t.miraReply, intent: t.intent, verdict: t.verdict, correct_action: t.correctAction ?? null,
       ideal_reply: t.idealReply ?? null, ask_question: t.askQuestion ?? null, note: t.note ?? null,
       embedding: t.embedding ? J(t.embedding) : null, created_at: t.createdAt }));
 
-    await syncList(c, "mentions", "id", accountId, prev.mentions, next.mentions, (m) => m.id, (m) => ({
+    await syncList(q, "mentions", "id", accountId, prev.mentions, next.mentions, (m) => m.id, (m) => ({
       id: m.id, account_id: accountId, kind: m.kind, media_id: m.mediaId, permalink: m.permalink ?? null,
       thumbnail_url: m.thumbnailUrl ?? null, media_url: m.mediaUrl ?? null, media_caption: m.mediaCaption ?? null,
       comment_id: m.commentId ?? null, comment_text: m.commentText ?? null, from_user_id: m.fromUserId ?? null,
       from_username: m.fromUsername ?? null, media_type: m.mediaType ?? null, like_count: m.likeCount ?? null,
       comments_count: m.commentsCount ?? null, ts: m.ts, seen_at: m.seenAt, read: m.read }));
 
-    await syncList(c, "comments_cache", "id", accountId, prev.commentsCache, next.commentsCache, (x) => x.id, (x) => ({
+    await syncList(q, "comments_cache", "id", accountId, prev.commentsCache, next.commentsCache, (x) => x.id, (x) => ({
       id: x.id, account_id: accountId, post_id: x.postId, post_caption: x.postCaption, post_thumb: x.postThumb ?? null,
       post_permalink: x.postPermalink ?? null, text: x.text, from_user_id: x.fromUserId, from_username: x.fromUsername,
       timestamp: x.timestamp, ts: x.ts, is_own: x.isOwn }));
 
-    await syncList(c, "automations", "id", accountId, prev.automations, next.automations, (a2) => a2.id, (a2) => ({
+    await syncList(q, "automations", "id", accountId, prev.automations, next.automations, (a2) => a2.id, (a2) => ({
       id: a2.id, account_id: accountId, name: a2.name, enabled: a2.enabled, trigger: J(a2.trigger), nodes: J(a2.nodes),
       edges: J(a2.edges), stats: J(a2.stats), created_at: a2.createdAt, updated_at: a2.updatedAt }));
 
     // commenters (PK account_id, ig_user_id) + daily_stats (PK account_id, date)
-    await syncKeyed(c, "commenters", ["account_id", "ig_user_id"], "ig_user_id", accountId,
+    await syncKeyed(q, "commenters", ["account_id", "ig_user_id"], "ig_user_id", accountId,
       Object.values(prev.commenters), Object.values(next.commenters), (x) => x.igUserId, (x) => ({
         account_id: accountId, ig_user_id: x.igUserId, username: x.username, first_seen_at: x.firstSeenAt,
         last_seen_at: x.lastSeenAt, comment_count: x.commentCount, replied_count: x.repliedCount, themes: J(x.themes) }));
 
-    await syncKeyed(c, "daily_stats", ["account_id", "date"], "date", accountId,
+    await syncKeyed(q, "daily_stats", ["account_id", "date"], "date", accountId,
       Object.values(prev.dailyStats), Object.values(next.dailyStats), (x) => x.date, (x) => ({
         account_id: accountId, date: x.date, comments: x.comments, auto_replied: x.autoReplied, drafted: x.drafted,
         sent: x.sent, dm_sent: x.dmSent, facts_learned: x.factsLearned, clarifications_resolved: x.clarificationsResolved }));
-
-    await c.query("COMMIT");
-  } catch (e) {
-    await c.query("ROLLBACK").catch(() => {});
-    throw e;
-  } finally {
-    c.release();
-  }
+  });
 }
 
 // composite-PK variant (no single id col; delete by the secondary key)
 async function syncKeyed<T>(
-  c: PoolClient, table: string, conflict: string[], keyCol: string, accountId: string,
+  q: TxQuery, table: string, conflict: string[], keyCol: string, accountId: string,
   prev: T[], next: T[], keyOf: (t: T) => string, toRow: (t: T) => Record<string, unknown>
 ) {
   const prevMap = new Map(prev.map((x) => [keyOf(x), x]));
@@ -300,6 +292,6 @@ async function syncKeyed<T>(
     if (!p || J(toRow(p)) !== J(toRow(item))) changed.push(toRow(item));
   }
   const removed = [...prevMap.keys()].filter((id) => !nextMap.has(id));
-  await upsertRows(c, table, conflict, changed);
-  if (removed.length) await c.query(`DELETE FROM ${table} WHERE account_id=$1 AND ${keyCol} = ANY($2::text[])`, [accountId, removed]);
+  await upsertRows(q, table, conflict, changed);
+  if (removed.length) await q(`DELETE FROM ${table} WHERE account_id=$1 AND ${keyCol} = ANY($2::text[])`, [accountId, removed]);
 }

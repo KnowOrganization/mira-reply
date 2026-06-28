@@ -58,7 +58,6 @@ mira-reply/
 │   ├── automation.ts(799) store.ts(740) pipeline.ts(697) graph.ts(635) ingest.ts(460)
 │   ├── ctx, dm, knowledge, perception, planner, agent, variation, intent, rulebook,
 │   │   sender, links, outbound, reconcile, opportunity, crm, conversation, window, …
-│   ├── pg.ts        # raw node-pg Pool + query() — DATA-ACCESS DRIVER ONLY (no DDL; initSchema is a no-op)
 │   ├── db.ts        # raw-SQL API: post_configs, processed_comments, user_states, message_log
 │   ├── storeDb.ts   # raw-SQL: assemble IgStore + delta write-through (perf-sensitive)
 │   ├── pending.ts   # raw-SQL: atomic automation resume claim (pending_resume)
@@ -85,17 +84,17 @@ mira-reply/
 
 ---
 
-## 3. Data layer
+## 3. Data layer — single pool
 
+- **One connection pool**: `packages/db/src/client.ts` (postgres-js). Drizzle (`db`) and all
+  hand-written SQL (`query()` / `sql.begin()` transactions, exported from `@shaiz/db`) share it.
+  The old second pool (`lib/ig/pg.ts`, node-pg) is gone; the `pg` dependency is removed.
 - **Drizzle (`packages/db`)** owns all DDL via `schema.ts` + `drizzle/` migrations — the single
   schema source. Apply with `bun run db:push`. `repos.ts` = typed access used by the API services.
-- **Raw node-pg (`lib/ig/{pg,db,storeDb,pending,conversation}.ts`)** issues hand-written SQL
-  against the **same Drizzle-owned tables**. `pg.ts` is a driver only — `initSchema()` is a no-op,
-  it does NOT define schema, so there is no schema drift.
-- Trade-off: two query styles + two connection pools (node-pg + postgres-js) to one DB. Migrating
-  the raw-SQL files onto Drizzle would collapse to one pool/style — deferred (see §5); the raw layer
-  works and the hot path (ingest/outbound/reconcile) is perf-sensitive, so migrate with live
-  round-trip verification, not blind.
+- **Raw SQL** still lives where hand-written queries are clearer (the automation engine + some API
+  routes): `lib/ig/{db,storeDb,pending,conversation,accountsRepo,…}.ts` call `query()`/`sql` from
+  `@shaiz/db` against the same Drizzle-owned tables. Transactions (pending claim, storeDb delta
+  write-through) use `sql.begin` with `FOR UPDATE` for atomic claims. No schema drift — Drizzle owns DDL.
 
 ## 4. Entrypoints
 
@@ -114,10 +113,12 @@ Next proxy and Elysia (`requireUser`).
 
 ## 5. Open items (architecture is otherwise sound)
 
-1. **DB unification (optional):** migrate `lib/ig/{db,pending,conversation,storeDb}.ts` from raw SQL
-   onto Drizzle to get a single pool/style. Schema already unified; do `db.ts` first (touches the
-   ingest hot path), `storeDb.ts` last. Needs live comment/DM round-trip verification.
-2. **God components:** split `apps/web/src/components/Brain.tsx` (1025) and `InboxView.tsx` (853)
-   following the existing `automations/`+`workspace/` subfolder pattern. Pure UI refactor.
-3. **Tests:** only 5 unit tests today — add coverage around `automation.ts` / `pipeline.ts`.
-4. **Config hardening:** fail-fast on missing prod secrets; parameterize the tunnel URL in scripts.
+1. **Tests:** only 5 unit-test files today (`tests/unit/`, 46 cases) — add coverage around
+   `automation.ts` / `pipeline.ts`.
+2. **Config hardening:** fail-fast on missing prod secrets; parameterize the tunnel URL in scripts.
+3. **Pre-existing typecheck debt:** `apps/web` `landing/` needs `gsap`/`three`/`@react-three/fiber`
+   installed; `apps/api` + `lib/ig` have a handful of latent type errors (the app runs via bun/tsx,
+   which don't typecheck). Worth clearing for a clean `tsc`.
+
+Done in the last cleanup pass: dead-code/doc removal, god-component split (Brain→`brain/`,
+InboxView→`inbox/`), and the full DB unification onto a single postgres-js pool (`pg.ts` deleted).

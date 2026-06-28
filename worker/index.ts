@@ -1,6 +1,6 @@
 import { Worker, type Job } from "bullmq";
 import { bullConnection } from "@/lib/ig/redis";
-import { initSchema, query } from "@/lib/ig/pg";
+import { query } from "@shaiz/db";
 import { processIngestJob, type IngestJob } from "@/lib/ig/ingest";
 import { processOutboundJob, recordOutboundFailure, RateLimitedError, type OutboundJob } from "@/lib/ig/outbound";
 import { reconcileAccount } from "@/lib/ig/reconcile";
@@ -19,7 +19,6 @@ const MAINTENANCE_EVERY_MS = 30 * 60_000;
 const SCHEDULER_REFRESH_MS = 5 * 60_000;
 
 async function main() {
-  await initSchema();
   const commentConcurrency = Number(
     process.env.WORKER_CONCURRENCY_COMMENTS || process.env.WORKER_CONCURRENCY || 10
   );

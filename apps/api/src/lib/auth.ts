@@ -3,7 +3,7 @@
 // resolve the user's own Instagram account. Single source of truth = the shared
 // BetterAuth instance (@shaiz/auth) — no duplicated token logic.
 import { getSessionUserId } from "@shaiz/auth";
-import { query } from "@/lib/ig/pg";
+import { query } from "@shaiz/db";
 
 /** The IG account owned by this user (most-recent). Null if they have none yet. */
 export async function accountIdForUser(userId: string): Promise<string | null> {

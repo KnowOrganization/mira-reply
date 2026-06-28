@@ -4,13 +4,11 @@
 // a message row. The DM engine (dmPipeline.ts) loads the recent turns + rolling
 // summary so a follow-up message is answered in context, not in isolation.
 //
-// Backed by raw Postgres (lib/ig/pg.ts) like db.ts / outbound.ts. DDL is owned
-// solely by Drizzle (packages/db/src/schema.ts → conversations, messages); apply
-// it with `bun run db:push`. No bootstrap here — single schema source.
-// ponytail: raw SQL on the shared pg pool, deliberate; ORM migration is a
-// separate task that needs live DM round-trip verification (see plan).
+// Backed by raw SQL on the shared postgres-js pool (@shaiz/db) like db.ts /
+// outbound.ts. DDL is owned solely by Drizzle (packages/db/src/schema.ts →
+// conversations, messages); apply it with `bun run db:push`. Single schema source.
 
-import { query } from "./pg";
+import { query } from "@shaiz/db";
 
 const DM_WINDOW_MS = 24 * 60 * 60 * 1000; // Meta 24h standard messaging window
 

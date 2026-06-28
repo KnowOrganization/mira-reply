@@ -2,7 +2,7 @@
 // the opportunities table + the CRM's own crm_conversations/crm_messages/contacts
 // (separate from the DM pipeline). Powers the Opportunities Kanban + drawer.
 import { Elysia } from "elysia";
-import { query } from "@/lib/ig/pg";
+import { query } from "@shaiz/db";
 import { authPlugin } from "../plugins/auth";
 
 export const opportunitiesRoute = new Elysia()

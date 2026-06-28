@@ -1,6 +1,6 @@
 // CRM business logic (spec Phase 1): contacts, conversations, window-gated
 // human sends. No HTTP here — handlers own status codes.
-import { query } from "@/lib/ig/pg";
+import { query } from "@shaiz/db";
 import { enqueueOutbound } from "@/lib/ig/ingestQueue";
 import { recordOutboundMessage, importDMThreads } from "@/lib/ig/crm";
 import { getDMThreads } from "@/lib/ig/graph";
