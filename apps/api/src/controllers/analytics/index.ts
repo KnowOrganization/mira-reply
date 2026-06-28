@@ -6,6 +6,8 @@ import { getDigestHandler } from "./handlers/get-digest";
 import { getBrainHandler } from "./handlers/get-brain";
 import { postBrainHandler } from "./handlers/post-brain";
 import { getBrainStatsHandler } from "./handlers/get-brain-stats";
+import { getBrainStatusHandler } from "./handlers/get-brain-status";
+import { postBrainRebuildHandler } from "./handlers/post-brain-rebuild";
 import { getBrainProbeHandler } from "./handlers/get-brain-probe";
 import { postCleanupHandler } from "./handlers/post-cleanup";
 
@@ -17,5 +19,7 @@ export const analyticsRoute = new Elysia()
   .use(getBrainHandler)
   .use(postBrainHandler)
   .use(getBrainStatsHandler)
+  .use(getBrainStatusHandler)
+  .use(postBrainRebuildHandler)
   .use(getBrainProbeHandler)
   .use(postCleanupHandler);

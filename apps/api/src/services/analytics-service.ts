@@ -1,8 +1,9 @@
 // analytics-service.ts — pure business logic, no HTTP concerns.
 // All functions return plain data or throw; they never touch `set` or `status`.
 import { readStore, updateStoreFor, type FactTopic } from "@/lib/ig/store";
-import { addFact, deleteFact } from "@/lib/ig/knowledge";
+import { addFact, deleteFact, backfillEmbeddings } from "@/lib/ig/knowledge";
 import { chatJSON } from "@/lib/ig/llm";
+import { getBrainBuiltAt, setBrainBuiltAt } from "@shaiz/db";
 import { isConfigured } from "@/lib/ig/config";
 import { getRecentLogs } from "@/lib/ig/db";
 import { brain } from "@/lib/ig/mcp/client";
@@ -287,6 +288,75 @@ export async function postBrain(b: BrainBody): Promise<unknown> {
   }
 
   throw { status: 400, error: "bad action" };
+}
+
+// ---------------------------------------------------------------------------
+// getBrainStatus / rebuildBrain
+// ---------------------------------------------------------------------------
+
+export type BrainStatus = {
+  builtAt: number | null;
+  toneSummary: string;
+  styleSampleCount: number;
+  ownerProfile: { bio?: string; voice?: string; defaultLanguage?: string } | null;
+  factCount: number;
+  kbCount: number;
+  audienceMap:
+    | { themes: { label: string; count: number }[]; topCommenters: { username: string; count: number }[]; sampleSize: number }
+    | null;
+  gaps: string[];
+};
+
+function audienceMapFor(s: Awaited<ReturnType<typeof readStore>>): BrainStatus["audienceMap"] {
+  const comments = s.commentsCache.filter((c) => !c.isOwn);
+  const themes: Record<string, number> = {};
+  for (const c of comments) {
+    const t = (c.text || "").toLowerCase();
+    if (/where|location|kahan/.test(t)) themes.location = (themes.location || 0) + 1;
+    else if (/song|music|gana/.test(t)) themes.song = (themes.song || 0) + 1;
+    else if (/jacket|bike|gear|lens|camera|bag|shoes/.test(t)) themes.gear = (themes.gear || 0) + 1;
+    else if (/link|price|buy|shop|cost/.test(t)) themes.shop = (themes.shop || 0) + 1;
+  }
+  const topCommenters = Object.values(s.commenters)
+    .sort((a, b) => b.commentCount - a.commentCount)
+    .slice(0, 5)
+    .map((c) => ({ username: c.username || c.igUserId, count: c.commentCount }));
+  if (!comments.length && !topCommenters.length) return null;
+  return {
+    themes: Object.entries(themes).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count),
+    topCommenters,
+    sampleSize: comments.length,
+  };
+}
+
+export async function getBrainStatus(accountId: string): Promise<BrainStatus> {
+  const s = await readStore(accountId);
+  const now = Date.now();
+  const accountFacts = s.knowledge.filter(
+    (f) => f.scope === "account" && !(f.expiresAt && f.expiresAt < now)
+  );
+  const byTopic: Record<string, number> = {};
+  for (const t of TOPICS) byTopic[t] = 0;
+  for (const f of accountFacts) byTopic[f.topic] = (byTopic[f.topic] || 0) + 1;
+  const op = s.ownerProfile;
+  return {
+    builtAt: await getBrainBuiltAt(accountId),
+    toneSummary: s.toneSummary ?? "",
+    styleSampleCount: (s.styleSamples ?? []).length,
+    ownerProfile: op ? { bio: op.bio, voice: op.voice, defaultLanguage: op.defaultLanguage } : null,
+    factCount: s.knowledge.length,
+    kbCount: accountFacts.length,
+    audienceMap: audienceMapFor(s),
+    gaps: TOPICS.filter((t) => byTopic[t] === 0),
+  };
+}
+
+// Rebuild = re-embed all facts for recall, then stamp builtAt (which gates the
+// UI's "brain ready" poll). No tone/style re-derivation pipeline exists yet.
+export async function rebuildBrain(accountId: string): Promise<{ ok: true; status: string }> {
+  await backfillEmbeddings().catch(() => {});
+  await setBrainBuiltAt(accountId, Date.now());
+  return { ok: true, status: "built" };
 }
 
 // ---------------------------------------------------------------------------

@@ -63,6 +63,62 @@ export async function patchSettings(accountId: string, patch: Partial<Settings>)
   return merged;
 }
 
+// ── brain build timestamp ────────────────────────────────────────────────────
+export async function getBrainBuiltAt(accountId: string): Promise<number | null> {
+  const [a] = await db.select({ at: accounts.brainBuiltAt }).from(accounts).where(eq(accounts.igUserId, accountId));
+  return a?.at ?? null;
+}
+
+export async function setBrainBuiltAt(accountId: string, at: number): Promise<void> {
+  await db.update(accounts).set({ brainBuiltAt: at, updatedAt: Date.now() }).where(eq(accounts.igUserId, accountId));
+}
+
+// ── ai settings ──────────────────────────────────────────────────────────────
+// model is derived from provider + env defaults (not stored per-account).
+const aiModelFor = (provider: string): string =>
+  provider === "ollama"
+    ? process.env.MIRA_OLLAMA_MODEL || "llama3.1"
+    : process.env.MIRA_CLAUDE_MODEL || "claude-sonnet-4-6";
+
+export type AiSettings = {
+  provider: "claude" | "ollama";
+  byokKeySet: boolean;
+  model: string;
+  voice: { toneSummary: string; styleSampleCount: number };
+};
+
+export async function getAiSettings(accountId: string): Promise<AiSettings | null> {
+  const [a] = await db
+    .select({
+      provider: accounts.aiProvider,
+      byokKey: accounts.byokKey,
+      toneSummary: accounts.toneSummary,
+      styleSamples: accounts.styleSamples,
+    })
+    .from(accounts)
+    .where(eq(accounts.igUserId, accountId));
+  if (!a) return null;
+  const provider = a.provider === "ollama" ? "ollama" : "claude";
+  return {
+    provider,
+    byokKeySet: !!a.byokKey,
+    model: aiModelFor(provider),
+    voice: { toneSummary: a.toneSummary ?? "", styleSampleCount: (a.styleSamples ?? []).length },
+  };
+}
+
+export async function patchAiSettings(
+  accountId: string,
+  patch: { provider?: "claude" | "ollama"; byokKey?: string | null }
+): Promise<AiSettings | null> {
+  const set: Record<string, unknown> = { updatedAt: Date.now() };
+  if (patch.provider === "claude" || patch.provider === "ollama") set.aiProvider = patch.provider;
+  // null/"" clears the key; any other string stores it.
+  if (patch.byokKey !== undefined) set.byokKey = patch.byokKey ? patch.byokKey : null;
+  await db.update(accounts).set(set).where(eq(accounts.igUserId, accountId));
+  return getAiSettings(accountId);
+}
+
 // ── automations (visual node-graph) ──────────────────────────────────────────
 type AutomationRow = typeof automations.$inferSelect;
 function toAutomation(r: AutomationRow) {

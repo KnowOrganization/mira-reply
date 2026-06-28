@@ -205,6 +205,46 @@ export async function hideComment(commentId: string, token: string) {
   });
 }
 
+/** Un-hide a previously hidden comment. */
+export async function unhideComment(commentId: string, token: string) {
+  return call(`/${commentId}`, token, {
+    method: "POST",
+    body: JSON.stringify({ hide: false }),
+  });
+}
+
+/** Permanently delete a comment Mira owns (own media). */
+export async function deleteComment(commentId: string, token: string) {
+  return call(`/${commentId}`, token, { method: "DELETE" });
+}
+
+/** IG account profile — username, name, avatar, bio, follower/following counts. */
+export async function getAccountProfile(token: string) {
+  return call(
+    `/me?fields=id,username,name,profile_picture_url,biography,followers_count,follows_count,media_count`,
+    token
+  );
+}
+
+/**
+ * Account-level insights over a day range. `metric` is a comma list; `period`
+ * defaults to day. Some metrics (reach/impressions) need a metric_type=total.
+ * Returns the raw Graph payload — caller flattens.
+ */
+export async function getAccountInsights(
+  igUserId: string,
+  token: string,
+  metric = "reach,impressions,profile_views,follower_count",
+  days = 7
+) {
+  const since = Math.floor(Date.now() / 1000) - days * 86400;
+  const until = Math.floor(Date.now() / 1000);
+  return call(
+    `/${igUserId}/insights?metric=${metric}&period=day&metric_type=total&since=${since}&until=${until}`,
+    token
+  );
+}
+
 /**
  * POST to the /messages endpoint. Instagram requires the access_token in the
  * BODY here — passing it as a query param fails with OAuthException. (All

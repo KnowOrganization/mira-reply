@@ -9,6 +9,10 @@ import { claudeChat } from "./providers/claude";
 export type { ChatMessage, ChatOpts };
 
 export function aiProvider(): "claude" | "ollama" {
+  // ponytail: env governs actual routing. Per-account provider/byokKey is stored
+  // and surfaced (accounts.ai_provider, ai-settings endpoint) but not yet applied
+  // here — chat() is a sync global chokepoint; threading async account context
+  // through every caller is the upgrade path when per-account routing is needed.
   return (process.env.MIRA_AI_PROVIDER || "claude").toLowerCase() === "ollama"
     ? "ollama"
     : "claude";

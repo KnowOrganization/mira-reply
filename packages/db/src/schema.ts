@@ -40,6 +40,12 @@ export const accounts = pgTable("accounts", {
   ownerProfile: jsonb("owner_profile").$type<OwnerProfile>(),
   styleSamples: jsonb("style_samples").$type<string[]>().notNull().default([]),
   toneSummary: text("tone_summary").notNull().default(""),
+  // Per-account AI provider + bring-your-own-key. byokKey is a secret — never
+  // returned to the client (the ai-settings endpoint exposes only byokKeySet).
+  aiProvider: text("ai_provider").notNull().default("claude"),
+  byokKey: text("byok_key"),
+  // Last time the account brain (tone/style/audience) was rebuilt.
+  brainBuiltAt: ms("brain_built_at"),
   blocklist: jsonb("blocklist").$type<string[]>().notNull().default([]),
   trustedContacts: jsonb("trusted_contacts").$type<{ igUserId: string; label: string }[]>().notNull().default([]),
   fingerprints: jsonb("fingerprints").$type<ReplyFingerprint[]>().notNull().default([]),

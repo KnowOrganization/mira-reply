@@ -22,6 +22,13 @@
       "when": 1782659582762,
       "tag": "0002_unusual_puff_adder",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782673494913,
+      "tag": "0003_absurd_hulk",
+      "breakpoints": true
     }
   ]
 }

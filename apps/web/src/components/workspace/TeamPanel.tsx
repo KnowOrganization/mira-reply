@@ -132,7 +132,9 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                 <p className="text-[11.5px]" style={{ color: "var(--text-subtle)" }}>No direct grants — workspace admins already have access.</p>
               )}
             </div>
-            <InviteForm onInvite={(b) => inviteAcct.mutateAsync(b)} />
+            {activeAccount
+              ? <InviteForm onInvite={(b) => inviteAcct.mutateAsync(b)} />
+              : <p className="text-[11.5px]" style={{ color: "var(--text-subtle)" }}>Select an account to grant direct access.</p>}
           </section>
         )}
       </div>

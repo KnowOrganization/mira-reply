@@ -1,7 +1,7 @@
 // GET/PATCH /api/ig/settings, POST /api/ig/mode, POST /api/ig/modes,
 // GET/POST /api/ig/onboarding — scoped to the logged-in user's account.
 import { Elysia } from "elysia";
-import { getSettings, patchSettings, getOnboarding, setOnboarding } from "@shaiz/db";
+import { getSettings, patchSettings, getOnboarding, setOnboarding, getAiSettings, patchAiSettings } from "@shaiz/db";
 import { authPlugin } from "../plugins/auth";
 
 const MODES = ["shadow", "assisted", "balanced", "auto"];
@@ -42,6 +42,18 @@ export const settingsRoute = new Elysia()
     if (!Object.keys(patch).length) { set.status = 400; return { error: "no modes given" }; }
     const next = await patchSettings(auth.accountId, patch);
     return { ok: true, commentMode: next?.commentMode, dmMode: next?.dmMode };
+  }, { requireRole: "admin" })
+  .get("/api/ig/ai-settings", async ({ auth, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
+    return (await getAiSettings(auth.accountId)) ?? { error: "no account" };
+  }, { auth: true })
+  .patch("/api/ig/ai-settings", async ({ auth, body, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
+    const { provider, byokKey } = (body ?? {}) as { provider?: "claude" | "ollama"; byokKey?: string | null };
+    if (provider !== undefined && provider !== "claude" && provider !== "ollama") {
+      set.status = 400; return { error: "bad provider" };
+    }
+    return (await patchAiSettings(auth.accountId, { provider, byokKey })) ?? { error: "no account" };
   }, { requireRole: "admin" })
   .get("/api/ig/onboarding", async ({ auth, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
