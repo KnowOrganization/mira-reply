@@ -10,6 +10,7 @@ import { getBrainStatusHandler } from "./handlers/get-brain-status";
 import { postBrainRebuildHandler } from "./handlers/post-brain-rebuild";
 import { getBrainProbeHandler } from "./handlers/get-brain-probe";
 import { postCleanupHandler } from "./handlers/post-cleanup";
+import { getInsightsAccountHandler } from "./handlers/get-insights-account";
 
 export const analyticsRoute = new Elysia()
   .use(getDashboardHandler)
@@ -22,4 +23,5 @@ export const analyticsRoute = new Elysia()
   .use(getBrainStatusHandler)
   .use(postBrainRebuildHandler)
   .use(getBrainProbeHandler)
-  .use(postCleanupHandler);
+  .use(postCleanupHandler)
+  .use(getInsightsAccountHandler);

@@ -6,6 +6,7 @@ import { eq, and, desc, count } from "drizzle-orm";
 import { db } from "./client";
 import {
   accounts, automations, postConfigs, processedComments, userStates, knowledge, products,
+  deviceTokens,
 } from "./schema";
 import type { Settings } from "../../../lib/ig/store";
 
@@ -286,6 +287,25 @@ export async function updateProduct(accountId: string, id: string, patch: Partia
 export async function deleteProduct(accountId: string, id: string): Promise<boolean> {
   const rows = await db.delete(products).where(and(eq(products.accountId, accountId), eq(products.id, id))).returning({ id: products.id });
   return rows.length > 0;
+}
+
+// ── push device tokens ───────────────────────────────────────────────────────
+export async function registerDeviceToken(
+  userId: string, token: string, platform: string, accountId: string | null
+): Promise<void> {
+  await db.insert(deviceTokens)
+    .values({ token, userId, accountId, platform, createdAt: Date.now() })
+    .onConflictDoUpdate({ target: deviceTokens.token, set: { userId, accountId, platform } });
+}
+
+export async function unregisterDeviceToken(token: string): Promise<boolean> {
+  const rows = await db.delete(deviceTokens).where(eq(deviceTokens.token, token)).returning({ token: deviceTokens.token });
+  return rows.length > 0;
+}
+
+export async function getUserDeviceTokens(userId: string): Promise<string[]> {
+  const rows = await db.select({ token: deviceTokens.token }).from(deviceTokens).where(eq(deviceTokens.userId, userId));
+  return rows.map((r) => r.token);
 }
 
 // Resolve a public storefront slug → accountId (used by the unauthenticated /api/store route).

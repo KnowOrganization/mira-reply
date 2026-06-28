@@ -467,6 +467,19 @@ export const invitations = pgTable("invitations", {
   index("idx_invitations_email").on(t.email, t.status),
 ]);
 
+// Expo push tokens — one row per device. Keyed by the Expo token (unique per
+// install). userId scopes "my devices"; accountId optional (active account at
+// register time) so we can target an account's owner.
+export const deviceTokens = pgTable("device_tokens", {
+  token: text("token").primaryKey(),
+  userId: text("user_id").notNull(),
+  accountId: text("account_id"),
+  platform: text("platform").notNull().default("ios"), // ios | android
+  createdAt: ms("created_at").notNull().default(0),
+}, (t) => [
+  index("idx_device_tokens_user").on(t.userId),
+]);
+
 export type Schema = {
   accounts: typeof accounts; automations: typeof automations;
   organizations: typeof organizations; orgMembers: typeof orgMembers;
@@ -482,4 +495,5 @@ export type Schema = {
   commenters: typeof commenters; dailyStats: typeof dailyStats;
   commentsCache: typeof commentsCache;
   conversations: typeof conversations; messages: typeof messages;
+  deviceTokens: typeof deviceTokens;
 };
