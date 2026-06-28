@@ -19,7 +19,7 @@ export const postConfigsRoute = new Elysia()
     const post_config = await createPostConfig(auth.accountId, b as any);
     set.status = 201;
     return { post_config };
-  }, { auth: true })
+  }, { requireRole: "agent" })
   .get("/api/ig/post-configs/:id", async ({ auth, params, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const post_config = await getPostConfig(auth.accountId, params.id);
@@ -31,16 +31,16 @@ export const postConfigsRoute = new Elysia()
     const post_config = await updatePostConfig(auth.accountId, params.id, (body ?? {}) as any);
     if (!post_config) { set.status = 404; return { error: "not found" }; }
     return { post_config };
-  }, { auth: true })
+  }, { requireRole: "agent" })
   .patch("/api/ig/post-configs/:id", async ({ auth, params, body, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const post_config = await updatePostConfig(auth.accountId, params.id, (body ?? {}) as any);
     if (!post_config) { set.status = 404; return { error: "not found" }; }
     return { post_config };
-  }, { auth: true })
+  }, { requireRole: "agent" })
   .delete("/api/ig/post-configs/:id", async ({ auth, params, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const ok = await deletePostConfig(auth.accountId, params.id);
     if (!ok) { set.status = 404; return { error: "not found" }; }
     return { ok: true };
-  }, { auth: true });
+  }, { requireRole: "agent" });

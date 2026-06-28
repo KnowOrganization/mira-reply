@@ -8,5 +8,5 @@ export const postPostIdReplyAllHandler = new Elysia().use(authPlugin).post(
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     return replyAll(auth.accountId, params.postId, set);
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

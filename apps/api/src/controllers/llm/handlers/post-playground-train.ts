@@ -34,5 +34,5 @@ export const postPlaygroundTrainHandler = new Elysia().use(authPlugin).post(
     const entry = await createTraining(input);
     return { entry };
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

@@ -10,5 +10,5 @@ export const patchMentionsHandler = new Elysia().use(authPlugin).patch(
     await patchMentions(auth.accountId, b);
     return { ok: true };
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

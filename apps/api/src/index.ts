@@ -10,6 +10,7 @@ import { postConfigsRoute } from "./routes/postConfigs";
 import { productsRoute } from "./routes/products";
 import { streamRoute } from "./routes/stream";
 import { authRoute } from "./routes/auth";
+import { teamRoute } from "./routes/team";
 import { postsRoute } from "./routes/posts";
 import { inboxRoute } from "./routes/inbox";
 import { crmRoute } from "./routes/crm";
@@ -65,6 +66,7 @@ export const app = new Elysia()
   .use(productsRoute)
   .use(streamRoute)
   .use(authRoute)
+  .use(teamRoute)
   .use(postsRoute)
   .use(inboxRoute)
   .use(crmRoute)

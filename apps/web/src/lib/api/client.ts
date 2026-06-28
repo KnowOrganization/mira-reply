@@ -8,12 +8,25 @@ export class ApiError extends Error {
   }
 }
 
+// Active account/org ride as headers (cookies also carry them; header wins on
+// the API). Read from cookie so SSR/no-window is a safe no-op.
+function activeHeaders(): Record<string, string> {
+  if (typeof document === "undefined") return {};
+  const h: Record<string, string> = {};
+  for (const [name, header] of [["mira_active_account", "x-mira-account"], ["mira_active_org", "x-mira-org"]] as const) {
+    const m = document.cookie.split(";").map((s) => s.trim()).find((s) => s.startsWith(name + "="));
+    if (m) h[header] = decodeURIComponent(m.slice(name.length + 1));
+  }
+  return h;
+}
+
 export async function apiFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: "same-origin",
     ...init,
     headers: {
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...activeHeaders(),
       ...init?.headers,
     },
   });

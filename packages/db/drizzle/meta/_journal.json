@@ -15,6 +15,13 @@
       "when": 1781883515935,
       "tag": "0001_lazy_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782659582762,
+      "tag": "0002_unusual_puff_adder",
+      "breakpoints": true
     }
   ]
 }

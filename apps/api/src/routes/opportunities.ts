@@ -59,7 +59,7 @@ export const opportunitiesRoute = new Elysia()
     );
     if (!rows[0]) { set.status = 404; return { error: "not found" }; }
     return { opportunity: rows[0] };
-  }, { auth: true })
+  }, { requireRole: "agent" })
   .get("/api/ig/crm/decisions", async ({ auth, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const decisions = await query(

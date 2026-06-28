@@ -148,8 +148,8 @@ export async function getFeed(accountId: string) {
 // getLogs
 // ---------------------------------------------------------------------------
 
-export async function getLogs(limit: number) {
-  const logs = await getRecentLogs(limit);
+export async function getLogs(accountId: string, limit: number) {
+  const logs = await getRecentLogs(accountId, limit);
   return { logs };
 }
 

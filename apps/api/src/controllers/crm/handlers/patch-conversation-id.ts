@@ -17,5 +17,5 @@ export const patchConversationIdHandler = new Elysia().use(authPlugin).patch(
     if (!conversation) { set.status = 404; return { error: "conversation not found or no valid fields" }; }
     return { conversation };
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

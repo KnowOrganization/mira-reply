@@ -9,5 +9,5 @@ export const deleteKnowledgeIdHandler = new Elysia().use(authPlugin).delete(
     await removeKnowledge(params.id);
     return { ok: true };
   },
-  { auth: true }
+  { requireRole: "agent" }
 );
