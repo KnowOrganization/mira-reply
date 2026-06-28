@@ -29,6 +29,21 @@ const baseUrl = () => process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000
 export const teamRoute = new Elysia()
   .use(authPlugin)
 
+  // ── identity + capabilities for the active context (UI role-gating) ──────────
+  .get("/api/ig/me", async ({ auth }) => {
+    const orgRoleVal = auth.orgId ? await orgRole(auth.orgId, auth.userId) : null;
+    const accountRole = auth.role; // role on the active account (from requireUser)
+    return {
+      userId: auth.userId,
+      orgId: auth.orgId,
+      accountId: auth.accountId,
+      orgRole: orgRoleVal,
+      accountRole,
+      canManage: roleAtLeast(orgRoleVal, "admin") || roleAtLeast(accountRole, "admin"),
+      canAct: roleAtLeast(accountRole, "agent"),
+    };
+  }, { auth: true })
+
   // ── switcher data ──────────────────────────────────────────────────────────
   .get("/api/ig/accounts", async ({ auth }) => {
     // accounts the caller can reach: orgs they admin + per-account grants.

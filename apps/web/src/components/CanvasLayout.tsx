@@ -13,6 +13,7 @@ import { motion } from "framer-motion";
 import { MiraLogo } from "./MiraLogo";
 import { PostCanvas } from "./PostCanvas";
 import { MiraFeed } from "./MiraFeed";
+import { CanvasAccountSwitcher } from "./workspace/CanvasAccountSwitcher";
 import { useStatus, type IgStatus } from "@/lib/api/hooks";
 
 // Heavy, non-default views — split out of the dashboard bundle so the first
@@ -42,6 +43,10 @@ const ProductsView = dynamic(() => import("./products/ProductsView").then((m) =>
   ssr: false,
   loading: () => <PanelBoot />,
 });
+const TeamView = dynamic(() => import("./workspace/TeamView").then((m) => m.TeamView), {
+  ssr: false,
+  loading: () => <PanelBoot />,
+});
 
 type TopView =
   | "dashboard"
@@ -55,6 +60,7 @@ type TopView =
   | "analytics"
   | "channels"
   | "billing"
+  | "team"
   | "settings";
 
 type SubView = string;
@@ -128,13 +134,10 @@ const NAV: NavGroup[] = [
 ];
 
 const BOTTOM_NAV: NavGroup[] = [
+  { id: "team", icon: <Users size={15} />, label: "Team & access" },
   { id: "billing", icon: <CreditCard size={15} />, label: "Billing", soon: true },
   { id: "settings", icon: <Settings size={15} />, label: "Settings" },
 ];
-
-function getInitials(username: string) {
-  return username.slice(0, 2).toUpperCase();
-}
 
 export function CanvasLayout() {
   const [account, setAccount] = useState<string>("");
@@ -205,18 +208,8 @@ export function CanvasLayout() {
           <span style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", letterSpacing: "-0.02em" }}>Mira</span>
         </div>
 
-        {/* account card */}
-        {account && (
-          <div style={{ margin: "10px 10px 4px", padding: "9px 10px", background: "var(--border)", border: "1px solid var(--border)", borderRadius: 12, display: "flex", alignItems: "center", gap: 9 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: "var(--bg-inset)", border: "1px solid var(--bg-inset)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text)" }}>{getInitials(account)}</span>
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{account}</div>
-              <div style={{ fontSize: 10, color: "var(--text-subtle)", marginTop: 1 }}>Instagram</div>
-            </div>
-          </div>
-        )}
+        {/* account + org switcher */}
+        <CanvasAccountSwitcher account={account} onOpenTeam={() => navigate("team")} />
 
         {/* nav */}
         <nav style={{ flex: 1, overflowY: "auto", padding: "8px 8px 0" }} className="scrollbar-thin">
@@ -417,6 +410,12 @@ export function CanvasLayout() {
         {view === "store" && (
           <div className="flex-1 min-h-0">
             <ProductsView />
+          </div>
+        )}
+
+        {view === "team" && (
+          <div className="flex-1 min-h-0 flex">
+            <TeamView />
           </div>
         )}
 

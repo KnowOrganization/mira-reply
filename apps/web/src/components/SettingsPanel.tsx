@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, LogOut, RefreshCw, Loader2 } from "lucide-react";
 import { useStatus, useSetChannelMode, useSyncPosts, useDisconnect, type IgStatus } from "@/lib/api/hooks";
+import { useMe } from "@/lib/api/teamHooks";
 
 type Props = { open: boolean; onClose: () => void; onAccountChange: () => void };
 type ChannelMode = "shadow" | "assisted" | "auto";
@@ -14,6 +15,8 @@ export function SettingsPanel({ open, onClose, onAccountChange }: Props) {
   const { data: status } = useStatus<IgStatus & { account: { username: string; igUserId: string } | null }>({
     enabled: open,
   });
+  const { data: me } = useMe();
+  const canManage = !!me?.canManage; // owner/admin — may change modes, disconnect
   const account = status?.account ?? null;
   const brainReady = status?.brainReady ?? true;
   // Read modes straight off the status cache — useSetChannelMode updates it
@@ -91,20 +94,27 @@ export function SettingsPanel({ open, onClose, onAccountChange }: Props) {
                       <span className="w-2 h-2 rounded-full" style={{ background: "var(--accent)" }} />
                       <span className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>@{account.username}</span>
                     </div>
-                    <button
-                      onClick={switchAccount}
-                      className="w-full text-[12px] py-1.5 rounded-lg text-left px-2"
-                      style={{ color: "var(--accent)", background: "transparent" }}
-                    >
-                      Switch account →
-                    </button>
-                    <button
-                      onClick={disconnect}
-                      className="w-full flex items-center gap-2 text-[12px] py-1.5 rounded-lg px-2"
-                      style={{ color: "var(--text-subtle)" }}
-                    >
-                      <LogOut size={12} /> Disconnect
-                    </button>
+                    {canManage && (
+                      <>
+                        <button
+                          onClick={switchAccount}
+                          className="w-full text-[12px] py-1.5 rounded-lg text-left px-2"
+                          style={{ color: "var(--accent)", background: "transparent" }}
+                        >
+                          Switch account →
+                        </button>
+                        <button
+                          onClick={disconnect}
+                          className="w-full flex items-center gap-2 text-[12px] py-1.5 rounded-lg px-2"
+                          style={{ color: "var(--text-subtle)" }}
+                        >
+                          <LogOut size={12} /> Disconnect
+                        </button>
+                      </>
+                    )}
+                    {me?.accountRole && (
+                      <p className="text-[10.5px] px-2" style={{ color: "var(--text-subtle)" }}>You're {me.accountRole} on this account</p>
+                    )}
                   </div>
                 ) : (
                   <p className="text-[12px]" style={{ color: "var(--text-subtle)" }}>Not connected</p>
@@ -137,6 +147,9 @@ export function SettingsPanel({ open, onClose, onAccountChange }: Props) {
                   </div>
                 )}
 
+                {!canManage && (
+                  <p className="text-[11px]" style={{ color: "var(--text-subtle)" }}>Only admins can change reply modes.</p>
+                )}
                 <ModeRow
                   label="Comments"
                   hint={{
@@ -146,6 +159,7 @@ export function SettingsPanel({ open, onClose, onAccountChange }: Props) {
                   }}
                   value={commentMode}
                   onChange={switchComment}
+                  disabled={!canManage}
                 />
                 <ModeRow
                   label="DMs"
@@ -156,6 +170,7 @@ export function SettingsPanel({ open, onClose, onAccountChange }: Props) {
                   }}
                   value={dmMode}
                   onChange={switchDm}
+                  disabled={!canManage}
                 />
               </div>
             </div>
@@ -172,15 +187,17 @@ function ModeRow({
   hint,
   value,
   onChange,
+  disabled,
 }: {
   label: string;
   hint: Record<ChannelModeT, string>;
   value: ChannelModeT;
   onChange: (m: ChannelModeT) => void;
+  disabled?: boolean;
 }) {
   const modes: ChannelModeT[] = ["shadow", "assisted", "auto"];
   return (
-    <div>
+    <div style={disabled ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
       <p className="text-[10px] font-bold tracking-widest uppercase mb-3" style={{ color: "var(--text-subtle)" }}>{label}</p>
       <div className="flex gap-2">
         {modes.map((m) => (

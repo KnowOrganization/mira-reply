@@ -9,12 +9,25 @@ export type OrgRef = { orgId: string; name: string; type: string; plan: string; 
 export type Member = { userId: string; role: string; name: string | null; email: string | null };
 export type Role = "owner" | "admin" | "agent" | "viewer";
 
+export type Me = {
+  userId: string;
+  orgId: string | null;
+  accountId: string | null;
+  orgRole: Role | null;
+  accountRole: Role | null;
+  canManage: boolean;
+  canAct: boolean;
+};
+
 export const tk = {
+  me: ["mt", "me"] as const,
   accounts: ["mt", "accounts"] as const,
   orgs: ["mt", "orgs"] as const,
   orgMembers: (orgId: string) => ["mt", "org-members", orgId] as const,
   accountMembers: (accountId: string) => ["mt", "account-members", accountId] as const,
 };
+
+export const useMe = () => useQuery({ queryKey: tk.me, queryFn: () => api.get<Me>("/api/ig/me") });
 
 export const useAccounts = () =>
   useQuery({ queryKey: tk.accounts, queryFn: () => api.get<{ accounts: AccountRef[] }>("/api/ig/accounts") });
