@@ -6,7 +6,7 @@
 import { Elysia } from "elysia";
 import crypto from "node:crypto";
 import { ig } from "@/lib/ig/config";
-import { query } from "@/lib/ig/pg";
+import { query } from "@shaiz/db";
 import { redis, k, bumpCounter } from "@/lib/ig/redis";
 import { publish } from "@/lib/ig/bus";
 import { insertWebhookEvent } from "@/lib/ig/webhookEvents";
@@ -101,25 +101,21 @@ function deriveEvents(accountId: string, entryTime: number | undefined, changes:
   return out;
 }
 
-async function defaultAccountId(): Promise<string | null> {
-  const rows = await query<{ ig_user_id: string }>("SELECT ig_user_id FROM accounts ORDER BY connected_at DESC LIMIT 1");
-  return rows[0]?.ig_user_id ?? null;
-}
-
-/** Meta's webhook entry.id is the IG-scoped id (ig_id, 17841…), but every table +
- *  readStore key on the app-scoped ig_user_id. Resolve it before use — otherwise
- *  every DM/comment routes to a phantom account and processDM bails at readStore
- *  (silent no-op: zero replies). Falls back to the newest account for test payloads
- *  that carry no entry.id. */
+/** Meta's webhook entry.id is the IG-scoped id; it equals our ig_user_id for the
+ *  Instagram Login API. Resolve it to the account before use. With MULTIPLE
+ *  accounts we must never guess — defaulting to "newest" would route one tenant's
+ *  events into another. Only fall back to the sole account (single-tenant dev /
+ *  test payloads with no entry.id); otherwise return null and drop the event. */
 async function resolveAccountId(entryId: string | undefined): Promise<string | null> {
   if (entryId) {
     const rows = await query<{ ig_user_id: string }>(
-      "SELECT ig_user_id FROM accounts WHERE ig_id = $1 OR ig_user_id = $1 LIMIT 1",
+      "SELECT ig_user_id FROM accounts WHERE ig_user_id = $1 LIMIT 1",
       [entryId]
     ).catch(() => [] as { ig_user_id: string }[]);
     if (rows[0]?.ig_user_id) return rows[0].ig_user_id;
   }
-  return defaultAccountId().catch(() => null);
+  const all = await query<{ ig_user_id: string }>("SELECT ig_user_id FROM accounts LIMIT 2").catch(() => []);
+  return all.length === 1 ? all[0].ig_user_id : null;
 }
 
 export const webhookRoute = new Elysia()

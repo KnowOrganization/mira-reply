@@ -28,7 +28,7 @@ export const automationsRoute = new Elysia()
     await insertAutomation(auth.accountId, { ...automation, accountId: auth.accountId } as any);
     set.status = 201;
     return { automation };
-  }, { auth: true })
+  }, { requireRole: "agent" })
   .get("/api/ig/automations/:id", async ({ auth, params, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const automation = await getAutomation(auth.accountId, params.id);
@@ -43,10 +43,10 @@ export const automationsRoute = new Elysia()
     const automation = await patchAutomation(auth.accountId, params.id, patch as any);
     if (!automation) { set.status = 404; return { error: "not found" }; }
     return { automation };
-  }, { auth: true })
+  }, { requireRole: "agent" })
   .delete("/api/ig/automations/:id", async ({ auth, params, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const ok = await removeAutomation(auth.accountId, params.id);
     if (!ok) { set.status = 404; return { error: "not found" }; }
     return { ok: true };
-  }, { auth: true });
+  }, { requireRole: "agent" });

@@ -23,5 +23,5 @@ export const postReprocessHandler = new Elysia().use(authPlugin).post(
       return { error: e instanceof Error ? e.message : "reprocess failed" };
     }
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

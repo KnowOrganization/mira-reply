@@ -8,5 +8,5 @@ export const postCleanupHandler = new Elysia().use(authPlugin).post(
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     return postCleanup(auth.accountId);
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

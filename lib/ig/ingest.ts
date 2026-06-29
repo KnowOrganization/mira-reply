@@ -148,15 +148,15 @@ async function processComment(job: Extract<IngestJob, { kind: "comment" }>) {
   // ── post_configs funnel (priority path) ───────────────────────────────────
   let handledByNewAutomation = false;
   if (cmedia) {
-    const config = await getPostConfigByPostId(cmedia);
-    if (config && !(await isCommentProcessed(cid))) {
+    const config = await getPostConfigByPostId(accountId, cmedia);
+    if (config && !(await isCommentProcessed(accountId, cid))) {
       const kws: string[] = config.keywords;
       const matches = kws.length === 0 || kws.some((kw) => ctext.toLowerCase().includes(kw.toLowerCase()));
       if (matches) {
         handledByNewAutomation = true;
-        await markCommentProcessed(cid, cfrom, config.id);
-        await upsertUserState({ igsid: cfrom, post_id: config.id, comment_id: cid, state: "awaiting_tap", payload: null });
-        await insertLog({ direction: "in", event_type: "comment", igsid: cfrom, post_id: config.id, payload: JSON.stringify({ commentId: cid, text: ctext }), status: "matched", error: null });
+        await markCommentProcessed(accountId, cid, cfrom, config.id);
+        await upsertUserState(accountId, { igsid: cfrom, post_id: config.id, comment_id: cid, state: "awaiting_tap", payload: null });
+        await insertLog(accountId, { direction: "in", event_type: "comment", igsid: cfrom, post_id: config.id, payload: JSON.stringify({ commentId: cid, text: ctext }), status: "matched", error: null });
         await enqueueOutbound({
           accountId,
           id: `pr_${cid}`,
@@ -282,7 +282,7 @@ async function processPostback(job: Extract<IngestJob, { kind: "postback" }>) {
   }
 
   publish({ type: "log", level: "info", msg: `postback from ${fromId}: "${pbPayload}"`, ts: Date.now() });
-  await insertLog({ direction: "in", event_type: "postback", igsid: fromId, post_id: null, payload: JSON.stringify({ payload: pbPayload, title: data.title }), status: "received", error: null });
+  await insertLog(accountId, { direction: "in", event_type: "postback", igsid: fromId, post_id: null, payload: JSON.stringify({ payload: pbPayload, title: data.title }), status: "received", error: null });
 
   // ── DM marketplace postbacks (STORE_ALL / STORE_CAT_<tag>) ────────────────
   if (/^STORE_/.test(pbPayload)) {
@@ -299,13 +299,13 @@ async function processPostback(job: Extract<IngestJob, { kind: "postback" }>) {
     const token = store.account?.accessToken;
     if (!token) return;
     const postConfigId = newAutomationPayload[1];
-    const config = await getPostConfigById(postConfigId);
+    const config = await getPostConfigById(accountId, postConfigId);
     if (!config) return;
-    const userState = await getUserState(fromId, postConfigId);
+    const userState = await getUserState(accountId, fromId, postConfigId);
     if (userState?.state === "delivered") return; // already sent, ignore
 
     if (!config.follow_gate) {
-      await setUserStateDelivered(fromId, postConfigId);
+      await setUserStateDelivered(accountId, fromId, postConfigId);
       await enqueueLinkDM(accountId, fromId, postConfigId, config);
       return;
     }
@@ -314,10 +314,10 @@ async function processPostback(job: Extract<IngestJob, { kind: "postback" }>) {
     publish({ type: "log", level: "info", msg: `follow check @${fromId}: ${isFollowing}`, ts: Date.now() });
 
     if (isFollowing) {
-      await setUserStateDelivered(fromId, postConfigId);
+      await setUserStateDelivered(accountId, fromId, postConfigId);
       await enqueueLinkDM(accountId, fromId, postConfigId, config);
     } else {
-      await upsertUserState({ igsid: fromId, post_id: postConfigId, comment_id: userState?.comment_id ?? "", state: "awaiting_follow", payload: pbPayload });
+      await upsertUserState(accountId, { igsid: fromId, post_id: postConfigId, comment_id: userState?.comment_id ?? "", state: "awaiting_follow", payload: pbPayload });
       const uname = store.account?.username ?? "";
       await enqueueOutbound({
         accountId,

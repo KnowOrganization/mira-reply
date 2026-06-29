@@ -1,11 +1,13 @@
-// Instagram account lifecycle, now multi-tenant: every connected IG account is
-// stamped with the logged-in Supabase user's id, and disconnect/reconnect only
-// touch the caller's own account.
+// Instagram account lifecycle, multi-tenant: every connected IG account is owned
+// by an organization (accounts.org_id). Completing OAuth proves IG control, but
+// per policy we never silently absorb an account already owned by another org —
+// we refresh its shared token and offer "request access" / "transfer ownership".
 import { Elysia } from "elysia";
 import { upsertAccount, getAccount, type StoredAccount } from "@/lib/ig/accountsRepo";
-import { query } from "@/lib/ig/pg";
+import { query } from "@shaiz/db";
 import type { Settings } from "@/lib/ig/store";
-import { requireUser, getSessionUserId, userOwnsAccount } from "../lib/auth";
+import { requireUser, getSessionUserId, resolveCallerOrg } from "../lib/auth";
+import { roleAtLeast } from "../lib/roles";
 
 const ig = {
   appId: process.env.META_APP_ID || "",
@@ -52,8 +54,24 @@ async function extendToken(t: string): Promise<{ token: string; expiresIn: numbe
   return { token: t, expiresIn: 60 * 24 * 3600 };
 }
 
-// Persist the IG account AND bind it to the owning Supabase user.
-async function persistAccount(userId: string, id: string, username: string, accessToken: string, expiresIn: number) {
+// The org that currently owns an IG account (null if unconnected/legacy).
+async function accountOrg(id: string): Promise<string | null> {
+  const [r] = await query<{ org_id: string | null }>("SELECT org_id FROM accounts WHERE ig_user_id=$1", [id]);
+  return r?.org_id ?? null;
+}
+
+// Refresh only the shared token (used when a non-owner re-OAuths — the owner
+// still benefits from the fresh token, but the caller gets no access).
+async function refreshTokenOnly(id: string, accessToken: string, expiresIn: number) {
+  await query(
+    "UPDATE accounts SET access_token=$2, token_expires_at=$3, updated_at=$4 WHERE ig_user_id=$1",
+    [id, accessToken, Date.now() + expiresIn * 1000, Date.now()]
+  );
+}
+
+// Persist the IG account; bind connector (no clobber) + owning org (COALESCE so
+// an existing owner is never silently replaced — transfer is explicit below).
+async function persistAccount(userId: string, orgId: string, id: string, username: string, accessToken: string, expiresIn: number) {
   const existing = await getAccount(id);
   const acct: StoredAccount = {
     igUserId: id, username, accessToken,
@@ -61,19 +79,28 @@ async function persistAccount(userId: string, id: string, username: string, acce
     settings: (existing?.settings ?? DEFAULT_SETTINGS) as unknown as Record<string, unknown>,
   };
   await upsertAccount(acct);
-  await query("UPDATE accounts SET user_id=$2 WHERE ig_user_id=$1", [id, userId]);
+  await query(
+    "UPDATE accounts SET user_id=COALESCE(user_id,$2), org_id=COALESCE(org_id,$3) WHERE ig_user_id=$1",
+    [id, userId, orgId]
+  );
 }
 
-// state carries {o: returnOrigin, u: userId} so the OAuth callback knows the owner.
-function encodeState(origin: string, userId: string) {
-  return Buffer.from(JSON.stringify({ o: origin, u: userId })).toString("base64url");
+// Explicit, logged ownership transfer (caller just proved IG control via OAuth).
+// Data stays put — it's keyed by account_id, shared regardless of org.
+async function transferAccount(id: string, orgId: string) {
+  await query("UPDATE accounts SET org_id=$2, updated_at=$3 WHERE ig_user_id=$1", [id, orgId, Date.now()]);
 }
-function decodeState(state: string): { origin: string; userId: string | null } {
+
+// state carries {o: origin, u: userId, t: transfer?} so the callback knows intent.
+function encodeState(origin: string, userId: string, transfer: boolean) {
+  return Buffer.from(JSON.stringify({ o: origin, u: userId, t: transfer ? 1 : 0 })).toString("base64url");
+}
+function decodeState(state: string): { origin: string; userId: string | null; transfer: boolean } {
   try {
-    const j = JSON.parse(Buffer.from(state, "base64url").toString("utf-8")) as { o?: string; u?: string };
+    const j = JSON.parse(Buffer.from(state, "base64url").toString("utf-8")) as { o?: string; u?: string; t?: number };
     const origin = j.o && /^https?:\/\//.test(j.o) ? j.o : ig.baseUrl;
-    return { origin, userId: j.u ?? null };
-  } catch { return { origin: ig.baseUrl, userId: null }; }
+    return { origin, userId: j.u ?? null, transfer: j.t === 1 };
+  } catch { return { origin: ig.baseUrl, userId: null, transfer: false }; }
 }
 
 export const authRoute = new Elysia()
@@ -91,35 +118,45 @@ export const authRoute = new Elysia()
     url.searchParams.set("redirect_uri", redirectUri());
     url.searchParams.set("response_type", "code");
     url.searchParams.set("scope", ig.scopes.join(","));
-    url.searchParams.set("state", encodeState(origin || ig.baseUrl, userId));
-    if ((q as { switch?: string }).switch === "1") url.searchParams.set("auth_type", "reauthenticate");
+    const transfer = (q as { transfer?: string }).transfer === "1";
+    url.searchParams.set("state", encodeState(origin || ig.baseUrl, userId, transfer));
+    if ((q as { switch?: string }).switch === "1" || transfer) url.searchParams.set("auth_type", "reauthenticate");
     return new Response(null, { status: 302, headers: { Location: url.toString() } });
   })
   .post("/api/ig/token-connect", async ({ request, body, set }) => {
     const a = await requireUser(request.headers);
     if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
+    const transfer = ((body ?? {}) as { transfer?: boolean }).transfer === true;
     let t = (((body ?? {}) as { token?: string }).token || "").trim();
     if (!t && a.ctx.accountId) t = ((await getAccount(a.ctx.accountId))?.accessToken || "").trim(); // reconnect own account
     if (!t) { set.status = 400; return { error: "no token — paste an access token" }; }
     const me = await validateToken(t);
     if (!me) { set.status = 400; return { error: "invalid or blocked token" }; }
-    // If this IG account is already owned by a DIFFERENT user, refuse.
-    const owner = await query<{ user_id: string | null }>("SELECT user_id FROM accounts WHERE ig_user_id=$1", [me.id]);
-    if (owner[0]?.user_id && owner[0].user_id !== a.ctx.userId) { set.status = 409; return { error: "this Instagram account is connected to another user" }; }
     const ext = await extendToken(t);
-    await persistAccount(a.ctx.userId, me.id, me.username, ext.token, ext.expiresIn);
-    return { ok: true, username: me.username };
+    const callerOrg = await resolveCallerOrg(a.ctx.userId, request.headers);
+    const existingOrg = await accountOrg(me.id);
+    const crossOrg = !!existingOrg && existingOrg !== callerOrg;
+    if (crossOrg && !transfer) {
+      await refreshTokenOnly(me.id, ext.token, ext.expiresIn); // owner keeps a fresh token
+      set.status = 409;
+      return { conflict: true, accountId: me.id, owningOrgId: existingOrg,
+        error: "this Instagram is managed in another workspace — ask them to invite you, or transfer ownership" };
+    }
+    await persistAccount(a.ctx.userId, callerOrg, me.id, me.username, ext.token, ext.expiresIn);
+    if (crossOrg && transfer) await transferAccount(me.id, callerOrg);
+    return { ok: true, username: me.username, transferred: crossOrg && transfer };
   })
   .post("/api/ig/disconnect", async ({ request, set }) => {
     const a = await requireUser(request.headers);
     if (!a.ctx) { set.status = a.status!; return { error: a.error }; }
-    if (a.ctx.accountId && await userOwnsAccount(a.ctx.userId, a.ctx.accountId)) {
+    if (!roleAtLeast(a.ctx.role, "admin")) { set.status = 403; return { error: "requires admin role" }; }
+    if (a.ctx.accountId) {
       await query("UPDATE accounts SET access_token='', token_expires_at=0, updated_at=$2 WHERE ig_user_id=$1", [a.ctx.accountId, Date.now()]);
     }
     return { ok: true };
   })
-  .get("/api/ig/callback", async ({ query: q }) => {
-    const { origin, userId } = decodeState((q as { state?: string }).state || "");
+  .get("/api/ig/callback", async ({ query: q, request }) => {
+    const { origin, userId, transfer } = decodeState((q as { state?: string }).state || "");
     const to = (path: string) => new Response(null, { status: 302, headers: { Location: `${origin}${path}` } });
     const fail = (reason: string) => to(`/oauth/complete?ig=error&reason=${encodeURIComponent(reason)}`);
     const code = (q as { code?: string }).code;
@@ -138,8 +175,14 @@ export const authRoute = new Elysia()
     const ext = await extendToken(short.access_token);
     const me = await validateToken(ext.token);
     if (!me) return fail("token validation failed");
-    const owner = await query<{ user_id: string | null }>("SELECT user_id FROM accounts WHERE ig_user_id=$1", [me.id]);
-    if (owner[0]?.user_id && owner[0].user_id !== userId) return fail("this Instagram account is connected to another user");
-    await persistAccount(userId, me.id, me.username, ext.token, ext.expiresIn);
-    return to(`/oauth/complete?ig=success&user=${encodeURIComponent(me.username)}`);
+    const callerOrg = await resolveCallerOrg(userId, request.headers);
+    const existingOrg = await accountOrg(me.id);
+    const crossOrg = !!existingOrg && existingOrg !== callerOrg;
+    if (crossOrg && !transfer) {
+      await refreshTokenOnly(me.id, ext.token, ext.expiresIn);
+      return to(`/oauth/complete?ig=conflict&account=${encodeURIComponent(me.id)}&user=${encodeURIComponent(me.username)}`);
+    }
+    await persistAccount(userId, callerOrg, me.id, me.username, ext.token, ext.expiresIn);
+    if (crossOrg && transfer) await transferAccount(me.id, callerOrg);
+    return to(`/oauth/complete?ig=success&user=${encodeURIComponent(me.username)}${crossOrg && transfer ? "&transferred=1" : ""}`);
   });

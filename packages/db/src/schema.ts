@@ -25,11 +25,12 @@ const ms = (name: string) => bigint(name, { mode: "number" });
 //    account-scoped singletons + small collections into jsonb columns) ────────
 export const accounts = pgTable("accounts", {
   igUserId: text("ig_user_id").primaryKey(),
-  // Tenant owner = Supabase Auth user id (auth.users.id). Nullable for the
-  // pre-auth legacy account; every connect stamps this so each IG account
-  // belongs to the logged-in user. All 17 child tables inherit tenancy via
-  // their account_id, so this single column establishes multi-tenant isolation.
+  // "Connected by" user id (audit / token-refresh). Demoted from tenant owner —
+  // authorization now resolves through organizations + org_members + account_access.
   userId: text("user_id"),
+  // Owning organization (team + billing root). Backfilled to a personal org per
+  // legacy accounts.user_id. Tenancy + role resolution keys off this.
+  orgId: text("org_id"),
   username: text("username").notNull().default(""),
   accessToken: text("access_token").notNull(),
   tokenExpiresAt: ms("token_expires_at").notNull().default(0),
@@ -39,6 +40,12 @@ export const accounts = pgTable("accounts", {
   ownerProfile: jsonb("owner_profile").$type<OwnerProfile>(),
   styleSamples: jsonb("style_samples").$type<string[]>().notNull().default([]),
   toneSummary: text("tone_summary").notNull().default(""),
+  // Per-account AI provider + bring-your-own-key. byokKey is a secret — never
+  // returned to the client (the ai-settings endpoint exposes only byokKeySet).
+  aiProvider: text("ai_provider").notNull().default("claude"),
+  byokKey: text("byok_key"),
+  // Last time the account brain (tone/style/audience) was rebuilt.
+  brainBuiltAt: ms("brain_built_at"),
   blocklist: jsonb("blocklist").$type<string[]>().notNull().default([]),
   trustedContacts: jsonb("trusted_contacts").$type<{ igUserId: string; label: string }[]>().notNull().default([]),
   fingerprints: jsonb("fingerprints").$type<ReplyFingerprint[]>().notNull().default([]),
@@ -401,8 +408,82 @@ export const messages = pgTable("messages", {
   index("idx_messages_conversation").on(t.conversationId, t.createdAt),
 ]);
 
+// ── multitenancy: orgs, members, per-account grants, invitations ─────────────
+// An organization is the team + (future) billing root. Every IG account is
+// owned by exactly one org (accounts.org_id); access is resolved as:
+//   org owner/admin  -> all accounts the org owns (no per-account row needed)
+//   org agent/viewer + cross-org users -> only accounts in account_access.
+// user_id columns are plain text (no FK), matching accounts.user_id — auth
+// lives in the same db but we avoid hard cross-table coupling.
+export const organizations = pgTable("organizations", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().default(""),
+  type: text("type").notNull().default("individual"), // individual | agency
+  plan: text("plan").notNull().default("free"),       // billing hook (unenforced)
+  createdBy: text("created_by"),                       // user id
+  createdAt: ms("created_at").notNull().default(0),
+});
+
+export const orgMembers = pgTable("org_members", {
+  orgId: text("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  role: text("role").notNull().default("viewer"), // owner | admin | agent | viewer
+  invitedBy: text("invited_by"),
+  createdAt: ms("created_at").notNull().default(0),
+}, (t) => [
+  primaryKey({ columns: [t.orgId, t.userId] }),
+  index("idx_org_members_user").on(t.userId), // "my orgs"
+]);
+
+// Per-account grant: scopes org agents/viewers to specific accounts AND carries
+// cross-org shares (influencer shares an IG account with their agency).
+export const accountAccess = pgTable("account_access", {
+  accountId: text("account_id").notNull().references(() => accounts.igUserId, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  role: text("role").notNull().default("viewer"),
+  grantedBy: text("granted_by"),
+  createdAt: ms("created_at").notNull().default(0),
+}, (t) => [
+  primaryKey({ columns: [t.accountId, t.userId] }),
+  index("idx_account_access_user").on(t.userId), // "accounts shared with me"
+]);
+
+// Unified invite: join an org (kind='org') or get access to one account
+// (kind='account'). Accepted on first Google sign-in of the invited email.
+export const invitations = pgTable("invitations", {
+  id: text("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  email: text("email").notNull(),
+  kind: text("kind").notNull(),                 // org | account
+  orgId: text("org_id"),                        // set when kind='org'
+  accountId: text("account_id"),                // set when kind='account'
+  role: text("role").notNull().default("viewer"),
+  invitedBy: text("invited_by"),
+  status: text("status").notNull().default("pending"), // pending|accepted|revoked|expired
+  acceptedUserId: text("accepted_user_id"),
+  expiresAt: ms("expires_at").notNull().default(0),
+  createdAt: ms("created_at").notNull().default(0),
+}, (t) => [
+  index("idx_invitations_email").on(t.email, t.status),
+]);
+
+// Expo push tokens — one row per device. Keyed by the Expo token (unique per
+// install). userId scopes "my devices"; accountId optional (active account at
+// register time) so we can target an account's owner.
+export const deviceTokens = pgTable("device_tokens", {
+  token: text("token").primaryKey(),
+  userId: text("user_id").notNull(),
+  accountId: text("account_id"),
+  platform: text("platform").notNull().default("ios"), // ios | android
+  createdAt: ms("created_at").notNull().default(0),
+}, (t) => [
+  index("idx_device_tokens_user").on(t.userId),
+]);
+
 export type Schema = {
   accounts: typeof accounts; automations: typeof automations;
+  organizations: typeof organizations; orgMembers: typeof orgMembers;
+  accountAccess: typeof accountAccess; invitations: typeof invitations;
   webhookEvents: typeof webhookEvents;
   pendingResume: typeof pendingResume; feedEvents: typeof feedEvents;
   postConfigs: typeof postConfigs; products: typeof products;
@@ -414,4 +495,5 @@ export type Schema = {
   commenters: typeof commenters; dailyStats: typeof dailyStats;
   commentsCache: typeof commentsCache;
   conversations: typeof conversations; messages: typeof messages;
+  deviceTokens: typeof deviceTokens;
 };

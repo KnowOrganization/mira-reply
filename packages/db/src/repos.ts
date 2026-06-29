@@ -6,6 +6,7 @@ import { eq, and, desc, count } from "drizzle-orm";
 import { db } from "./client";
 import {
   accounts, automations, postConfigs, processedComments, userStates, knowledge, products,
+  deviceTokens,
 } from "./schema";
 import type { Settings } from "../../../lib/ig/store";
 
@@ -61,6 +62,62 @@ export async function patchSettings(accountId: string, patch: Partial<Settings>)
   const merged = { ...cur, ...patch } as Settings;
   await db.update(accounts).set({ settings: merged, updatedAt: Date.now() }).where(eq(accounts.igUserId, accountId));
   return merged;
+}
+
+// ── brain build timestamp ────────────────────────────────────────────────────
+export async function getBrainBuiltAt(accountId: string): Promise<number | null> {
+  const [a] = await db.select({ at: accounts.brainBuiltAt }).from(accounts).where(eq(accounts.igUserId, accountId));
+  return a?.at ?? null;
+}
+
+export async function setBrainBuiltAt(accountId: string, at: number): Promise<void> {
+  await db.update(accounts).set({ brainBuiltAt: at, updatedAt: Date.now() }).where(eq(accounts.igUserId, accountId));
+}
+
+// ── ai settings ──────────────────────────────────────────────────────────────
+// model is derived from provider + env defaults (not stored per-account).
+const aiModelFor = (provider: string): string =>
+  provider === "ollama"
+    ? process.env.MIRA_OLLAMA_MODEL || "llama3.1"
+    : process.env.MIRA_CLAUDE_MODEL || "claude-sonnet-4-6";
+
+export type AiSettings = {
+  provider: "claude" | "ollama";
+  byokKeySet: boolean;
+  model: string;
+  voice: { toneSummary: string; styleSampleCount: number };
+};
+
+export async function getAiSettings(accountId: string): Promise<AiSettings | null> {
+  const [a] = await db
+    .select({
+      provider: accounts.aiProvider,
+      byokKey: accounts.byokKey,
+      toneSummary: accounts.toneSummary,
+      styleSamples: accounts.styleSamples,
+    })
+    .from(accounts)
+    .where(eq(accounts.igUserId, accountId));
+  if (!a) return null;
+  const provider = a.provider === "ollama" ? "ollama" : "claude";
+  return {
+    provider,
+    byokKeySet: !!a.byokKey,
+    model: aiModelFor(provider),
+    voice: { toneSummary: a.toneSummary ?? "", styleSampleCount: (a.styleSamples ?? []).length },
+  };
+}
+
+export async function patchAiSettings(
+  accountId: string,
+  patch: { provider?: "claude" | "ollama"; byokKey?: string | null }
+): Promise<AiSettings | null> {
+  const set: Record<string, unknown> = { updatedAt: Date.now() };
+  if (patch.provider === "claude" || patch.provider === "ollama") set.aiProvider = patch.provider;
+  // null/"" clears the key; any other string stores it.
+  if (patch.byokKey !== undefined) set.byokKey = patch.byokKey ? patch.byokKey : null;
+  await db.update(accounts).set(set).where(eq(accounts.igUserId, accountId));
+  return getAiSettings(accountId);
 }
 
 // ── automations (visual node-graph) ──────────────────────────────────────────
@@ -230,6 +287,25 @@ export async function updateProduct(accountId: string, id: string, patch: Partia
 export async function deleteProduct(accountId: string, id: string): Promise<boolean> {
   const rows = await db.delete(products).where(and(eq(products.accountId, accountId), eq(products.id, id))).returning({ id: products.id });
   return rows.length > 0;
+}
+
+// ── push device tokens ───────────────────────────────────────────────────────
+export async function registerDeviceToken(
+  userId: string, token: string, platform: string, accountId: string | null
+): Promise<void> {
+  await db.insert(deviceTokens)
+    .values({ token, userId, accountId, platform, createdAt: Date.now() })
+    .onConflictDoUpdate({ target: deviceTokens.token, set: { userId, accountId, platform } });
+}
+
+export async function unregisterDeviceToken(token: string): Promise<boolean> {
+  const rows = await db.delete(deviceTokens).where(eq(deviceTokens.token, token)).returning({ token: deviceTokens.token });
+  return rows.length > 0;
+}
+
+export async function getUserDeviceTokens(userId: string): Promise<string[]> {
+  const rows = await db.select({ token: deviceTokens.token }).from(deviceTokens).where(eq(deviceTokens.userId, userId));
+  return rows.map((r) => r.token);
 }
 
 // Resolve a public storefront slug → accountId (used by the unauthenticated /api/store route).

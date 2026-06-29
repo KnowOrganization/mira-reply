@@ -27,5 +27,5 @@ export const postSyncDmsHandler = new Elysia().use(authPlugin).post(
       .catch((e) => publish({ type: "log", level: "warn", msg: `dm sync crashed: ${String(e)}`, ts: Date.now() }));
     return { ok: true, started: true, limit };
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

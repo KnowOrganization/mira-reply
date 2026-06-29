@@ -28,7 +28,15 @@ export const auth = betterAuth({
   // bearer lets non-cookie clients (the Bun worker, tests) send the session token
   // as Authorization: Bearer too. Cookies remain the primary browser path.
   plugins: [bearer()],
-  trustedOrigins: [baseURL, process.env.NEXT_PUBLIC_BASE_URL || ""].filter(Boolean),
+  // baseURL + web origin + the mobile deep-link scheme (so the native app's
+  // social-login callbackURL is allowed). Mobile signs in via /api/auth/sign-in/
+  // social, reads the session token from the bearer plugin (/api/auth/token),
+  // and signs out via /api/auth/sign-out — no custom native endpoints needed.
+  trustedOrigins: [
+    baseURL,
+    process.env.NEXT_PUBLIC_BASE_URL || "",
+    process.env.MOBILE_DEEP_LINK_SCHEME || "miraapp://",
+  ].filter(Boolean),
 });
 
 export type Auth = typeof auth;

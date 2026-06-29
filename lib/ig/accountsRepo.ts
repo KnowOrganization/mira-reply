@@ -1,4 +1,4 @@
-import { query, initSchema } from "./pg";
+import { query } from "@shaiz/db";
 import type { Automation, IgAccount } from "./store";
 
 // Multi-account source of truth (Postgres). Accounts + their automation graphs.
@@ -96,7 +96,6 @@ export async function deleteAutomation(accountId: string, id: string): Promise<b
  * into Postgres. Idempotent (upserts). Returns what it imported.
  */
 export async function importFromFileStore(): Promise<{ account: string | null; automations: number }> {
-  await initSchema();
   const { readStore } = await import("./store");
   const store = await readStore();
   if (!store.account) return { account: null, automations: 0 };

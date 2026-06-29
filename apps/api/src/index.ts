@@ -10,6 +10,7 @@ import { postConfigsRoute } from "./routes/postConfigs";
 import { productsRoute } from "./routes/products";
 import { streamRoute } from "./routes/stream";
 import { authRoute } from "./routes/auth";
+import { teamRoute } from "./routes/team";
 import { postsRoute } from "./routes/posts";
 import { inboxRoute } from "./routes/inbox";
 import { crmRoute } from "./routes/crm";
@@ -19,6 +20,9 @@ import { llmRoute } from "./routes/llm";
 import { controlRoute } from "./routes/control";
 import { webhookRoute } from "./routes/webhook";
 import { storeRoute } from "./routes/store";
+import { moderationRoute } from "./routes/moderation";
+import { profileRoute } from "./routes/profile";
+import { pushRoute } from "./routes/push";
 
 // Railway (and most PaaS) inject PORT; honor it first, then API_PORT, then 4000.
 const PORT = Number(process.env.PORT || process.env.API_PORT || 4000);
@@ -66,6 +70,7 @@ export const app = new Elysia()
   .use(productsRoute)
   .use(streamRoute)
   .use(authRoute)
+  .use(teamRoute)
   .use(postsRoute)
   .use(inboxRoute)
   .use(crmRoute)
@@ -73,6 +78,9 @@ export const app = new Elysia()
   .use(analyticsRoute)
   .use(llmRoute)
   .use(controlRoute)
+  .use(moderationRoute)
+  .use(profileRoute)
+  .use(pushRoute)
   // public Meta endpoint (signature-verified, not session-authed)
   .use(webhookRoute)
   // public storefront (no auth — field-whitelisted, slug-resolved server-side)
@@ -86,7 +94,7 @@ console.log(`[api] mira backend listening on :${PORT}`);
 
 // Pre-warm the Postgres pool so the FIRST real request isn't paying the cold
 // TLS-handshake to Supabase (ap-northeast-1) — that was the ~6s first-load stall.
-import("@/lib/ig/pg")
+import("@shaiz/db")
   .then(({ query }) => query("SELECT 1"))
   .then(() => console.log("[api] db pool warm"))
   .catch(() => {});

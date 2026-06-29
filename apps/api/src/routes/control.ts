@@ -19,7 +19,7 @@ export const controlRoute = new Elysia()
       set.status = 500;
       return { error: e instanceof Error ? e.message : "reconcile failed" };
     }
-  }, { auth: true })
+  }, { requireRole: "agent" })
   .get("/api/ig/watcher", async () => {
     return watcherStatus();
   }, { auth: true })

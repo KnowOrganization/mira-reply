@@ -1,4 +1,4 @@
-import { query } from "./pg";
+import { query } from "@shaiz/db";
 import { redis, k, bumpCounter } from "./redis";
 import { insertLog } from "./db";
 import { publish } from "./bus";
@@ -80,13 +80,13 @@ export async function processOutboundJob(job: OutboundJob): Promise<void> {
   }
 
   bumpCounter(job.accountId, "sent");
-  await insertLog({ direction: "out", event_type: job.type, igsid: job.igsid ?? null, post_id: job.postId ?? null, payload: JSON.stringify(body), status: "ok", error: null });
+  await insertLog(job.accountId, { direction: "out", event_type: job.type, igsid: job.igsid ?? null, post_id: job.postId ?? null, payload: JSON.stringify(body), status: "ok", error: null });
   publish({ type: "log", level: "info", msg: `outbound: sent ${job.type} (${job.id})`, ts: Date.now() });
 }
 
 /** Final-failure bookkeeping (called by the worker when attempts are exhausted). */
 export async function recordOutboundFailure(job: OutboundJob, err: string): Promise<void> {
   bumpCounter(job.accountId, "send_failed");
-  await insertLog({ direction: "out", event_type: job.type, igsid: job.igsid ?? null, post_id: job.postId ?? null, payload: JSON.stringify(job.message), status: "error", error: err }).catch(() => {});
+  await insertLog(job.accountId, { direction: "out", event_type: job.type, igsid: job.igsid ?? null, post_id: job.postId ?? null, payload: JSON.stringify(job.message), status: "error", error: err }).catch(() => {});
   publish({ type: "log", level: "error", msg: `outbound: gave up on ${job.id}: ${err}`, ts: Date.now() });
 }

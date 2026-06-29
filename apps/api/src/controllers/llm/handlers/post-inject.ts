@@ -25,5 +25,5 @@ export const postInjectHandler = new Elysia().use(authPlugin).post(
       postId: b.postId,
     });
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

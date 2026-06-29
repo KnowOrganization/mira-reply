@@ -2,8 +2,8 @@
 
 import { motion } from "framer-motion";
 import { Activity, RefreshCw, Loader2 } from "lucide-react";
-import { api } from "@/lib/api/client";
 import { MODES, MODE_HINT, dur } from "./utils";
+import { AccountSwitcher } from "./AccountSwitcher";
 
 function Stat({ n, label, accent }: { n: number; label: string; accent?: boolean }) {
   return (
@@ -59,17 +59,7 @@ export function TopStrip({
           <span className="text-[13.5px] font-bold">
             {account ? `@${account}` : "Mira"}
           </span>
-          <button
-            onClick={async () => {
-              await api.post("/api/ig/disconnect");
-              window.location.href = "/api/ig/connect?switch=1";
-            }}
-            className="text-[10.5px] px-2 py-0.5 rounded-lg"
-            style={{ background: "var(--bg-inset)", color: "var(--text-subtle)" }}
-            title="Switch Instagram account"
-          >
-            switch
-          </button>
+          <AccountSwitcher account={account} />
         </div>
         <div className="mx-auto flex items-center gap-2">
           <span

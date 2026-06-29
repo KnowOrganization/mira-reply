@@ -12,6 +12,10 @@ import { getMentionsHandler } from "./handlers/get-mentions";
 import { postMentionsHandler } from "./handlers/post-mentions";
 import { patchMentionsHandler } from "./handlers/patch-mentions";
 import { getCommentersHandler } from "./handlers/get-commenters";
+import { postCommentIdReplyHandler } from "./handlers/post-comment-id-reply";
+import { getKbHandler } from "./handlers/get-kb";
+import { postKbHandler } from "./handlers/post-kb";
+import { deleteKbIdHandler } from "./handlers/delete-kb-id";
 
 export const inboxRoute = new Elysia()
   .use(getKnowledgeHandler)
@@ -26,4 +30,8 @@ export const inboxRoute = new Elysia()
   .use(getMentionsHandler)
   .use(postMentionsHandler)
   .use(patchMentionsHandler)
-  .use(getCommentersHandler);
+  .use(getCommentersHandler)
+  .use(postCommentIdReplyHandler)
+  .use(getKbHandler)
+  .use(postKbHandler)
+  .use(deleteKbIdHandler);

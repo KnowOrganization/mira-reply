@@ -15,6 +15,27 @@
       "when": 1781883515935,
       "tag": "0001_lazy_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782659582762,
+      "tag": "0002_unusual_puff_adder",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782673494913,
+      "tag": "0003_absurd_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782683130056,
+      "tag": "0004_serious_ulik",
+      "breakpoints": true
     }
   ]
 }

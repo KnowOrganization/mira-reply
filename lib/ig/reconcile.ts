@@ -54,7 +54,7 @@ export async function reconcileAccount(accountId: string): Promise<{ enqueued: n
       const ids = a.trigger.postIds?.length ? a.trigger.postIds : (tNode?.data.postIds ?? []);
       ids.forEach((id: string) => targeted.add(id));
     }
-    for (const pc of await getPostConfigs()) if (pc.active) targeted.add(pc.ig_post_id);
+    for (const pc of await getPostConfigs(accountId)) if (pc.active) targeted.add(pc.ig_post_id);
   } catch (e) {
     publish({ type: "log", level: "warn", msg: `reconcile: target load failed: ${String(e)}`, ts: Date.now() });
   }

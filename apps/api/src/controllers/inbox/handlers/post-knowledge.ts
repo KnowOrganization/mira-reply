@@ -22,5 +22,5 @@ export const postKnowledgeHandler = new Elysia().use(authPlugin).post(
     }
     return result;
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

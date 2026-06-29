@@ -39,7 +39,7 @@ export const productsRoute = new Elysia()
     const product = await createProduct(auth.accountId, b as any);
     set.status = 201;
     return { product };
-  }, { auth: true })
+  }, { requireRole: "agent" })
   .get("/api/ig/products/:id", async ({ auth, params, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const product = await getProduct(auth.accountId, params.id);
@@ -54,10 +54,10 @@ export const productsRoute = new Elysia()
     const product = await updateProduct(auth.accountId, params.id, b as any);
     if (!product) { set.status = 404; return { error: "not found" }; }
     return { product };
-  }, { auth: true })
+  }, { requireRole: "agent" })
   .delete("/api/ig/products/:id", async ({ auth, params, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const ok = await deleteProduct(auth.accountId, params.id);
     if (!ok) { set.status = 404; return { error: "not found" }; }
     return { ok: true };
-  }, { auth: true });
+  }, { requireRole: "agent" });

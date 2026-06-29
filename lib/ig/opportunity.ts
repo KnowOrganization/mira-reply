@@ -12,7 +12,7 @@
 // cheaply once per conversation. Runs in the worker → horizontal scale.
 
 import { v4 as uuidv4 } from "uuid";
-import { query } from "./pg";
+import { query } from "@shaiz/db";
 import { embed, cosine, isEmbedAvailable } from "./embed";
 import { claimOnce, k } from "./redis";
 import { publish } from "./bus";

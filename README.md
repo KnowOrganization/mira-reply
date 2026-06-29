@@ -52,7 +52,7 @@ git clone https://github.com/Danyalsk/mira-reply.git
 cd mira-reply
 
 # 2. Install dependencies
-npm install
+bun install
 
 # 3. Create your env file
 cp .env.local.example .env.local
@@ -62,7 +62,7 @@ cp .env.local.example .env.local
 ollama serve        # (skip if it already runs as a service)
 
 # 5. Start the app
-npm run dev
+bun run dev
 ```
 
 Open **http://localhost:3100**.
@@ -101,16 +101,16 @@ Copy `.env.local.example` → `.env.local` and fill it in. **`.env.local` is git
 ## 🗂️ Project structure
 
 ```
-app/
-  api/ig/        Instagram routes — webhook, OAuth, drafts, posts, knowledge, stream
-  oauth/         OAuth completion page
-  privacy/ terms/  policy pages (required by Meta review)
-components/      UI — Workspace (3-panel triage), Dashboard, Brain, Chat
-lib/ig/          Pipeline — intent, llm, knowledge, dm, watcher, store, rulebook
-lib/             Shared — types, storage, utils
+apps/web/        Next.js dashboard (UI + /api/auth)
+apps/api/        Elysia backend — routes → controllers → services
+lib/ig/          Automation engine — ingest, automation, pipeline, graph, dm, store, rulebook
+packages/db/     Drizzle schema + repos (Postgres/Supabase)
+packages/auth/   BetterAuth · packages/shared/  shared contracts
+worker/          BullMQ worker (event ingest + outbound send)
 ```
 
-State lives in `~/.mira/ig.json`, not in the repo or a database.
+See `PROJECT_STRUCTURE.md` for the full map. State lives in Postgres (Drizzle) + Redis; the
+Instagram access token is the only thing kept outside the DB (`~/.mira/ig.json`, file mode `0600`).
 
 ---
 
@@ -118,11 +118,11 @@ State lives in `~/.mira/ig.json`, not in the repo or a database.
 
 | Command | Action |
 |---------|--------|
-| `npm run start:all` | Start Ollama (if not running) **and** the dev server together |
-| `npm run dev` | Start the dev server only |
-| `npm run build` | Production build |
-| `npm start` | Run the production build |
-| `npm run lint` | Lint |
+| `bun run start:all` | Start Ollama (if not running) **and** the dev server together |
+| `bun run dev` | Start the dev server only |
+| `bun run build` | Production build |
+| `bun start` | Run the production build |
+| `bun run lint` | Lint |
 
 ---
 

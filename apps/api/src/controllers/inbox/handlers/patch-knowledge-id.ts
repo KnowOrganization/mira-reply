@@ -12,5 +12,5 @@ export const patchKnowledgeIdHandler = new Elysia().use(authPlugin).patch(
     if (!result) { set.status = 404; return { error: "not found" }; }
     return result;
   },
-  { auth: true }
+  { requireRole: "agent" }
 );
