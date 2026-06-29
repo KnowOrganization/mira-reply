@@ -1,13 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-// Public deploy = landing page only. The full Mira app is kept off the public
-// URL (you run it locally): every non-landing route redirects to /landing, so
-// the dashboard/app is never served publicly. Static assets, _next, fonts, and
-// favicon are excluded via the matcher so the landing renders correctly.
+// The full Mira app is served on the public domain (login-gated by proxy.ts +
+// per-route requireUser). Set PUBLIC_LANDING_ONLY=1 to restore the old
+// marketing-only deploy: every non-landing/storefront route redirects to
+// /landing. Static assets, _next, fonts, favicon are excluded via the matcher.
 export function middleware(req: NextRequest) {
-  // Only restrict on the public Vercel deploy. Locally (no VERCEL env) serve the
-  // full Mira app as normal.
-  if (!process.env.VERCEL) return NextResponse.next();
+  if (process.env.PUBLIC_LANDING_ONLY !== "1") return NextResponse.next();
   const { pathname } = req.nextUrl;
   if (pathname === "/landing" || pathname.startsWith("/landing/")) {
     return NextResponse.next();

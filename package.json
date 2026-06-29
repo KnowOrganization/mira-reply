@@ -11,9 +11,12 @@
     "dev:web": "bun --filter @shaiz/web dev",
     "dev:api": "bun --filter @shaiz/api dev",
     "dev:all": "bun run dev:web & bun run dev:api",
+    "mobile": "bun --filter @shaiz/mobile start",
+    "mobile:ios": "bun --filter @shaiz/mobile ios",
+    "mobile:android": "bun --filter @shaiz/mobile android",
     "mira": "bash scripts/start-mira.sh",
     "start:all": "bash scripts/start-mira.sh",
-    "tunnel": "ngrok http 3000 --url=https://unveiled-walrus-blade.ngrok-free.dev",
+    "tunnel": "cloudflared tunnel run mira-dev",
     "build": "bun --filter @shaiz/web build",
     "start": "bun --filter @shaiz/web start",
     "lint": "bun --filter @shaiz/web lint",
@@ -23,6 +26,7 @@
     "test": "bun test tests/",
     "mcp:brain": "tsx scripts/mcp-brain.mjs",
     "worker": "tsx --env-file=.env worker/index.ts",
+    "worker:prod": "tsx worker/index.ts",
     "worker:watch": "tsx watch --env-file=.env worker/index.ts"
   },
   "dependencies": {
