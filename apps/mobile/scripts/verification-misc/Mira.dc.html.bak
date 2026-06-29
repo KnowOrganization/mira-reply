@@ -1,0 +1,1390 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-frame:#f2f2f7; --bg:#ffffff; --bg-elev:#ffffff; --bg-sidebar:#fbfbfc; --bg-inset:#e9e9ee;
+    --border:#e8e8ec; --border-strong:#d8d8dd; --text:#1a1a1f; --text-muted:#6b6f76; --text-subtle:#9ca0a8;
+    --accent:#4f6bed; --accent-fg:#ffffff; --accent-soft:#eceffd; --accent-deep:#2a3da8;
+    --st-progress:#f2c94c; --st-done:#5e9e6e; --st-blocked:#e5484d; --st-warm:#e08a3c; --purple:#9b5de5;
+    --bubble-them:#f0f0f3; --bubble-them-fg:#1a1a1f;
+    --shadow-card:0 1px 2px rgba(20,21,26,.05); --shadow-pop:0 8px 30px -8px rgba(20,21,26,.18),0 2px 6px rgba(20,21,26,.06); --shadow-soft:0 8px 24px -12px rgba(20,21,26,.1);
+  }
+  [data-theme="dark"]{
+    --bg-frame:#000000; --bg:#000000; --bg-elev:#1c1c1c; --bg-sidebar:#0a0a0a; --bg-inset:#262626;
+    --border:#363636; --border-strong:#4a4a4a; --text:#f5f5f5; --text-muted:#a8a8a8; --text-subtle:#737373;
+    --accent:#0095f6; --accent-fg:#ffffff; --accent-soft:#16283a; --accent-deep:#66bcff;
+    --st-progress:#f2c94c; --st-done:#5e9e6e; --st-blocked:#e5484d; --st-warm:#e08a3c; --purple:#b07aff;
+    --bubble-them:#262628; --bubble-them-fg:#f5f5f5;
+    --shadow-card:0 1px 2px rgba(0,0,0,.5); --shadow-pop:0 2px 10px rgba(0,0,0,.6),0 24px 52px -14px rgba(0,0,0,.85); --shadow-soft:0 10px 28px -14px rgba(0,0,0,.7);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:0;height:0;display:none;}
+  .scroll{scrollbar-width:none;-ms-overflow-style:none;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes pop{0%{transform:scale(.85);opacity:0;}100%{transform:scale(1);opacity:1;}}
+  @keyframes slideup{from{transform:translateY(14px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+  @keyframes dotp{0%,80%,100%{opacity:.25;transform:translateY(0);}40%{opacity:1;transform:translateY(-3px);}}
+  @keyframes glow{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent);}50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--accent) 0%,transparent);}}
+  @keyframes msgin{from{transform:translateY(8px) scale(.96);opacity:0;}to{transform:translateY(0) scale(1);opacity:1;}}
+  @keyframes rayspin{to{transform:rotate(360deg);}}
+  @keyframes rin{from{transform:translateX(100%);}to{transform:translateX(0);}}
+  @keyframes rout{from{transform:translateX(0);}to{transform:translateX(100%);}}
+  @keyframes shin{from{transform:translateY(100%);}to{transform:translateY(0);}}
+  @keyframes shout{from{transform:translateY(0);}to{transform:translateY(100%);}}
+  @keyframes fin{from{opacity:0;}to{opacity:1;}}
+  @keyframes fout{from{opacity:1;}to{opacity:0;}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;width:100%;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(120% 120% at 50% 0%,#23252e 0%,#141519 55%,#0c0d10 100%);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Inter',system-ui,sans-serif;">
+
+  <div data-theme="{{ theme }}" style="position:relative;width:390px;height:844px;border-radius:54px;background:#000;padding:13px;box-shadow:0 0 0 2px #2a2a2e,0 30px 80px -20px rgba(0,0,0,.7),0 12px 30px -10px rgba(0,0,0,.6);flex-shrink:0;">
+    <div style="position:absolute;inset:0;border-radius:54px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);pointer-events:none;z-index:60;"></div>
+
+    <div style="position:relative;width:100%;height:100%;border-radius:42px;overflow:hidden;background:var(--bg-frame);color:var(--text);">
+
+      <!-- ===== STATUS BAR ===== -->
+      <div style="position:absolute;top:0;left:0;right:0;height:52px;z-index:50;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 8px;pointer-events:none;">
+        <div style="font-size:15px;font-weight:600;letter-spacing:-.02em;color:var(--text);">9:41</div>
+        <div style="display:flex;align-items:center;gap:7px;">
+          <svg width="18" height="12" viewBox="0 0 18 12" fill="var(--text)"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="4.5" width="3" height="7.5" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="var(--text)"><path d="M8.5 2.4c2.3 0 4.4.9 6 2.4l1.4-1.5A11 11 0 0 0 8.5.3 11 11 0 0 0 1 3.3l1.5 1.5a8.6 8.6 0 0 1 6-2.4Zm0 4c1.2 0 2.3.5 3.1 1.3l1.4-1.5a7 7 0 0 0-9 0l1.4 1.5A4.5 4.5 0 0 1 8.5 6.4Zm0 3.9 2-2.1a3 3 0 0 0-4 0l2 2.1Z"/></svg>
+          <div style="display:flex;align-items:center;gap:2px;"><div style="width:23px;height:12px;border:1px solid var(--text);opacity:.5;border-radius:3px;display:flex;align-items:center;padding:1.5px;"><div style="width:70%;height:100%;background:var(--text);border-radius:1.5px;"></div></div><div style="width:1.5px;height:4px;background:var(--text);opacity:.4;border-radius:2px;"></div></div>
+        </div>
+      </div>
+
+      <!-- ===== PRE-APP FLOW ===== -->
+      <sc-if value="{{ showPreApp }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;inset:0;z-index:40;background:var(--bg-frame);overflow:hidden;">
+        <div style="position:absolute;width:520px;height:520px;top:-14%;right:-22%;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 22%,transparent),transparent 68%);pointer-events:none;"></div>
+
+        <!-- SIGN IN -->
+        <sc-if value="{{ stageSignin }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 36px;text-align:center;">
+          <div style="width:88px;height:88px;border-radius:24px;background:linear-gradient(150deg,var(--accent),var(--accent-deep));display:flex;align-items:center;justify-content:center;box-shadow:0 18px 40px -12px color-mix(in srgb,var(--accent) 70%,transparent);animation:pop .6s cubic-bezier(.2,.9,.3,1.4);"><img src="mira-logo-white.png" alt="Mira" style="width:60px;height:60px;animation:rayspin 28s linear infinite;" /></div>
+          <div style="font-size:28px;font-weight:800;letter-spacing:-.035em;margin-top:26px;">Welcome to Mira</div>
+          <div style="font-size:14.5px;line-height:1.5;color:var(--text-muted);margin-top:10px;max-width:280px;">Sign in to connect your Instagram and automate replies.</div>
+          <button onClick="{{ signIn }}" style="margin-top:30px;display:flex;align-items:center;justify-content:center;gap:11px;height:52px;width:100%;max-width:320px;border-radius:999px;border:1px solid var(--border-strong);background:var(--bg-elev);color:var(--text);font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;box-shadow:var(--shadow-card);transition:transform .12s;" style-active="transform:scale(.98)">
+            <sc-if value="{{ gIdle }}" hint-placeholder-val="{{ true }}"><svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1Z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84Z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.3 9.14 5.38 12 5.38Z"/></svg></sc-if>
+            <sc-if value="{{ gBusy }}" hint-placeholder-val="{{ false }}"><div style="width:18px;height:18px;border:2px solid var(--border-strong);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;"></div></sc-if>
+            {{ gLabel }}
+          </button>
+          <div style="position:absolute;bottom:40px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:8px;font-size:11.5px;color:var(--text-subtle);">By continuing you agree to our <span style="text-decoration:underline;">Terms</span> · <span style="text-decoration:underline;">Privacy</span></div>
+        </div>
+        </sc-if>
+
+        <!-- INTRO -->
+        <sc-if value="{{ stageIntro }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:58px 32px 40px;">
+          <div style="display:flex;justify-content:flex-end;"><button onClick="{{ introSkip }}" style="border:none;background:none;color:var(--text-subtle);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;padding:6px;">Skip</button></div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+            <div style="width:96px;height:96px;border-radius:28px;background:var(--accent-soft);color:var(--accent-deep);display:flex;align-items:center;justify-content:center;animation:pop .45s ease both;">{{ intro.ic }}</div>
+            <div style="font-size:27px;font-weight:800;letter-spacing:-.03em;line-height:1.1;margin-top:30px;max-width:300px;">{{ intro.title }}</div>
+            <div style="font-size:15px;line-height:1.55;color:var(--text-muted);margin-top:14px;max-width:300px;">{{ intro.body }}</div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:24px;">
+            <sc-for list="{{ introDots }}" as="d" hint-placeholder-count="3"><div style="width:{{ d.w }};height:7px;border-radius:4px;background:{{ d.bg }};transition:all .25s;"></div></sc-for>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <sc-if value="{{ introBackShow }}" hint-placeholder-val="{{ false }}"><button onClick="{{ introBack }}" style="width:52px;height:52px;border-radius:16px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button></sc-if>
+            <button onClick="{{ introNext }}" style="flex:1;height:52px;border:none;border-radius:16px;background:var(--accent);color:var(--accent-fg);font-family:inherit;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 10px 24px -10px color-mix(in srgb,var(--accent) 80%,transparent);transition:transform .12s;" style-active="transform:scale(.98)">{{ introCta }}</button>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- CONNECT INSTAGRAM -->
+        <sc-if value="{{ stageConnect }}" hint-placeholder-val="{{ false }}">
+        <div class="scroll" style="position:absolute;inset:0;overflow-y:auto;display:flex;flex-direction:column;align-items:center;padding:54px 28px 30px;text-align:center;">
+          <div style="width:64px;height:64px;border-radius:19px;background:linear-gradient(150deg,var(--accent),var(--accent-deep));display:flex;align-items:center;justify-content:center;box-shadow:0 14px 32px -12px color-mix(in srgb,var(--accent) 70%,transparent);"><img src="mira-logo-white.png" alt="Mira" style="width:44px;height:44px;" /></div>
+          <div style="font-size:30px;font-weight:800;letter-spacing:-.04em;margin-top:18px;">Connect Instagram</div>
+          <div style="font-size:14px;line-height:1.5;color:var(--text-muted);margin-top:9px;max-width:300px;">Mira manages your Instagram comments and DMs. Connect your account to begin.</div>
+          <div style="width:100%;border:1px solid var(--border);background:var(--bg-elev);border-radius:24px;box-shadow:var(--shadow-pop);padding:20px;margin-top:24px;text-align:left;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+              <div style="width:44px;height:44px;border-radius:14px;background:var(--accent);color:var(--accent-fg);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="6"/><circle cx="12" cy="12" r="4.5"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg></div>
+              <div><div style="font-size:14.5px;font-weight:700;">Instagram Business</div><div style="font-size:12px;color:var(--text-subtle);">Comments · DMs · Insights</div></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:11px;margin-bottom:20px;">
+              <sc-for list="{{ connectFeatures }}" as="f" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:11px;font-size:13px;color:var(--text-muted);"><span style="width:32px;height:32px;border-radius:10px;background:var(--accent-soft);color:var(--accent-deep);display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ f.ic }}</span>{{ f.text }}</div>
+              </sc-for>
+            </div>
+            <button onClick="{{ connect }}" style="width:100%;height:52px;border:none;border-radius:16px;background:var(--accent);color:var(--accent-fg);font-family:inherit;font-size:14.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:var(--shadow-soft);transition:transform .12s;" style-active="transform:scale(.98)">
+              <sc-if value="{{ connecting }}" hint-placeholder-val="{{ false }}"><div style="width:18px;height:18px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;"></div></sc-if>{{ connectLabel }}<sc-if value="{{ notConnecting }}" hint-placeholder-val="{{ true }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></sc-if>
+            </button>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:16px;font-size:11.5px;color:var(--text-subtle);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5l-8-3Z"/></svg>Official Meta Graph API · your token stays on your device</div>
+          <button onClick="{{ previewApp }}" style="margin-top:16px;border:none;background:none;color:var(--text-subtle);font-family:inherit;font-size:12.5px;cursor:pointer;text-decoration:underline;">Preview the app without connecting →</button>
+        </div>
+        </sc-if>
+
+        <!-- TRAIN BRAIN -->
+        <sc-if value="{{ stageBrain }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:60px 32px 40px;">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+            <div style="width:96px;height:96px;border-radius:28px;background:var(--accent-soft);color:var(--accent-deep);display:flex;align-items:center;justify-content:center;position:relative;"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2Z"/></svg><div style="position:absolute;inset:-6px;border-radius:32px;border:2px solid var(--accent);opacity:.25;animation:glow 1.9s ease-in-out infinite;"></div></div>
+            <div style="font-size:26px;font-weight:800;letter-spacing:-.03em;margin-top:28px;">Training your brain</div>
+            <div style="font-size:14.5px;line-height:1.55;color:var(--text-muted);margin-top:12px;max-width:300px;">Mira is learning your voice from your recent replies &amp; captions, so every draft sounds like you.</div>
+            <div style="width:100%;max-width:300px;height:6px;border-radius:4px;background:var(--bg-inset);margin-top:24px;overflow:hidden;"><div style="height:100%;width:78%;background:var(--accent);border-radius:4px;"></div></div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:20px;">
+              <sc-for list="{{ brainChips }}" as="c" hint-placeholder-count="3"><div style="font-size:12.5px;color:var(--text-muted);background:var(--bg-elev);border:1px solid var(--border);border-radius:999px;padding:7px 13px;box-shadow:var(--shadow-card);">{{ c }}</div></sc-for>
+            </div>
+          </div>
+          <button onClick="{{ brainDone }}" style="height:52px;border:none;border-radius:16px;background:var(--accent);color:var(--accent-fg);font-family:inherit;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 10px 24px -10px color-mix(in srgb,var(--accent) 80%,transparent);transition:transform .12s;" style-active="transform:scale(.98)">Enter Mira</button>
+          <button onClick="{{ brainDone }}" style="margin-top:10px;border:none;background:none;color:var(--text-subtle);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;">Skip for now</button>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <!-- ===== APP ===== -->
+      <sc-if value="{{ booted }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;">
+
+        <!-- ---- HOME ---- -->
+        <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;">
+          <div onPointerDown="{{ pullDown }}" onPointerMove="{{ pullMove }}" onPointerUp="{{ pullUp }}" class="scroll" style="flex:1;overflow-y:auto;overscroll-behavior:contain;padding:58px 18px 116px;">
+            <div style="height:{{ pullH }};display:flex;align-items:flex-end;justify-content:center;overflow:hidden;transition:{{ pullTrans }};">
+              <div style="display:flex;align-items:center;gap:7px;color:var(--text-subtle);font-size:12px;padding-bottom:8px;"><div style="width:15px;height:15px;border:2px solid var(--border-strong);border-top-color:var(--accent);border-radius:50%;{{ pullSpin }}"></div>{{ pullLabel }}</div>
+            </div>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;">
+              <div>
+                <div style="font-size:13px;color:var(--text-subtle);font-weight:500;">{{ greeting }}</div>
+                <div style="font-size:32px;font-weight:800;letter-spacing:-.04em;line-height:1;margin-top:3px;">Home</div>
+              </div>
+              <button onClick="{{ openSettings }}" style="width:40px;height:40px;border-radius:50%;border:1px solid var(--border);background:linear-gradient(150deg,var(--accent),var(--accent-deep));color:#fff;font-weight:700;font-size:14px;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">DS</button>
+            </div>
+            <div style="border-radius:18px;background:var(--bg-elev);padding:20px 20px 18px;position:relative;overflow:hidden;animation:slideup .4s ease both;box-shadow:0 1px 3px rgba(20,21,26,.05);">
+              <div style="position:absolute;inset:0;background:radial-gradient(80% 95% at 96% 0%,color-mix(in srgb,var(--accent) 12%,transparent),transparent 62%);pointer-events:none;"></div>
+              <div style="position:relative;">
+                <div style="font-size:12.5px;color:var(--text-subtle);font-weight:500;">Here's how Mira is handling things</div>
+                <div style="display:flex;align-items:flex-end;gap:11px;margin-top:6px;">
+                  <div style="font-size:66px;font-weight:800;letter-spacing:-.05em;line-height:.82;color:var(--accent);">{{ dash.coverage }}%</div>
+                  <div style="padding-bottom:9px;font-size:13px;line-height:1.25;color:var(--text-muted);">of comments<br>covered</div>
+                </div>
+                <div style="display:flex;gap:22px;margin-top:16px;font-size:12.5px;color:var(--text-muted);">
+                  <div><b style="color:var(--text);">{{ dash.replies }}</b> replies</div>
+                  <div><b style="color:var(--text);">{{ dash.comments }}</b> comments</div>
+                  <div><b style="color:var(--text);">{{ dash.facts }}</b> facts</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);margin:24px 6px 8px;">Reply mode</div>
+            <div style="display:flex;gap:4px;background:var(--bg-inset);border-radius:11px;padding:3px;">
+              <sc-for list="{{ modes }}" as="m" hint-placeholder-count="3">
+                <button onClick="{{ m.set }}" style="flex:1;height:34px;border:none;border-radius:8px;font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;transition:all .18s;background:{{ m.bg }};color:{{ m.fg }};box-shadow:{{ m.sh }};">{{ m.label }}</button>
+              </sc-for>
+            </div>
+            <div style="font-size:12.5px;color:var(--text-subtle);margin:9px 6px 0;line-height:1.4;">{{ modeDesc }}</div>
+
+            <div style="font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);margin:24px 6px 8px;">Today</div>
+            <div style="background:var(--bg-elev);border-radius:13px;overflow:hidden;box-shadow:0 1px 3px rgba(20,21,26,.05);">
+              <sc-for list="{{ todayRows }}" as="c" hint-placeholder-count="5">
+                <sc-if value="{{ c.divider }}" hint-placeholder-val="{{ false }}"><div style="height:.5px;background:var(--border);margin-left:16px;"></div></sc-if>
+                <div style="display:flex;align-items:center;padding:12px 16px;min-height:47px;">
+                  <span style="flex:1;font-size:15px;color:var(--text);">{{ c.label }}</span>
+                  <span style="font-size:17px;font-weight:600;color:{{ c.vcol }};letter-spacing:-.01em;">{{ c.value }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="font-size:12.5px;color:var(--text-subtle);margin:8px 6px 0;line-height:1.45;">{{ dash.activity }}</div>
+
+            <div style="font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);margin:24px 6px 8px;">Your store</div>
+            <button onClick="{{ openStorefront }}" style="width:100%;text-align:left;border:none;border-radius:16px;overflow:hidden;cursor:pointer;font-family:inherit;background:var(--bg-elev);box-shadow:0 1px 3px rgba(20,21,26,.05);display:block;padding:0;transition:transform .12s;" style-active="transform:scale(.99)">
+              <div style="height:104px;background:linear-gradient(135deg,{{ sf.accent }},color-mix(in srgb,{{ sf.accent }} 52%,#000));position:relative;">
+                <div style="position:absolute;top:13px;left:14px;display:flex;align-items:center;gap:6px;"><div style="width:7px;height:7px;border-radius:50%;background:#fff;"></div><span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#fff;text-transform:uppercase;">Live</span></div>
+                <div style="position:absolute;bottom:12px;left:14px;font-size:12.5px;font-weight:600;color:#fff;background:rgba(0,0,0,.22);padding:5px 11px;border-radius:8px;">mira.shop/{{ sf.handle }}</div>
+                <div style="position:absolute;top:14px;right:14px;display:flex;gap:7px;">
+                  <sc-for list="{{ sf.heroThumbs }}" as="h" hint-placeholder-count="3"><div style="width:36px;height:46px;border-radius:8px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;">{{ h }}</div></sc-for>
+                </div>
+              </div>
+              <div style="padding:13px 15px;display:flex;align-items:center;gap:10px;">
+                <div style="flex:1;"><div style="font-size:16.5px;font-weight:700;letter-spacing:-.01em;">Storefront</div><div style="font-size:12.5px;color:var(--text-subtle);margin-top:1px;">Your shop, auto-built from the catalog</div></div>
+                <span style="font-size:13.5px;font-weight:600;color:var(--accent);display:flex;align-items:center;gap:1px;">Open<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span>
+              </div>
+            </button>
+            <button onClick="{{ openCatalog }}" style="width:100%;margin-top:11px;text-align:left;border:none;border-radius:16px;cursor:pointer;font-family:inherit;background:var(--bg-elev);box-shadow:0 1px 3px rgba(20,21,26,.05);padding:14px 15px;display:flex;align-items:center;gap:14px;transition:transform .12s;" style-active="transform:scale(.99)">
+              <div style="display:flex;padding-left:9px;flex-shrink:0;">
+                <sc-for list="{{ sf.catThumbs }}" as="h" hint-placeholder-count="4"><div style="width:38px;height:38px;border-radius:10px;background:var(--accent-soft);color:var(--accent-deep);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;margin-left:-9px;border:2px solid var(--bg-elev);">{{ h }}</div></sc-for>
+              </div>
+              <div style="flex:1;min-width:0;"><div style="font-size:16px;font-weight:700;">Catalog</div><div style="font-size:12.5px;color:var(--text-subtle);margin-top:1px;">{{ sf.productCount }} products · {{ sf.inStock }} in stock</div></div>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.45;flex-shrink:0;"><path d="m9 6 6 6-6 6"/></svg>
+            </button>
+
+            <div style="font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);margin:24px 6px 8px;">Manage</div>
+            <div style="background:var(--bg-elev);border-radius:13px;overflow:hidden;box-shadow:0 1px 3px rgba(20,21,26,.05);">
+              <sc-for list="{{ jumps }}" as="j" hint-placeholder-count="3">
+                <sc-if value="{{ j.divider }}" hint-placeholder-val="{{ false }}"><div style="height:.5px;background:var(--border);margin-left:58px;"></div></sc-if>
+                <button onClick="{{ j.go }}" style="width:100%;display:flex;align-items:center;gap:12px;padding:11px 14px;min-height:54px;border:none;background:none;cursor:pointer;font-family:inherit;text-align:left;" style-active="background:var(--bg-inset)">
+                  <div style="width:30px;height:30px;border-radius:8px;background:var(--accent-soft);color:var(--accent-deep);display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ j.icon }}</div>
+                  <span style="flex:1;font-size:16px;color:var(--text);">{{ j.label }}</span>
+                  <span style="font-size:14px;color:var(--text-subtle);">{{ j.meta }}</span>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.45;margin-left:2px;flex-shrink:0;"><path d="m9 6 6 6-6 6"/></svg>
+                </button>
+              </sc-for>
+            </div>
+
+            <div style="font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);margin:24px 6px 8px;">Account safety</div>
+            <div style="background:var(--bg-elev);border-radius:13px;padding:16px;box-shadow:0 1px 3px rgba(20,21,26,.05);">
+              <div style="display:flex;align-items:baseline;gap:7px;"><span style="font-size:22px;font-weight:700;color:var(--st-done);letter-spacing:-.02em;">{{ dash.sent }}</span><span style="font-size:13px;color:var(--text-subtle);">of {{ dash.cap }} daily send cap</span></div>
+              <div style="height:6px;border-radius:4px;background:var(--bg-inset);margin-top:11px;overflow:hidden;"><div style="height:100%;width:{{ dash.capPct }};background:var(--st-done);border-radius:4px;transition:width .6s;"></div></div>
+            </div>
+            <div style="font-size:12.5px;color:var(--text-subtle);margin:8px 6px 0;line-height:1.45;">Every reply is uniqueness-checked &amp; paced — no bursts. Sends are jittered to stay human.</div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ---- INBOX ---- -->
+        <sc-if value="{{ isInbox }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;">
+          <div style="padding:58px 18px 8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div style="font-size:32px;font-weight:800;letter-spacing:-.04em;">Inbox</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--st-done);background:color-mix(in srgb,var(--st-done) 12%,transparent);padding:5px 10px;border-radius:999px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--st-done);animation:glow 1.9s ease-in-out infinite;"></div>Live</div>
+            </div>
+            <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">{{ inboxSub }}</div>
+          </div>
+          <div class="scroll" style="flex:1;overflow-y:auto;padding:6px 18px 116px;">
+            <sc-if value="{{ hasDrafts }}" hint-placeholder-val="{{ true }}">
+            <sc-for list="{{ drafts }}" as="d" hint-placeholder-count="3">
+              <div style="position:relative;margin-bottom:11px;border-radius:18px;overflow:hidden;">
+                <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:linear-gradient(90deg,var(--st-done),color-mix(in srgb,var(--st-done) 70%,#000) 100%);">
+                  <div style="display:flex;align-items:center;gap:8px;color:#fff;font-weight:700;font-size:14px;opacity:{{ d.revR }};"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m5 12 4 4L19 7"/></svg>Send</div>
+                  <div style="display:flex;align-items:center;gap:8px;color:#fff;font-weight:700;font-size:14px;opacity:{{ d.revL }};">Skip<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+                </div>
+                <div onClick="{{ d.open }}" onPointerDown="{{ d.down }}" onPointerMove="{{ d.move }}" onPointerUp="{{ d.up }}" style="position:relative;border:1px solid var(--border);background:var(--bg-elev);box-shadow:var(--shadow-card);border-radius:18px;padding:14px;transform:{{ d.tf }};transition:{{ d.tr }};touch-action:pan-y;cursor:grab;">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:38px;height:38px;border-radius:50%;background:{{ d.av }};color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ d.initials }}</div>
+                    <div style="flex:1;min-width:0;">
+                      <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:14px;font-weight:600;">{{ d.name }}</span><span style="font-size:11px;color:var(--text-subtle);">{{ d.time }}</span></div>
+                      <div style="font-size:11.5px;color:var(--text-subtle);">{{ d.handle }}</div>
+                    </div>
+                    <div style="font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:4px 8px;border-radius:7px;background:{{ d.tagbg }};color:{{ d.tagfg }};flex-shrink:0;">{{ d.intent }}</div>
+                  </div>
+                  <div style="margin-top:11px;font-size:13px;line-height:1.4;color:var(--text-muted);background:var(--bg-inset);border-radius:11px;padding:9px 11px;">{{ d.comment }}</div>
+                  <div style="margin-top:8px;display:flex;gap:8px;align-items:flex-start;">
+                    <div style="width:20px;height:20px;border-radius:6px;background:var(--accent-soft);color:var(--accent-deep);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 5.4L19 9l-5.4 1.6L12 16l-1.6-5.4L5 9l5.4-1.6L12 2Z"/></svg></div>
+                    <div style="flex:1;font-size:13px;line-height:1.45;color:var(--text);background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 22%,transparent);border-radius:11px;border-top-left-radius:3px;padding:9px 11px;">{{ d.draft }}</div>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+                    <div style="font-size:10.5px;color:var(--text-subtle);display:flex;align-items:center;gap:5px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>{{ d.window }}</div>
+                    <div style="display:flex;gap:7px;">
+                      <button onClick="{{ d.skip }}" style="width:32px;height:32px;border-radius:9px;border:1px solid var(--border);background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-subtle);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+                      <button onClick="{{ d.approve }}" style="height:32px;padding:0 14px;border-radius:9px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m5 12 4 4L19 7"/></svg>Send</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+            </sc-if>
+            <sc-if value="{{ noDrafts }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align:center;padding:70px 20px;">
+                <div style="font-size:46px;">✨</div>
+                <div style="font-size:18px;font-weight:700;margin-top:10px;letter-spacing:-.02em;">Inbox zero</div>
+                <div style="font-size:13px;color:var(--text-muted);margin-top:6px;">Mira's handling everything. New drafts will appear here for your approval.</div>
+                <button onClick="{{ resetDrafts }}" style="margin-top:18px;height:40px;padding:0 18px;border-radius:11px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">Replay demo drafts</button>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ---- OPPORTUNITIES (deal feed) ---- -->
+        <sc-if value="{{ isOpps }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;">
+          <div style="padding:58px 18px 6px;">
+            <div style="font-size:32px;font-weight:800;letter-spacing:-.04em;">Pipeline</div>
+            <div style="display:flex;gap:10px;margin-top:12px;">
+              <div style="flex:1;border-radius:15px;border:1px solid var(--border);background:var(--bg-elev);box-shadow:var(--shadow-card);padding:11px 12px;">
+                <div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-subtle);">Open value</div>
+                <div style="font-size:21px;font-weight:800;letter-spacing:-.03em;color:var(--accent);margin-top:2px;">{{ oppSummary.pipeline }}</div>
+              </div>
+              <div style="flex:1;border-radius:15px;border:1px solid var(--border);background:var(--bg-elev);box-shadow:var(--shadow-card);padding:11px 12px;">
+                <div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-subtle);">Won / mo</div>
+                <div style="font-size:21px;font-weight:800;letter-spacing:-.03em;margin-top:2px;">{{ oppSummary.won }}</div>
+              </div>
+              <div style="flex:1;border-radius:15px;border:1px solid var(--border);background:var(--bg-elev);box-shadow:var(--shadow-card);padding:11px 12px;">
+                <div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-subtle);">Win rate</div>
+                <div style="font-size:21px;font-weight:800;letter-spacing:-.03em;margin-top:2px;color:var(--st-done);">{{ oppSummary.rate }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="scroll" style="display:flex;gap:8px;padding:10px 18px 4px;overflow-x:auto;flex-shrink:0;">
+            <sc-for list="{{ oppChips }}" as="ch" hint-placeholder-count="5">
+              <button onClick="{{ ch.set }}" style="flex:0 0 auto;height:34px;padding:0 14px;border-radius:999px;border:1px solid {{ ch.bd }};background:{{ ch.bg }};color:{{ ch.fg }};font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">{{ ch.label }}<span style="font-size:11px;opacity:.7;">{{ ch.n }}</span></button>
+            </sc-for>
+          </div>
+          <div class="scroll" style="flex:1;overflow-y:auto;padding:8px 18px 116px;">
+            <sc-for list="{{ feed }}" as="o" hint-placeholder-count="4">
+              <div style="border:1px solid var(--border);background:var(--bg-elev);box-shadow:var(--shadow-card);border-radius:18px;padding:15px;margin-bottom:12px;animation:slideup .35s ease both;">
+                <div style="display:flex;align-items:center;gap:11px;">
+                  <div style="width:42px;height:42px;border-radius:50%;background:{{ o.av }};color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ o.initials }}</div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-size:15px;font-weight:700;letter-spacing:-.01em;">{{ o.name }}</div>
+                    <div style="font-size:12px;color:var(--text-subtle);">{{ o.handle }}</div>
+                  </div>
+                  <div style="position:relative;width:44px;height:44px;flex-shrink:0;">
+                    <svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="17" fill="none" stroke="var(--bg-inset)" stroke-width="4"/><circle cx="22" cy="22" r="17" fill="none" stroke="{{ o.confcol }}" stroke-width="4" stroke-linecap="round" stroke-dasharray="{{ o.ringC }}" stroke-dashoffset="{{ o.ringOff }}" transform="rotate(-90 22 22)"/></svg>
+                    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:{{ o.confcol }};">{{ o.conf }}</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:13px;">
+                  <span style="font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:5px 9px;border-radius:7px;background:var(--accent-soft);color:var(--accent-deep);">{{ o.type }}</span>
+                  <span style="margin-left:auto;font-size:21px;font-weight:800;letter-spacing:-.03em;">{{ o.value }}</span>
+                </div>
+                <div style="position:relative;margin-top:16px;padding:0 2px;">
+                  <div style="position:absolute;top:6px;left:8%;right:8%;height:2px;background:var(--border);"></div>
+                  <div style="position:absolute;top:6px;left:8%;width:{{ o.fillW }};height:2px;background:var(--accent);transition:width .35s;"></div>
+                  <div style="position:relative;display:flex;justify-content:space-between;">
+                    <sc-for list="{{ o.stages }}" as="st" hint-placeholder-count="4">
+                      <div onClick="{{ st.set }}" style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;cursor:pointer;">
+                        <div style="width:13px;height:13px;border-radius:50%;background:{{ st.dot }};border:2px solid {{ st.ring }};box-sizing:border-box;transition:all .2s;"></div>
+                        <span style="font-size:9px;font-weight:600;color:{{ st.lcol }};white-space:nowrap;">{{ st.label }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <sc-if value="{{ o.hasCta }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ o.cta }}" style="width:100%;margin-top:15px;height:38px;border-radius:11px;border:none;background:{{ o.ctaBg }};color:{{ o.ctaFg }};font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">{{ o.ctaLabel }}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+                </sc-if>
+                <sc-if value="{{ o.won }}" hint-placeholder-val="{{ false }}">
+                <div style="width:100%;margin-top:15px;height:38px;border-radius:11px;background:color-mix(in srgb,var(--st-done) 14%,transparent);color:var(--st-done);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;">🎉 Closed won · {{ o.value }}</div>
+                </sc-if>
+              </div>
+            </sc-for>
+            <div style="text-align:center;font-size:11.5px;color:var(--text-subtle);padding:6px 0 0;">Mira detects deals from your DMs automatically.</div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ---- FLOWS (automations) ---- -->
+        <sc-if value="{{ isAuto }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;">
+          <div style="padding:58px 18px 10px;display:flex;align-items:flex-start;justify-content:space-between;">
+            <div>
+              <div style="font-size:32px;font-weight:800;letter-spacing:-.04em;">Automations</div>
+              <div style="font-size:13px;color:var(--text-muted);margin-top:4px;"><b style="color:var(--text);">{{ flowsActive }}</b> active · {{ flowsCount }} flows built</div>
+            </div>
+            <button onClick="{{ newFlow }}" style="width:40px;height:40px;border-radius:12px;border:none;background:var(--accent);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 6px 16px -8px color-mix(in srgb,var(--accent) 80%,transparent);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+          </div>
+          <div class="scroll" style="flex:1;overflow-y:auto;padding:6px 18px 116px;">
+            <sc-for list="{{ flows }}" as="f" hint-placeholder-count="5">
+              <div style="border:1px solid var(--border);background:var(--bg-elev);box-shadow:var(--shadow-card);border-radius:16px;padding:14px;margin-bottom:11px;">
+                <div onClick="{{ f.open }}" style="display:flex;gap:12px;align-items:flex-start;cursor:pointer;">
+                  <div style="width:38px;height:38px;border-radius:11px;background:{{ f.iconbg }};color:{{ f.iconfg }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ f.icon }}</div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:7px;"><span style="font-size:14.5px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ f.name }}</span><div style="width:6px;height:6px;border-radius:50%;background:{{ f.runDot }};flex-shrink:0;"></div></div>
+                    <div style="font-size:11.5px;color:var(--text-subtle);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ f.runs }}</div>
+                  </div>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" stroke-width="2" stroke-linecap="round" style="margin-top:10px;flex-shrink:0;"><path d="m9 6 6 6-6 6"/></svg>
+                </div>
+                <div class="scroll" style="display:flex;align-items:center;gap:5px;margin-top:11px;overflow-x:auto;">
+                  <sc-for list="{{ f.chips }}" as="cp" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+                      <span style="font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:7px;background:{{ cp.bg }};color:{{ cp.fg }};white-space:nowrap;">{{ cp.label }}</span>
+                      <sc-if value="{{ cp.arrow }}" hint-placeholder-val="{{ true }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" stroke-width="2.4" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:11px;border-top:1px solid var(--border);">
+                  <span style="font-size:11.5px;font-weight:600;color:{{ f.statusCol }};">{{ f.statusLabel }}</span>
+                  <button onClick="{{ f.toggle }}" style="width:48px;height:29px;border-radius:999px;border:none;cursor:pointer;background:{{ f.trackbg }};position:relative;flex-shrink:0;transition:background .25s;padding:0;">
+                    <div style="position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transform:{{ f.knob }};transition:transform .26s cubic-bezier(.3,1.4,.5,1);"></div>
+                  </button>
+                </div>
+              </div>
+            </sc-for>
+            <button onClick="{{ newFlow }}" style="width:100%;border:1.5px dashed var(--border-strong);background:transparent;border-radius:16px;padding:16px;color:var(--text-muted);font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:2px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New automation</button>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ===== TAB BAR ===== -->
+        <div style="position:absolute;left:0;right:0;bottom:0;height:86px;z-index:30;background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(26px) saturate(1.5);-webkit-backdrop-filter:blur(26px) saturate(1.5);border-top:.5px solid var(--border);display:flex;align-items:flex-start;padding:14px 22px 0;">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+            <sc-if value="{{ t.isCenter }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ t.go }}" style="flex:1;display:flex;justify-content:center;border:none;background:none;cursor:pointer;font-family:inherit;padding:0;">
+                <div style="position:relative;width:52px;height:38px;border-radius:13px;background:{{ t.centerBg }};display:flex;align-items:center;justify-content:center;color:{{ t.centerFg }};box-shadow:0 5px 16px -5px rgba(0,0,0,.35);transition:transform .14s;" style-active="transform:scale(.9)">{{ t.icon }}<sc-if value="{{ t.badge }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;top:-3px;right:-3px;width:11px;height:11px;border-radius:50%;background:var(--st-blocked);border:2px solid var(--bg);"></div></sc-if></div>
+              </button>
+            </sc-if>
+            <sc-if value="{{ t.normal }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ t.go }}" style="flex:1;display:flex;justify-content:center;align-items:center;height:38px;border:none;background:none;cursor:pointer;color:{{ t.col }};font-family:inherit;transition:transform .14s,color .18s;" style-active="transform:scale(.86)">{{ t.icon }}</button>
+            </sc-if>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== ROUTE OVERLAY (push) ===== -->
+      <sc-if value="{{ hasRoute }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;z-index:45;background:var(--bg);animation:{{ routeAnim }};display:flex;flex-direction:column;box-shadow:-8px 0 30px -10px rgba(0,0,0,.25);">
+        <div style="padding:54px 12px 8px;display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(20px);">
+          <button onClick="{{ pop }}" style="display:flex;align-items:center;gap:2px;border:none;background:none;color:var(--accent);font-family:inherit;font-size:16px;font-weight:500;cursor:pointer;padding:6px 6px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>{{ routeBack }}</button>
+          <div style="flex:1;text-align:center;font-size:16px;font-weight:600;letter-spacing:-.02em;margin-right:48px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ routeTitle }}</div>
+        </div>
+
+        <!-- CONTACTS -->
+        <sc-if value="{{ rContacts }}" hint-placeholder-val="{{ false }}">
+        <div class="scroll" style="flex:1;overflow-y:auto;padding:14px 18px 30px;">
+          <div style="display:flex;align-items:center;gap:8px;background:var(--bg-inset);border-radius:12px;padding:10px 12px;margin-bottom:14px;color:var(--text-subtle);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg><span style="font-size:13.5px;">Search contacts</span></div>
+          <sc-for list="{{ contacts }}" as="c" hint-placeholder-count="6">
+            <div onClick="{{ c.open }}" style="display:flex;align-items:center;gap:11px;padding:11px 6px;border-bottom:1px solid var(--border);cursor:pointer;">
+              <div style="width:42px;height:42px;border-radius:50%;background:{{ c.av }};color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ c.initials }}</div>
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:14.5px;font-weight:600;">{{ c.name }}</span><span style="font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px;background:{{ c.stbg }};color:{{ c.stfg }};">{{ c.status }}</span></div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ c.last }}</div>
+              </div>
+              <div style="text-align:right;flex-shrink:0;"><div style="font-size:11px;color:var(--text-subtle);">{{ c.time }}</div><div style="font-size:12px;font-weight:700;color:var(--accent);margin-top:3px;">{{ c.score }}</div></div>
+            </div>
+          </sc-for>
+        </div>
+        </sc-if>
+
+        <!-- CATALOG (management) -->
+        <sc-if value="{{ rCatalog }}" hint-placeholder-val="{{ false }}">
+        <div class="scroll" style="flex:1;overflow-y:auto;padding:14px 18px 30px;">
+          <button onClick="{{ openStorefront }}" style="width:100%;border:none;border-radius:13px;cursor:pointer;font-family:inherit;text-align:left;background:var(--accent-soft);padding:13px 14px;display:flex;align-items:center;gap:11px;margin-bottom:18px;" style-active="transform:scale(.99)">
+            <div style="width:32px;height:32px;border-radius:9px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9 5 4h14l2 5"/><path d="M4 9v10h16V9"/><path d="M9 13h6"/></svg></div>
+            <div style="flex:1;min-width:0;"><div style="font-size:13.5px;font-weight:700;color:var(--accent-deep);">View live storefront</div><div style="font-size:11.5px;color:var(--accent-deep);opacity:.8;">mira.shop/{{ sf.handle }}</div></div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>
+          </button>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin:0 4px 9px;">
+            <span style="font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);">{{ catInStock }} in stock · {{ catFeatured }} featured</span>
+            <button onClick="{{ addProduct }}" style="display:flex;align-items:center;gap:4px;border:none;background:none;color:var(--accent);font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add</button>
+          </div>
+          <div style="background:var(--bg-elev);border-radius:13px;overflow:hidden;box-shadow:0 1px 3px rgba(20,21,26,.05);">
+            <sc-for list="{{ catalog }}" as="p" hint-placeholder-count="5">
+              <sc-if value="{{ p.divider }}" hint-placeholder-val="{{ false }}"><div style="height:.5px;background:var(--border);margin-left:74px;"></div></sc-if>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 13px;">
+                <button onClick="{{ p.preview }}" style="width:48px;height:58px;border-radius:9px;border:none;cursor:pointer;background:{{ p.ph }};display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;"><span style="font-size:19px;font-weight:800;color:{{ p.monoCol }};letter-spacing:-.03em;">{{ p.mono }}</span></button>
+                <div onClick="{{ p.preview }}" style="flex:1;min-width:0;cursor:pointer;">
+                  <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ p.title }}</span></div>
+                  <div style="font-size:12px;color:var(--text-subtle);margin-top:1px;">{{ p.subtitle }}</div>
+                  <div style="font-size:13px;margin-top:3px;"><b style="letter-spacing:-.01em;">{{ p.price }}</b> <span style="color:var(--text-subtle);">·</span> <span style="font-weight:600;color:{{ p.availCol }};">{{ p.availLabel }}</span></div>
+                </div>
+                <button onClick="{{ p.toggleFeatured }}" style="width:30px;height:30px;border-radius:8px;border:none;background:none;cursor:pointer;color:{{ p.starCol }};display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="19" height="19" viewBox="0 0 24 24" fill="{{ p.starFill }}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 2.6 5.5 6 .8-4.4 4.2 1.1 6L12 16.8 6.7 19.5l1.1-6L3.4 9.3l6-.8z"/></svg></button>
+                <button onClick="{{ p.toggleAvail }}" style="width:46px;height:28px;border-radius:999px;border:none;cursor:pointer;background:{{ p.trackbg }};position:relative;flex-shrink:0;transition:background .25s;padding:0;"><div style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transform:{{ p.knob }};transition:transform .26s cubic-bezier(.3,1.4,.5,1);"></div></button>
+              </div>
+            </sc-for>
+          </div>
+          <button onClick="{{ addProduct }}" style="width:100%;margin-top:12px;border:1.5px dashed var(--border-strong);background:transparent;border-radius:13px;padding:14px;color:var(--text-muted);font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add product</button>
+          <div style="font-size:12px;color:var(--text-subtle);margin:12px 6px 0;line-height:1.45;">Toggle a product off and Mira instantly stops offering it in DMs and hides it from your storefront.</div>
+        </div>
+        </sc-if>
+
+        <!-- STOREFRONT -->
+        <sc-if value="{{ rStorefront }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;flex-direction:column;min-height:0;">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:.5px solid var(--border);">
+            <div style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;background:var(--bg-inset);border-radius:9px;padding:7px 11px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 9h18"/></svg><span style="font-size:12.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ storefront.url }}</span></div>
+            <button onClick="{{ copyUrl }}" style="width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg></button>
+            <button onClick="{{ storefront.customize }}" style="height:34px;padding:0 13px;border-radius:9px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5 4 4L8 20H4v-4z"/></svg>Edit</button>
+          </div>
+          <div class="scroll" style="flex:1;overflow-y:auto;">
+            <sc-if value="{{ sfShowShop }}" hint-placeholder-val="{{ true }}">
+              <div style="position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:9px;padding:13px 18px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);border-bottom:.5px solid var(--border);">
+                <div style="width:8px;height:8px;border-radius:50%;background:{{ storefront.accent }};"></div>
+                <span style="font-size:15px;font-weight:700;letter-spacing:-.02em;">{{ storefront.title }}</span>
+                <span style="margin-left:auto;font-size:12.5px;color:var(--text-muted);">Shop</span>
+              </div>
+              <sc-if value="{{ storefront.minimal }}" hint-placeholder-val="{{ true }}">
+                <div style="padding:40px 22px 30px;text-align:center;">
+                  <div style="font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:{{ storefront.accent }};">Welcome</div>
+                  <div style="font-size:32px;font-weight:800;letter-spacing:-.035em;line-height:1.02;margin-top:12px;">{{ storefront.heroHeadline }}</div>
+                  <sc-if value="{{ storefront.hasTagline }}" hint-placeholder-val="{{ true }}"><div style="font-size:14.5px;color:var(--text-muted);line-height:1.5;margin-top:14px;">{{ storefront.heroTagline }}</div></sc-if>
+                  <div style="display:inline-block;margin-top:22px;padding:12px 24px;border-radius:999px;background:{{ storefront.accent }};color:#fff;font-size:14px;font-weight:600;">View products</div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ storefront.split }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:26px 22px 24px;">
+                  <div style="font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:{{ storefront.accent }};">Welcome</div>
+                  <div style="font-size:30px;font-weight:800;letter-spacing:-.035em;line-height:1.04;margin-top:10px;">{{ storefront.heroHeadline }}</div>
+                  <sc-if value="{{ storefront.hasTagline }}" hint-placeholder-val="{{ true }}"><div style="font-size:14px;color:var(--text-muted);line-height:1.5;margin-top:12px;">{{ storefront.heroTagline }}</div></sc-if>
+                  <div style="margin-top:18px;height:170px;border-radius:16px;background:{{ storefront.accentSoft }};display:flex;align-items:center;justify-content:center;"><span style="font-size:64px;font-weight:800;color:{{ storefront.accent }};opacity:.55;letter-spacing:-.04em;">{{ storefront.heroMono }}</span></div>
+                  <div style="display:inline-block;margin-top:18px;padding:12px 24px;border-radius:999px;background:{{ storefront.accent }};color:#fff;font-size:14px;font-weight:600;">View products</div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ storefront.showFeatured }}" hint-placeholder-val="{{ true }}">
+                <div style="padding:14px 0 8px;">
+                  <div style="padding:0 22px 12px;"><div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:{{ storefront.accent }};">Featured</div><div style="font-size:21px;font-weight:700;letter-spacing:-.02em;margin-top:2px;">Picked for you</div></div>
+                  <div class="scroll" style="display:flex;gap:14px;overflow-x:auto;padding:0 22px 6px;">
+                    <sc-for list="{{ storefront.featured }}" as="p" hint-placeholder-count="3">
+                      <div onClick="{{ p.open }}" style="flex:0 0 152px;cursor:pointer;">
+                        <div style="aspect-ratio:4/5;border-radius:13px;overflow:hidden;background:{{ p.ph }};display:flex;align-items:center;justify-content:center;"><span style="font-size:42px;font-weight:800;color:{{ p.monoCol }};opacity:.65;letter-spacing:-.04em;">{{ p.mono }}</span></div>
+                        <div style="display:flex;justify-content:space-between;gap:8px;margin-top:9px;"><span style="font-size:13.5px;font-weight:600;">{{ p.title }}</span><span style="font-size:13px;font-weight:600;">{{ p.price }}</span></div>
+                        <div style="font-size:12px;color:var(--text-muted);margin-top:1px;">{{ p.subtitle }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+              <div style="padding:20px 22px 10px;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:{{ storefront.accent }};">The shop</div>
+                <div style="font-size:21px;font-weight:700;letter-spacing:-.02em;margin-top:2px;">All products</div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px 16px;padding:6px 22px 10px;">
+                <sc-for list="{{ storefront.products }}" as="p" hint-placeholder-count="6">
+                  <div onClick="{{ p.open }}" style="cursor:pointer;">
+                    <div style="aspect-ratio:4/5;border-radius:13px;overflow:hidden;background:{{ p.ph }};display:flex;align-items:center;justify-content:center;"><span style="font-size:42px;font-weight:800;color:{{ p.monoCol }};opacity:.65;letter-spacing:-.04em;">{{ p.mono }}</span></div>
+                    <div style="display:flex;justify-content:space-between;gap:8px;margin-top:9px;"><span style="font-size:13.5px;font-weight:600;line-height:1.2;">{{ p.title }}</span><span style="font-size:13px;font-weight:600;white-space:nowrap;">{{ p.price }}</span></div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">{{ p.subtitle }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ storefront.showAbout }}" hint-placeholder-val="{{ true }}">
+                <div style="padding:26px 22px 10px;">
+                  <div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:{{ storefront.accent }};">About</div>
+                  <div style="font-size:21px;font-weight:700;letter-spacing:-.02em;margin-top:2px;margin-bottom:10px;">{{ storefront.title }}</div>
+                  <p style="font-size:14.5px;line-height:1.6;color:var(--text-muted);">{{ storefront.about }}</p>
+                </div>
+              </sc-if>
+              <div style="border-top:.5px solid var(--border);margin-top:24px;padding:26px;text-align:center;font-size:11.5px;color:var(--text-subtle);">Powered by <b style="color:var(--text-muted);">Mira</b></div>
+            </sc-if>
+
+            <sc-if value="{{ sfShowProduct }}" hint-placeholder-val="{{ false }}">
+              <div style="aspect-ratio:1;background:{{ sfDetail.ph }};display:flex;align-items:center;justify-content:center;"><span style="font-size:120px;font-weight:800;color:{{ sfDetail.accent }};opacity:.55;letter-spacing:-.05em;">{{ sfDetail.mono }}</span></div>
+              <div style="padding:20px 22px 8px;">
+                <sc-if value="{{ sfDetail.hasSub }}" hint-placeholder-val="{{ true }}"><div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:{{ sfDetail.accent }};">{{ sfDetail.subtitle }}</div></sc-if>
+                <div style="font-size:27px;font-weight:700;letter-spacing:-.025em;line-height:1.1;margin-top:6px;">{{ sfDetail.title }}</div>
+                <div style="font-size:21px;font-weight:600;margin-top:11px;">{{ sfDetail.price }}</div>
+                <p style="font-size:14.5px;line-height:1.6;color:var(--text-muted);margin-top:16px;">{{ sfDetail.desc }}</p>
+                <sc-if value="{{ sfDetail.cta }}" hint-placeholder-val="{{ true }}">
+                  <div style="margin-top:22px;height:50px;border-radius:13px;background:{{ sfDetail.accent }};color:#fff;font-size:15.5px;font-weight:600;display:flex;align-items:center;justify-content:center;">{{ sfDetail.buyLabel }}</div>
+                  <div style="text-align:center;margin-top:8px;font-size:11.5px;color:var(--text-subtle);">Opens {{ sfDetail.host }}</div>
+                </sc-if>
+                <sc-if value="{{ sfDetail.noCta }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:22px;padding:15px;border-radius:13px;background:var(--bg-inset);font-size:13.5px;color:var(--text-muted);text-align:center;">💬 Ask in DMs to order — Mira will handle it</div>
+                </sc-if>
+              </div>
+              <div style="padding:26px 22px 10px;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:{{ sfDetail.accent }};">More from</div>
+                <div style="font-size:21px;font-weight:700;letter-spacing:-.02em;margin-top:2px;">{{ storefront.title }}</div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px 16px;padding:6px 22px 10px;">
+                <sc-for list="{{ sfDetail.more }}" as="p" hint-placeholder-count="4">
+                  <div onClick="{{ p.open }}" style="cursor:pointer;">
+                    <div style="aspect-ratio:4/5;border-radius:13px;overflow:hidden;background:{{ p.ph }};display:flex;align-items:center;justify-content:center;"><span style="font-size:42px;font-weight:800;color:{{ p.monoCol }};opacity:.65;letter-spacing:-.04em;">{{ p.mono }}</span></div>
+                    <div style="display:flex;justify-content:space-between;gap:8px;margin-top:9px;"><span style="font-size:13.5px;font-weight:600;">{{ p.title }}</span><span style="font-size:13px;font-weight:600;">{{ p.price }}</span></div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="border-top:.5px solid var(--border);margin-top:24px;padding:26px;text-align:center;font-size:11.5px;color:var(--text-subtle);">Powered by <b style="color:var(--text-muted);">Mira</b></div>
+            </sc-if>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ANALYTICS -->
+        <sc-if value="{{ rAnalytics }}" hint-placeholder-val="{{ false }}">
+        <div class="scroll" style="flex:1;overflow-y:auto;padding:16px 18px 30px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;">
+            <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
+              <div style="border:1px solid var(--border);background:var(--bg-elev);box-shadow:var(--shadow-card);border-radius:15px;padding:14px;">
+                <div style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-subtle);">{{ s.label }}</div>
+                <div style="font-size:26px;font-weight:800;letter-spacing:-.03em;margin-top:5px;">{{ s.value }}</div>
+                <div style="font-size:11px;font-weight:600;color:{{ s.dcol }};margin-top:3px;">{{ s.delta }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="border:1px solid var(--border);background:var(--bg-elev);box-shadow:var(--shadow-card);border-radius:16px;padding:16px;margin-top:13px;">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-subtle);">Replies — last 14 days</div>
+            <div style="display:flex;align-items:flex-end;gap:4px;height:96px;margin-top:14px;">
+              <sc-for list="{{ chart }}" as="b" hint-placeholder-count="14">
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:3px;"><div style="width:100%;border-radius:3px 3px 0 0;background:var(--accent);height:{{ b.h }};min-height:3px;opacity:{{ b.op }};"></div></div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="border:1px solid var(--border);background:var(--bg-elev);box-shadow:var(--shadow-card);border-radius:16px;padding:16px;margin-top:13px;">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-subtle);margin-bottom:11px;">Reply intents</div>
+            <sc-for list="{{ intents }}" as="i" hint-placeholder-count="5">
+              <div style="display:flex;align-items:center;gap:9px;margin-bottom:9px;">
+                <span style="width:78px;font-size:12px;color:var(--text-muted);flex-shrink:0;">{{ i.label }}</span>
+                <div style="flex:1;height:8px;border-radius:5px;background:var(--bg-inset);overflow:hidden;"><div style="height:100%;width:{{ i.w }};background:{{ i.col }};border-radius:5px;"></div></div>
+                <span style="font-size:11.5px;font-weight:700;width:24px;text-align:right;">{{ i.n }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- THREAD -->
+        <sc-if value="{{ rThread }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;flex-direction:column;min-height:0;">
+          <div class="scroll" style="flex:1;overflow-y:auto;padding:16px 16px 12px;display:flex;flex-direction:column;gap:3px;">
+            <div style="text-align:center;font-size:11px;color:var(--text-subtle);margin-bottom:10px;">{{ thread.meta }}</div>
+            <sc-for list="{{ thread.msgs }}" as="m" hint-placeholder-count="4">
+              <div style="display:flex;justify-content:{{ m.justify }};margin-top:{{ m.gap }};">
+                <div style="max-width:75%;display:flex;flex-direction:column;align-items:{{ m.align }};">
+                  <sc-if value="{{ m.aiTag }}" hint-placeholder-val="{{ false }}"><div style="font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:3px;display:flex;align-items:center;gap:3px;">✦ Mira drafted</div></sc-if>
+                  <div style="padding:9px 13px;border-radius:19px;font-size:14px;line-height:1.35;background:{{ m.bg }};color:{{ m.fg }};{{ m.corner }}animation:msgin .3s ease both;">{{ m.text }}</div>
+                </div>
+              </div>
+            </sc-for>
+            <sc-if value="{{ thread.typing }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;justify-content:flex-start;margin-top:6px;"><div style="padding:11px 15px;border-radius:19px;background:var(--bubble-them);display:flex;gap:4px;"><div style="width:7px;height:7px;border-radius:50%;background:var(--text-subtle);animation:dotp 1.2s infinite;"></div><div style="width:7px;height:7px;border-radius:50%;background:var(--text-subtle);animation:dotp 1.2s infinite .15s;"></div><div style="width:7px;height:7px;border-radius:50%;background:var(--text-subtle);animation:dotp 1.2s infinite .3s;"></div></div></div>
+            </sc-if>
+          </div>
+          <sc-if value="{{ thread.suggest }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:0 14px 8px;"><button onClick="{{ sendSuggest }}" style="width:100%;border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);background:var(--accent-soft);border-radius:14px;padding:11px 13px;display:flex;align-items:center;gap:9px;cursor:pointer;font-family:inherit;text-align:left;">
+              <div style="width:22px;height:22px;border-radius:6px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 5.4L19 9l-5.4 1.6L12 16l-1.6-5.4L5 9l5.4-1.6L12 2Z"/></svg></div>
+              <div style="flex:1;min-width:0;"><div style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-deep);">Mira suggests</div><div style="font-size:13px;color:var(--text);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ thread.suggestText }}</div></div>
+              <div style="font-size:12.5px;font-weight:700;color:var(--accent);flex-shrink:0;">Send →</div>
+            </button></div>
+          </sc-if>
+          <div style="padding:10px 14px 30px;border-top:1px solid var(--border);display:flex;align-items:center;gap:9px;background:var(--bg);">
+            <div style="flex:1;display:flex;align-items:center;background:var(--bg-inset);border:1px solid var(--border);border-radius:999px;padding:4px 5px 4px 15px;">
+              <input value="{{ composer }}" onInput="{{ onCompose }}" placeholder="Message…" style="flex:1;border:none;background:none;outline:none;font-family:inherit;font-size:14px;color:var(--text);min-width:0;" />
+              <button onClick="{{ sendMsg }}" style="width:32px;height:32px;border-radius:50%;border:none;background:{{ sendBtnBg }};color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .2s;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- FLOW BUILDER -->
+        <sc-if value="{{ rBuilder }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;flex-direction:column;min-height:0;">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--border);">
+            <div style="flex:1;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-subtle);"><div style="width:6px;height:6px;border-radius:50%;background:{{ builder.runDot }};"></div>{{ builder.runs }}</div>
+            <button onClick="{{ builder.test }}" style="height:32px;padding:0 13px;border-radius:9px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>Test</button>
+            <button onClick="{{ builder.toggleActive }}" style="width:48px;height:29px;border-radius:999px;border:none;cursor:pointer;background:{{ builder.trackbg }};position:relative;flex-shrink:0;transition:background .25s;padding:0;"><div style="position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transform:{{ builder.knob }};transition:transform .26s cubic-bezier(.3,1.4,.5,1);"></div></button>
+          </div>
+          <div class="scroll" style="flex:1;overflow-y:auto;padding:16px 18px 40px;">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px;">Flow name</div>
+            <input value="{{ builder.name }}" onInput="{{ builder.rename }}" placeholder="Untitled flow" style="width:100%;border:1px solid var(--border);background:var(--bg-elev);border-radius:12px;padding:11px 13px;font-family:inherit;font-size:16px;font-weight:700;color:var(--text);outline:none;margin-bottom:20px;" />
+
+            <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--st-warm);margin-bottom:9px;display:flex;align-items:center;gap:6px;"><div style="width:7px;height:7px;border-radius:2px;background:var(--st-warm);"></div>When this happens</div>
+            <sc-if value="{{ builder.hasTrigger }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ builder.trigger.open }}" style="border:1px solid color-mix(in srgb,var(--st-warm) 40%,var(--border));background:var(--bg-elev);box-shadow:var(--shadow-card);border-radius:16px;padding:14px;display:flex;gap:12px;align-items:center;cursor:pointer;border-left:4px solid var(--st-warm);">
+              <div style="width:40px;height:40px;border-radius:11px;background:color-mix(in srgb,var(--st-warm) 15%,transparent);color:var(--st-warm);display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ builder.trigger.icon }}</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:14.5px;font-weight:700;">{{ builder.trigger.label }}</div>
+                <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;line-height:1.35;">{{ builder.trigger.summary }}</div>
+                <div style="font-size:9.5px;font-weight:600;letter-spacing:.03em;color:var(--text-subtle);margin-top:5px;font-family:ui-monospace,monospace;">{{ builder.trigger.sub }}</div>
+              </div>
+              <button onClick="{{ builder.swapTrigger }}" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text-subtle);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 4l3 3-3 3M20 7H9a4 4 0 0 0-4 4M7 20l-3-3 3-3M4 17h11a4 4 0 0 0 4-4"/></svg></button>
+            </div>
+            </sc-if>
+            <sc-if value="{{ builder.noTrigger }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ builder.addTrigger }}" style="width:100%;border:1.5px dashed color-mix(in srgb,var(--st-warm) 50%,var(--border-strong));background:color-mix(in srgb,var(--st-warm) 6%,transparent);border-radius:16px;padding:18px;color:var(--st-warm);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Choose a trigger</button>
+            </sc-if>
+
+            <sc-if value="{{ builder.hasTrigger }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0;">
+              <div style="width:2px;height:14px;background:var(--border-strong);"></div>
+            </div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:9px;display:flex;align-items:center;gap:6px;"><div style="width:7px;height:7px;border-radius:2px;background:var(--accent);"></div>Then do this</div>
+
+            <sc-for list="{{ builder.steps }}" as="st" hint-placeholder-count="2">
+              <div style="display:flex;justify-content:center;margin:2px 0;"><button onClick="{{ st.insertBefore }}" style="width:24px;height:24px;border-radius:50%;border:1px dashed var(--border-strong);background:var(--bg);color:var(--text-subtle);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button></div>
+              <div style="border:1px solid var(--border);background:var(--bg-elev);box-shadow:var(--shadow-card);border-radius:16px;padding:13px;border-left:4px solid {{ st.col }};">
+                <div onClick="{{ st.open }}" style="display:flex;gap:11px;align-items:center;cursor:pointer;">
+                  <div style="width:36px;height:36px;border-radius:10px;background:{{ st.iconbg }};color:{{ st.iconfg }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ st.icon }}</div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:9px;font-weight:800;letter-spacing:.06em;color:{{ st.col }};">{{ st.catLabel }}</span><span style="font-size:14px;font-weight:600;">{{ st.label }}</span></div>
+                    <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ st.summary }}</div>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;"><path d="m9 6 6 6-6 6"/></svg>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:11px;padding-top:10px;border-top:1px solid var(--border);">
+                  <button onClick="{{ st.up }}" style="width:30px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:{{ st.upcol }};cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 15 6-6 6 6"/></svg></button>
+                  <button onClick="{{ st.down }}" style="width:30px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:{{ st.downcol }};cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                  <button onClick="{{ st.open }}" style="margin-left:auto;height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text-muted);font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;">Edit</button>
+                  <button onClick="{{ st.del }}" style="width:30px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--st-blocked);cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg></button>
+                </div>
+              </div>
+            </sc-for>
+
+            <div style="display:flex;justify-content:center;margin:2px 0;"><div style="width:2px;height:12px;background:var(--border-strong);"></div></div>
+            <button onClick="{{ builder.addStep }}" style="width:100%;border:1.5px dashed var(--border-strong);background:transparent;border-radius:14px;padding:15px;color:var(--accent);font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add step</button>
+            <div style="text-align:center;font-size:11px;color:var(--text-subtle);margin-top:14px;display:flex;align-items:center;justify-content:center;gap:6px;"><div style="width:7px;height:7px;border-radius:50%;border:2px solid var(--border-strong);"></div>End of flow</div>
+            </sc-if>
+          </div>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <!-- ===== SETTINGS SHEET ===== -->
+      <sc-if value="{{ sheetMounted }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeSettings }}" style="position:absolute;inset:0;z-index:55;background:rgba(0,0,0,.4);animation:{{ sheetScrimAnim }};"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;z-index:56;background:var(--bg);border-radius:26px 26px 0 0;animation:{{ sheetAnim }};max-height:88%;display:flex;flex-direction:column;box-shadow:0 -10px 40px -10px rgba(0,0,0,.4);">
+        <div style="padding:10px 0 4px;display:flex;justify-content:center;"><div style="width:38px;height:5px;border-radius:3px;background:var(--border-strong);"></div></div>
+        <div class="scroll" style="overflow-y:auto;padding:8px 20px 40px;">
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 0 18px;">
+            <div style="width:50px;height:50px;border-radius:50%;background:linear-gradient(150deg,var(--accent),var(--accent-deep));color:#fff;font-weight:700;font-size:17px;display:flex;align-items:center;justify-content:center;">DS</div>
+            <div style="flex:1;"><div style="font-size:17px;font-weight:700;letter-spacing:-.02em;">The DS Labs</div><div style="font-size:12.5px;color:var(--text-muted);display:flex;align-items:center;gap:5px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--st-done);"></div>@thedslabs · connected</div></div>
+          </div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-subtle);margin:8px 0 9px;">Appearance</div>
+          <div style="display:flex;gap:6px;background:var(--bg-inset);border-radius:13px;padding:4px;margin-bottom:18px;">
+            <button onClick="{{ setLight }}" style="flex:1;height:44px;border:none;border-radius:10px;font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;background:{{ lightBg }};color:{{ lightFg }};box-shadow:{{ lightSh }};display:flex;align-items:center;justify-content:center;gap:7px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg>Light</button>
+            <button onClick="{{ setDark }}" style="flex:1;height:44px;border:none;border-radius:10px;font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;background:{{ darkBg }};color:{{ darkFg }};box-shadow:{{ darkSh }};display:flex;align-items:center;justify-content:center;gap:7px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5Z"/></svg>Dark</button>
+          </div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-subtle);margin:8px 0 9px;">Preferences</div>
+          <div style="border:1px solid var(--border);border-radius:15px;background:var(--bg-elev);overflow:hidden;">
+            <sc-for list="{{ settingsRows }}" as="r" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 14px;border-bottom:1px solid var(--border);">
+                <div style="width:30px;height:30px;border-radius:8px;background:var(--accent-soft);color:var(--accent-deep);display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ r.icon }}</div>
+                <div style="flex:1;"><div style="font-size:13.5px;font-weight:600;">{{ r.label }}</div><div style="font-size:11.5px;color:var(--text-subtle);">{{ r.sub }}</div></div>
+                <button onClick="{{ r.toggle }}" style="width:48px;height:29px;border-radius:999px;border:none;cursor:pointer;background:{{ r.trackbg }};position:relative;flex-shrink:0;transition:background .25s;padding:0;"><div style="position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transform:{{ r.knob }};transition:transform .26s cubic-bezier(.3,1.4,.5,1);"></div></button>
+              </div>
+            </sc-for>
+          </div>
+          <button onClick="{{ signOut }}" style="width:100%;margin-top:18px;height:48px;border-radius:14px;border:1px solid var(--border);background:var(--bg-elev);color:var(--st-blocked);font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer;">Disconnect Instagram</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== BUILDER SHEET (picker / config / test) ===== -->
+      <sc-if value="{{ bsheetMounted }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeBsheet }}" style="position:absolute;inset:0;z-index:65;background:rgba(0,0,0,.4);animation:{{ bScrimAnim }};"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;z-index:66;background:var(--bg);border-radius:26px 26px 0 0;animation:{{ bsheetAnim }};max-height:84%;display:flex;flex-direction:column;box-shadow:0 -10px 40px -10px rgba(0,0,0,.4);">
+        <div style="padding:10px 0 4px;display:flex;justify-content:center;flex-shrink:0;"><div style="width:38px;height:5px;border-radius:3px;background:var(--border-strong);"></div></div>
+
+        <!-- PICKER -->
+        <sc-if value="{{ bsPicker }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:6px 20px 10px;flex-shrink:0;">
+          <div style="font-size:19px;font-weight:800;letter-spacing:-.03em;">{{ picker.title }}</div>
+          <sc-if value="{{ picker.showTabs }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:5px;background:var(--bg-inset);border-radius:11px;padding:4px;margin-top:12px;">
+            <button onClick="{{ picker.tabCondSet }}" style="flex:1;height:36px;border:none;border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;background:{{ picker.tabCondBg }};color:{{ picker.tabCondFg }};box-shadow:{{ picker.tabCondSh }};">Conditions</button>
+            <button onClick="{{ picker.tabActSet }}" style="flex:1;height:36px;border:none;border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;background:{{ picker.tabActBg }};color:{{ picker.tabActFg }};box-shadow:{{ picker.tabActSh }};">Actions</button>
+          </div>
+          </sc-if>
+        </div>
+        <div class="scroll" style="overflow-y:auto;padding:4px 16px 36px;">
+          <sc-for list="{{ picker.nodes }}" as="n" hint-placeholder-count="6">
+            <button onClick="{{ n.pick }}" style="width:100%;display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);background:var(--bg-elev);border-radius:14px;margin-bottom:8px;cursor:pointer;font-family:inherit;text-align:left;">
+              <div style="width:38px;height:38px;border-radius:10px;background:{{ n.bg }};color:{{ n.col }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ n.icon }}</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:14px;font-weight:600;color:var(--text);">{{ n.label }}</div>
+                <div style="font-size:10.5px;color:var(--text-subtle);font-family:ui-monospace,monospace;margin-top:1px;">{{ n.sub }}</div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </sc-for>
+        </div>
+        </sc-if>
+
+        <!-- CONFIG -->
+        <sc-if value="{{ bsConfig }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:6px 20px 8px;flex-shrink:0;display:flex;align-items:center;gap:11px;">
+          <div style="width:38px;height:38px;border-radius:10px;background:{{ config.bg }};color:{{ config.col }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ config.icon }}</div>
+          <div><div style="font-size:18px;font-weight:800;letter-spacing:-.03em;">{{ config.title }}</div><div style="font-size:10.5px;color:var(--text-subtle);font-family:ui-monospace,monospace;">{{ config.sub }}</div></div>
+        </div>
+        <div class="scroll" style="overflow-y:auto;padding:8px 20px 20px;">
+          <sc-if value="{{ config.empty }}" hint-placeholder-val="{{ false }}"><div style="font-size:13px;color:var(--text-muted);padding:8px 0 4px;line-height:1.5;">{{ config.emptyText }}</div></sc-if>
+          <sc-for list="{{ config.fields }}" as="f" hint-placeholder-count="2">
+            <div style="margin-bottom:16px;">
+              <div style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);margin-bottom:7px;">{{ f.label }}</div>
+              <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ false }}">
+                <input value="{{ f.value }}" onInput="{{ f.set }}" placeholder="{{ f.ph }}" style="width:100%;border:1px solid var(--border);background:var(--bg-elev);border-radius:11px;padding:11px 13px;font-family:inherit;font-size:14px;color:var(--text);outline:none;" />
+              </sc-if>
+              <sc-if value="{{ f.isArea }}" hint-placeholder-val="{{ false }}">
+                <textarea value="{{ f.value }}" onInput="{{ f.set }}" placeholder="{{ f.ph }}" rows="3" style="width:100%;border:1px solid var(--border);background:var(--bg-elev);border-radius:11px;padding:11px 13px;font-family:inherit;font-size:14px;line-height:1.4;color:var(--text);outline:none;resize:none;"></textarea>
+              </sc-if>
+              <sc-if value="{{ f.isNumber }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:8px;"><input value="{{ f.value }}" onInput="{{ f.set }}" type="number" style="width:100px;border:1px solid var(--border);background:var(--bg-elev);border-radius:11px;padding:11px 13px;font-family:inherit;font-size:14px;color:var(--text);outline:none;" /><span style="font-size:13px;color:var(--text-muted);">{{ f.unit }}</span></div>
+              </sc-if>
+              <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-wrap:wrap;gap:7px;">
+                  <sc-for list="{{ f.opts }}" as="o" hint-placeholder-count="3">
+                    <button onClick="{{ o.set }}" style="height:34px;padding:0 14px;border-radius:10px;border:1px solid {{ o.bd }};background:{{ o.bg }};color:{{ o.fg }};font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">{{ o.label }}</button>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ f.isChips }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:9px;">
+                  <sc-for list="{{ f.chips }}" as="cp" hint-placeholder-count="2">
+                    <div style="display:flex;align-items:center;gap:6px;height:32px;padding:0 6px 0 12px;border-radius:9px;background:var(--accent-soft);color:var(--accent-deep);font-size:13px;font-weight:600;">{{ cp.label }}<button onClick="{{ cp.remove }}" style="width:18px;height:18px;border-radius:50%;border:none;background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--accent-deep);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;gap:8px;"><input value="{{ chipDraft }}" onInput="{{ setChipDraft }}" onKeyDown="{{ f.addChipKey }}" placeholder="Add a word + Enter" style="flex:1;border:1px solid var(--border);background:var(--bg-elev);border-radius:11px;padding:10px 13px;font-family:inherit;font-size:14px;color:var(--text);outline:none;" /><button onClick="{{ f.addChip }}" style="width:44px;border-radius:11px;border:1px solid var(--border);background:var(--bg-inset);color:var(--accent);cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button></div>
+              </sc-if>
+            </div>
+          </sc-for>
+          <button onClick="{{ closeBsheet }}" style="width:100%;height:50px;border-radius:14px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;margin-top:4px;">Done</button>
+        </div>
+        </sc-if>
+
+        <!-- TEST -->
+        <sc-if value="{{ bsTest }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:6px 20px 10px;flex-shrink:0;">
+          <div style="font-size:19px;font-weight:800;letter-spacing:-.03em;">Test run</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">How a contact would experience <b style="color:var(--text);">{{ test.title }}</b></div>
+        </div>
+        <div class="scroll" style="overflow-y:auto;padding:8px 16px 36px;display:flex;flex-direction:column;gap:6px;">
+          <sc-for list="{{ test.msgs }}" as="m" hint-placeholder-count="3">
+            <sc-if value="{{ m.isNote }}" hint-placeholder-val="{{ false }}">
+              <div style="align-self:center;font-size:10.5px;font-weight:600;color:var(--text-subtle);background:var(--bg-inset);padding:5px 11px;border-radius:8px;margin:2px 0;">⚙ {{ m.text }}</div>
+            </sc-if>
+            <sc-if value="{{ m.isBubble }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;justify-content:{{ m.justify }};">
+                <div style="max-width:78%;display:flex;flex-direction:column;align-items:{{ m.align }};gap:5px;">
+                  <sc-if value="{{ m.tag }}" hint-placeholder-val="{{ false }}"><div style="font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);">{{ m.tagText }}</div></sc-if>
+                  <sc-if value="{{ m.hasText }}" hint-placeholder-val="{{ true }}"><div style="padding:9px 13px;border-radius:18px;font-size:13.5px;line-height:1.35;background:{{ m.bg }};color:{{ m.fg }};{{ m.corner }}">{{ m.text }}</div></sc-if>
+                  <sc-if value="{{ m.hasBtns }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;">
+                      <sc-for list="{{ m.btns }}" as="b" hint-placeholder-count="2"><div style="font-size:12.5px;font-weight:600;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);border-radius:16px;padding:7px 13px;">{{ b }}</div></sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ m.hasCarousel }}" hint-placeholder-val="{{ false }}">
+                    <div class="scroll" style="display:flex;gap:8px;overflow-x:auto;max-width:260px;">
+                      <sc-for list="{{ m.cards }}" as="cd" hint-placeholder-count="2"><div style="flex:0 0 auto;width:110px;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--bg-elev);"><div style="height:80px;background:repeating-linear-gradient(135deg,var(--bg-inset),var(--bg-inset) 8px,var(--bg-sidebar) 8px,var(--bg-sidebar) 16px);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--text-subtle);opacity:.6;">{{ cd.mono }}</div><div style="padding:8px;"><div style="font-size:11px;font-weight:600;">{{ cd.title }}</div><div style="font-size:12px;font-weight:800;color:var(--accent);margin-top:3px;">{{ cd.price }}</div></div></div></sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <!-- ===== CUSTOMIZE SHEET ===== -->
+      <sc-if value="{{ csheetMounted }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeCustomize }}" style="position:absolute;inset:0;z-index:65;background:rgba(0,0,0,.4);animation:{{ cScrimAnim }};"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;z-index:66;background:var(--bg);border-radius:26px 26px 0 0;animation:{{ csheetAnim }};max-height:88%;display:flex;flex-direction:column;box-shadow:0 -10px 40px -10px rgba(0,0,0,.4);">
+        <div style="padding:10px 0 4px;display:flex;justify-content:center;flex-shrink:0;"><div style="width:38px;height:5px;border-radius:3px;background:var(--border-strong);"></div></div>
+        <div style="padding:6px 20px 10px;display:flex;align-items:center;flex-shrink:0;">
+          <div style="font-size:19px;font-weight:800;letter-spacing:-.03em;flex:1;">Customise shop</div>
+          <button onClick="{{ closeCustomize }}" style="height:32px;padding:0 15px;border-radius:9px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;">Done</button>
+        </div>
+        <div class="scroll" style="overflow-y:auto;padding:6px 20px 36px;">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);margin-bottom:7px;">Store name</div>
+          <input value="{{ customize.title }}" onInput="{{ customize.setTitle }}" style="width:100%;border:1px solid var(--border);background:var(--bg-elev);border-radius:11px;padding:11px 13px;font-family:inherit;font-size:14px;color:var(--text);outline:none;margin-bottom:18px;" />
+          <div style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);margin-bottom:9px;">Accent</div>
+          <div style="display:flex;gap:13px;margin-bottom:20px;padding-left:2px;">
+            <sc-for list="{{ customize.accents }}" as="a" hint-placeholder-count="6">
+              <button onClick="{{ a.set }}" style="width:32px;height:32px;border-radius:50%;border:none;cursor:pointer;background:{{ a.color }};box-shadow:{{ a.ring }};padding:0;"></button>
+            </sc-for>
+          </div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);margin-bottom:7px;">Hero layout</div>
+          <div style="display:flex;gap:4px;background:var(--bg-inset);border-radius:11px;padding:3px;margin-bottom:18px;">
+            <sc-for list="{{ customize.heroLayoutOpts }}" as="o" hint-placeholder-count="2"><button onClick="{{ o.set }}" style="flex:1;height:34px;border:none;border-radius:8px;font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;background:{{ o.bg }};color:{{ o.fg }};box-shadow:{{ o.sh }};">{{ o.label }}</button></sc-for>
+          </div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);margin-bottom:7px;">Headline</div>
+          <input value="{{ customize.headline }}" onInput="{{ customize.setHeadline }}" style="width:100%;border:1px solid var(--border);background:var(--bg-elev);border-radius:11px;padding:11px 13px;font-family:inherit;font-size:14px;color:var(--text);outline:none;margin-bottom:14px;" />
+          <div style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);margin-bottom:7px;">Tagline</div>
+          <input value="{{ customize.tagline }}" onInput="{{ customize.setTagline }}" style="width:100%;border:1px solid var(--border);background:var(--bg-elev);border-radius:11px;padding:11px 13px;font-family:inherit;font-size:14px;color:var(--text);outline:none;margin-bottom:18px;" />
+          <div style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-subtle);margin-bottom:7px;">Buy button label</div>
+          <div style="display:flex;gap:4px;background:var(--bg-inset);border-radius:11px;padding:3px;margin-bottom:18px;">
+            <sc-for list="{{ customize.buyLabelOpts }}" as="o" hint-placeholder-count="3"><button onClick="{{ o.set }}" style="flex:1;height:34px;border:none;border-radius:8px;font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;background:{{ o.bg }};color:{{ o.fg }};box-shadow:{{ o.sh }};">{{ o.label }}</button></sc-for>
+          </div>
+          <div style="background:var(--bg-elev);border-radius:13px;overflow:hidden;border:.5px solid var(--border);">
+            <div style="display:flex;align-items:center;padding:13px 14px;"><span style="flex:1;font-size:15px;">Show featured rail</span><button onClick="{{ customize.toggleFeatured }}" style="width:48px;height:29px;border-radius:999px;border:none;cursor:pointer;background:{{ customize.ftTrack }};position:relative;flex-shrink:0;transition:background .25s;padding:0;"><div style="position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transform:{{ customize.ftKnob }};transition:transform .26s cubic-bezier(.3,1.4,.5,1);"></div></button></div>
+            <div style="height:.5px;background:var(--border);margin-left:14px;"></div>
+            <div style="display:flex;align-items:center;padding:13px 14px;"><span style="flex:1;font-size:15px;">Show about section</span><button onClick="{{ customize.toggleAbout }}" style="width:48px;height:29px;border-radius:999px;border:none;cursor:pointer;background:{{ customize.abTrack }};position:relative;flex-shrink:0;transition:background .25s;padding:0;"><div style="position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transform:{{ customize.abKnob }};transition:transform .26s cubic-bezier(.3,1.4,.5,1);"></div></button></div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- toast -->
+      <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:50%;bottom:118px;transform:translateX(-50%);z-index:68;background:var(--text);color:var(--bg);font-size:13px;font-weight:600;padding:11px 18px;border-radius:13px;box-shadow:var(--shadow-pop);animation:slideup .3s ease;white-space:nowrap;">{{ toast }}</div>
+      </sc-if>
+
+      <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--text);opacity:.32;z-index:70;"></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:438,&quot;height&quot;:892}}">
+class Component extends DCLogic {
+  state = {
+    theme: 'light', stage: 'signin', introSlide: 0, gBusy: false, connecting: false,
+    tab: 'home', route: null, routeOpen: false,
+    sheetMounted: false, settingsOpen: false,
+    bsheetMounted: false, bsheetOpen: false, bsheet: null, chipDraft: '',
+    replyMode: 'assisted',
+    dragId: null, dragX: 0,
+    pulling: false, pullDist: 0, refreshing: false,
+    composer: '', toast: null,
+    oppFilter: 'all', activeFlowId: null,
+    settings: { disclosure: false, autonomous: false, notifications: true },
+    drafts: [
+      { id:1, name:'sara_codes', handle:'@sara_codes', initials:'SC', av:'#e08a3c', intent:'Question', time:'2m', window:'23h 12m left', comment:'do you ship to canada? 👀', draft:"Yes — free shipping over $80, here's the link 🇨🇦", st:'idle' },
+      { id:2, name:'ayaan.k', handle:'@ayaan.k', initials:'AK', av:'#4f6bed', intent:'Buyer', time:'6m', window:'22h 40m left', comment:'bhai price kya hai serum ka? 🔥', draft:'Arre ₹1,299 only! DM kar diya link, free shipping above ₹999 ✨', st:'idle' },
+      { id:3, name:'meera.rao', handle:'@meera.rao', initials:'MR', av:'#5e9e6e', intent:'Praise', time:'14m', window:'21h 02m left', comment:'obsessed with this reel, the glow is unreal 😍', draft:"You're the sweetest 🥹 it's the niacinamide doing its thing — thank you!", st:'idle' },
+      { id:4, name:'studio.luxe', handle:'@studio.luxe', initials:'SL', av:'#9b5de5', intent:'Brand deal', time:'31m', window:'19h 48m left', comment:'we run a skincare collab program — open to partnering?', draft:'Love that! Sending our rate card + audience deck over now — what timeline are you thinking?', st:'idle' },
+    ],
+    opps: [
+      { id:1, name:'Nike India', handle:'@nike.in', initials:'NI', type:'Sponsorship', value:'$4,000', conf:92, stage:1 },
+      { id:2, name:'ayaan.k', handle:'@ayaan.k', initials:'AK', type:'Brand deal', value:'₹65,000', conf:88, stage:0 },
+      { id:3, name:'Daily Brew Pod', handle:'@dailybrew', initials:'DB', type:'Podcast', value:'₹20,000', conf:74, stage:2 },
+      { id:4, name:'GlowCo', handle:'@glowco', initials:'GC', type:'Collab', value:'₹1,20,000', conf:96, stage:3 },
+      { id:5, name:'mintleaf', handle:'@mintleaf', initials:'ML', type:'Partnership', value:'₹38,000', conf:81, stage:0 },
+      { id:6, name:'Vogue Spotlight', handle:'@vogue', initials:'VS', type:'Media', value:'₹90,000', conf:69, stage:1 },
+    ],
+    flows: [
+      { id:1, name:'Comment-to-DM · link', active:true, runs:'1,204 runs · 2m ago',
+        trigger:{uid:1,type:'comment',config:{scope:'All posts',kw:['link','price']}},
+        steps:[ {uid:2,type:'private_reply',config:{text:'Sent it to your DMs 💌'}}, {uid:3,type:'send_link',config:{text:"Here's the link 👉",url:'dslabs.in/serum'}} ] },
+      { id:2, name:'Welcome new DMs', active:true, runs:'318 runs · 18m ago',
+        trigger:{uid:4,type:'dm',config:{kw:[]}},
+        steps:[ {uid:5,type:'first_time',config:{}}, {uid:6,type:'ai_reply',config:{tone:'Warm'}} ] },
+      { id:3, name:'Story mention → thanks', active:true, runs:'92 runs · 1h ago',
+        trigger:{uid:7,type:'story_mention',config:{}},
+        steps:[ {uid:8,type:'send_dm',config:{text:'Thank you for the love! 🥹 means the world'}}, {uid:9,type:'add_tag',config:{tag:'advocate'}} ] },
+      { id:4, name:'Buyer funnel', active:false, runs:'Draft · not live',
+        trigger:{uid:10,type:'dm',config:{kw:['price','buy','cost']}},
+        steps:[ {uid:11,type:'intent',config:{val:'Buyer'}}, {uid:12,type:'quick_replies',config:{btns:['See products','Talk to founder']}}, {uid:13,type:'ask_email',config:{text:'Drop your email for 10% off 👇'}}, {uid:14,type:'carousel',config:{set:'Bestsellers'}} ] },
+      { id:5, name:'Ice breakers', active:false, runs:'Draft · not live',
+        trigger:{uid:15,type:'dm',config:{kw:[]}},
+        steps:[ {uid:16,type:'quick_replies',config:{btns:['Shipping?','Bestsellers','Track order']}} ] },
+    ],
+    contacts: [
+      { id:1, name:'Sara Mitchell', handle:'@sara_codes', initials:'SC', av:'#e08a3c', status:'hot', score:92, last:'do you ship to canada? 👀', time:'2m' },
+      { id:2, name:'Ayaan Khan', handle:'@ayaan.k', initials:'AK', av:'#4f6bed', status:'vip', score:88, last:'bhai price kya hai serum ka?', time:'6m' },
+      { id:3, name:'Meera Rao', handle:'@meera.rao', initials:'MR', av:'#5e9e6e', status:'warm', score:64, last:'obsessed with this reel 😍', time:'14m' },
+      { id:4, name:'Studio Luxe', handle:'@studio.luxe', initials:'SL', av:'#9b5de5', status:'hot', score:90, last:'open to partnering?', time:'31m' },
+      { id:5, name:'Dev Patel', handle:'@dev.builds', initials:'DP', av:'#7a8a9a', status:'customer', score:71, last:'got my order, thanks! 📦', time:'2h' },
+      { id:6, name:'Nina Roy', handle:'@nina.roy', initials:'NR', av:'#c98a9b', status:'cold', score:38, last:'just following along 🙌', time:'1d' },
+    ],
+    products: [
+      { id:1, title:'Vitamin C Glow Serum', subtitle:'Brightening · 15%', price:'₹1,299', mono:'VC', available:true, featured:true, cta:true, desc:'A lightweight 15% vitamin C serum that fades dark spots and brings back glow. Fragrance-free and derm-tested — layers under everything.' },
+      { id:2, title:'Niacinamide 10% Drops', subtitle:'Pores · oil control', price:'₹999', mono:'ND', available:true, featured:true, cta:true, desc:'10% niacinamide + zinc to balance oil and refine the look of pores, without stripping your skin.' },
+      { id:3, title:'Ceramide Moisturiser', subtitle:'Barrier repair', price:'₹1,499', mono:'CM', available:true, featured:false, cta:false, desc:'A rich ceramide cream that rebuilds the skin barrier overnight. Wake up to soft, calm skin.' },
+      { id:4, title:'SPF 50 Daily Shield', subtitle:'No white cast', price:'₹899', mono:'SP', available:true, featured:true, cta:true, desc:'Broad-spectrum SPF 50 PA++++ that melts in with zero white cast. The last step that actually feels good.' },
+      { id:5, title:'Hyaluronic Hydra Mist', subtitle:'Plump · dewy', price:'₹749', mono:'HM', available:true, featured:true, cta:true, desc:'A hydrating mist with three molecular weights of hyaluronic acid for instant plump.' },
+      { id:6, title:'Retinol 0.3 Night Oil', subtitle:'Smooth · renew', price:'₹1,699', mono:'RN', available:false, featured:false, cta:true, desc:'A gentle encapsulated retinol night oil for smoother, firmer skin over time.' },
+      { id:7, title:'Gentle Foaming Cleanser', subtitle:'pH 5.5', price:'₹599', mono:'GC', available:true, featured:false, cta:true, desc:'A soft foaming cleanser that respects your barrier — never tight, never squeaky.' },
+      { id:8, title:'Clay Detox Mask', subtitle:'Weekly reset', price:'₹849', mono:'CD', available:true, featured:false, cta:false, desc:'Kaolin + charcoal mask to draw out the week. Your Sunday reset.' },
+    ],
+    storefront: { title:'The DS Labs', handle:'thedslabs', accent:'#4f6bed', heroHeadline:'Skin that speaks for itself.', heroTagline:'Clean, derm-backed formulas — handmade in small batches in India.', heroLayout:'minimal', buyLabel:'Shop', showFeatured:true, showAbout:true, about:"We're a small skincare studio obsessed with formulas that actually work. No fluff, no 30-step routines — just clean, effective products your skin will thank you for." },
+    sfProduct: null,
+    csheetMounted: false, csheetClosing: false,
+    activeThread: null,
+  };
+  _uid = 1000;
+
+  // ---------- helpers ----------
+  ic(p,sz){ return React.createElement('svg',{width:sz||22,height:sz||22,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',style:{display:'block'},dangerouslySetInnerHTML:{__html:p}}); }
+  icN(p,sz){ return React.createElement('svg',{width:sz||26,height:sz||26,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.7,strokeLinecap:'round',strokeLinejoin:'round',style:{display:'block'},dangerouslySetInnerHTML:{__html:p}}); }
+  icFill(p,sz){ return React.createElement('svg',{width:sz||24,height:sz||24,viewBox:'0 0 24 24',fill:'currentColor',stroke:'none',style:{display:'block'},dangerouslySetInnerHTML:{__html:p}}); }
+  flashToast(t){ this.setState({ toast:t }); clearTimeout(this._tt); this._tt=setTimeout(()=>this.setState({toast:null}),1600); }
+  nodeIcon(key,sz){ const M={
+    comment:'<path d="M21 11.5a8 8 0 0 1-11.6 7.1L4 20l1.4-5.4A8 8 0 1 1 21 11.5Z"/>',
+    dm:'<path d="M4 5h16v12H8l-4 3z"/>',
+    mention:'<circle cx="12" cy="12" r="4"/><path d="M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7"/>',
+    reply:'<path d="M9 17 4 12l5-5"/><path d="M4 12h11a5 5 0 0 1 5 5v1"/>',
+    tap:'<path d="M9 11V6a2 2 0 1 1 4 0v5"/><path d="M13 8a2 2 0 1 1 4 0v6a6 6 0 0 1-6 6h-1a5 5 0 0 1-4-2l-3-4 1.6-1.4L7 14"/>',
+    heart:'<path d="M12 20s-7-4.4-7-9a4 4 0 0 1 7-2.5A4 4 0 0 1 19 11c0 4.6-7 9-7 9Z"/>',
+    eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+    check:'<circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
+    link2:'<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
+    live:'<circle cx="12" cy="12" r="3"/><path d="M16.5 7.5a6 6 0 0 1 0 9M7.5 16.5a6 6 0 0 1 0-9"/>',
+    filter:'<path d="M3 5h18l-7 8v6l-4-2v-4z"/>',
+    usercheck:'<circle cx="11" cy="8" r="3.5"/><path d="M5 20a6 6 0 0 1 10-4.5"/><path d="m15 19 2 2 4-4"/>',
+    spark:'<path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6L12 3Z"/>',
+    clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    cal:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16M9 3v4M15 3v4"/>',
+    branch:'<circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6 8v1a4 4 0 0 0 4 4h.5M18 8v1a4 4 0 0 1-4 4h-.5M12 13v4"/>',
+    plane:'<path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/>',
+    cards:'<rect x="7" y="5" width="10" height="14" rx="2"/><path d="M4 8v8M20 8v8"/>',
+    buttons:'<rect x="3" y="6" width="8" height="5" rx="2.5"/><rect x="13" y="6" width="8" height="5" rx="2.5"/><rect x="3" y="14" width="8" height="5" rx="2.5"/>',
+    mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+    phone:'<path d="M5 4h4l2 5-3 2a11 11 0 0 0 5 5l2-3 5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2Z"/>',
+    tag:'<path d="M3 3h7l11 11-7 7L3 10z"/><circle cx="7.5" cy="7.5" r="1.4"/>',
+    user:'<path d="M16 19a4 4 0 0 0-8 0"/><circle cx="12" cy="9" r="3"/>',
+    eyeoff:'<path d="M2 12s3.5-7 10-7c2 0 3.8.6 5.3 1.5M22 12s-3.5 7-10 7c-2 0-3.8-.6-5.3-1.5"/><path d="m3 3 18 18"/>',
+    bell:'<path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 19a2 2 0 0 0 4 0"/>',
+    stop:'<circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1"/>'
+  }; return this.ic(M[key]||M.spark,sz); }
+
+  // ---------- node library ----------
+  nodeDefs(){ if(this._nd) return this._nd; const T='trigger',C='condition',A='action';
+    const L=[
+      {t:'comment',cat:T,label:'New comment',sub:'webhook · comments',icon:'comment',fields:[{key:'scope',label:'On which media',kind:'select',opts:['All posts','Specific post','Reels only']},{key:'kw',label:'Only if it contains',kind:'chips'}],sum:c=>c.kw&&c.kw.length?'Comment contains "'+c.kw.join('", "')+'"':'Any new comment · '+(c.scope||'All posts')},
+      {t:'dm',cat:T,label:'New DM',sub:'webhook · messages',icon:'dm',fields:[{key:'kw',label:'Only if it contains',kind:'chips'}],sum:c=>c.kw&&c.kw.length?'DM contains "'+c.kw.join('", "')+'"':'Any new direct message'},
+      {t:'story_mention',cat:T,label:'Story mention',sub:'webhook · mentions',icon:'mention',fields:[],sum:()=>'Someone @mentions you in a story'},
+      {t:'story_reply',cat:T,label:'Story reply',sub:'webhook · messages',icon:'reply',fields:[],sum:()=>'Someone replies to your story'},
+      {t:'postback',cat:T,label:'Button tapped',sub:'webhook · messaging_postbacks',icon:'tap',fields:[{key:'payload',label:'Payload equals',kind:'text',ph:'BUY_NOW'}],sum:c=>c.payload?'Taps button "'+c.payload+'"':'Taps any quick-reply / button'},
+      {t:'reaction',cat:T,label:'Message reaction',sub:'webhook · message_reactions',icon:'heart',fields:[],sum:()=>'Reacts to one of your messages'},
+      {t:'seen',cat:T,label:'Message seen',sub:'webhook · messaging_seen',icon:'eye',fields:[],sum:()=>'Reads your message but no reply'},
+      {t:'optin',cat:T,label:'Opt-in',sub:'webhook · messaging_optins',icon:'check',fields:[],sum:()=>'Opts in to notifications'},
+      {t:'referral',cat:T,label:'Ad / ref link',sub:'webhook · messaging_referral',icon:'link2',fields:[{key:'ref',label:'Ref / ad id',kind:'text',ph:'summer_sale'}],sum:c=>c.ref?'Starts from ref "'+c.ref+'"':'Starts from an ad or ig.me link'},
+      {t:'live_comment',cat:T,label:'Live comment',sub:'webhook · live_comments',icon:'live',fields:[],sum:()=>'Comments during a live broadcast'},
+      {t:'contains',cat:C,label:'Text contains',icon:'filter',fields:[{key:'kw',label:'Any of these words',kind:'chips'}],sum:c=>c.kw&&c.kw.length?'Contains '+c.kw.join(' / '):'Message contains a keyword'},
+      {t:'is_follower',cat:C,label:'Follower check',icon:'usercheck',fields:[{key:'val',label:'Must be',kind:'select',opts:['A follower','Not a follower']}],sum:c=>(c.val||'A follower')},
+      {t:'first_time',cat:C,label:'First-time contact',icon:'spark',fields:[],sum:()=>'Only the first time they reach out'},
+      {t:'window',cat:C,label:'24h window',icon:'clock',fields:[{key:'val',label:'Window is',kind:'select',opts:['Open','Closed']}],sum:c=>'24-hour window is '+(c.val||'Open').toLowerCase()},
+      {t:'intent',cat:C,label:'AI intent is',icon:'spark',fields:[{key:'val',label:'Detected intent',kind:'select',opts:['Question','Buyer','Praise','Spam','Business']}],sum:c=>'AI reads intent as '+(c.val||'Buyer')},
+      {t:'business_hours',cat:C,label:'Business hours',icon:'cal',fields:[],sum:()=>'Only 9am–6pm, Mon–Sat'},
+      {t:'split',cat:C,label:'Random A/B split',icon:'branch',fields:[{key:'pct',label:'Send to path A',kind:'number',unit:'%'}],sum:c=>'Split — '+(c.pct||50)+'% take path A'},
+      {t:'private_reply',cat:A,label:'Private reply',sub:'primitive · Private Replies',icon:'reply',fields:[{key:'text',label:'Reply text',kind:'area',ph:'Sent it to your DMs 💌'}],sum:c=>c.text||'Reply privately to the comment'},
+      {t:'send_dm',cat:A,label:'Send DM',sub:'primitive · Send API',icon:'plane',fields:[{key:'text',label:'Message',kind:'area',ph:'Hey! Thanks for reaching out ✨'}],sum:c=>c.text||'Send a direct message'},
+      {t:'send_link',cat:A,label:'Send link',sub:'primitive · Send API',icon:'link2',fields:[{key:'text',label:'Message',kind:'text',ph:"Here's the link"},{key:'url',label:'URL',kind:'text',ph:'dslabs.in/serum'}],sum:c=>c.url?'Link · '+c.url:'Send a link in the DM'},
+      {t:'carousel',cat:A,label:'Product carousel',sub:'primitive · Generic Template',icon:'cards',fields:[{key:'set',label:'Show',kind:'select',opts:['Bestsellers','New arrivals','Full catalog']}],sum:c=>'Carousel · '+(c.set||'Bestsellers')},
+      {t:'quick_replies',cat:A,label:'Quick replies',sub:'primitive · Quick Replies',icon:'buttons',fields:[{key:'btns',label:'Buttons (max 13)',kind:'chips'}],sum:c=>c.btns&&c.btns.length?c.btns.join(' · '):'Show tappable buttons'},
+      {t:'ask_email',cat:A,label:'Ask for email',sub:'Quick Reply · email',icon:'mail',fields:[{key:'text',label:'Prompt',kind:'text',ph:'Drop your email for the discount 👇'}],sum:c=>c.text||'Capture email (consent logged)'},
+      {t:'ask_phone',cat:A,label:'Ask for phone',sub:'Quick Reply · phone',icon:'phone',fields:[{key:'text',label:'Prompt',kind:'text',ph:'Share your number for order updates'}],sum:c=>c.text||'Capture phone (consent logged)'},
+      {t:'ai_reply',cat:A,label:'AI draft reply',sub:'Assisted · brand voice',icon:'spark',fields:[{key:'tone',label:'Tone',kind:'select',opts:['Warm','Witty','Professional','Hinglish']}],sum:c=>'AI replies in '+(c.tone||'Warm')+' tone'},
+      {t:'add_tag',cat:A,label:'Add tag',sub:'CRM',icon:'tag',fields:[{key:'tag',label:'Tag',kind:'text',ph:'advocate'}],sum:c=>c.tag?'Tag contact · '+c.tag:'Add a tag to the contact'},
+      {t:'set_status',cat:A,label:'Set lead status',sub:'CRM',icon:'check',fields:[{key:'val',label:'Status',kind:'select',opts:['Cold','Warm','Hot','VIP','Customer']}],sum:c=>'Lead status → '+(c.val||'Warm')},
+      {t:'assign',cat:A,label:'Notify / assign',sub:'Handover',icon:'user',fields:[{key:'val',label:'Action',kind:'select',opts:['Notify me','Assign to agent','Escalate']}],sum:c=>(c.val||'Notify me')},
+      {t:'wait',cat:A,label:'Wait',sub:'Delay',icon:'clock',fields:[{key:'n',label:'Delay',kind:'number',unit:'min'}],sum:c=>'Wait '+(c.n||5)+' min before next step'},
+      {t:'hide_comment',cat:A,label:'Hide comment',sub:'primitive · Moderation',icon:'eyeoff',fields:[],sum:()=>'Hide the comment from the post'},
+      {t:'react',cat:A,label:'React / like',sub:'primitive · Reaction',icon:'heart',fields:[{key:'emoji',label:'Reaction',kind:'select',opts:['❤️','🔥','👍','🙏','😍']}],sum:c=>'React with '+(c.emoji||'❤️')},
+      {t:'optin_topic',cat:A,label:'Marketing opt-in',sub:'primitive · Marketing Messages',icon:'bell',fields:[{key:'topic',label:'Topic',kind:'text',ph:'Drops & restocks'}],sum:c=>c.topic?'Opt-in topic · '+c.topic:'Add to a marketing topic'},
+      {t:'end',cat:A,label:'End flow',sub:'',icon:'stop',fields:[],sum:()=>'Stop the automation here'}
+    ];
+    const map={}; L.forEach(d=>map[d.t]=d);
+    this._nd={list:L,map,triggers:L.filter(d=>d.cat===T),conditions:L.filter(d=>d.cat===C),actions:L.filter(d=>d.cat===A)};
+    return this._nd;
+  }
+
+  // ---------- onboarding ----------
+  connect = () => { if(this.state.connecting) return; this.setState({connecting:true}); setTimeout(()=>this.setState({connecting:false,stage:'brain'}),1700); };
+  signIn = () => { if(this.state.gBusy) return; this.setState({gBusy:true}); setTimeout(()=>this.setState({gBusy:false,stage:'intro',introSlide:0}),900); };
+  introNext = () => { const n=this.state.introSlide; if(n>=2) this.setState({stage:'connect'}); else this.setState({introSlide:n+1}); };
+  introBack = () => { const n=this.state.introSlide; if(n>0) this.setState({introSlide:n-1}); };
+  introSkip = () => this.setState({stage:'connect'});
+  previewApp = () => this.setState({stage:'app',tab:'home'});
+  brainDone = () => this.setState({stage:'app',tab:'home'});
+
+  // ---------- nav ----------
+  setTab = (t) => () => this.setState({ tab:t });
+  push = (r, extra) => { this.setState(Object.assign({route:r,routeClosing:false},extra||{})); };
+  pop = () => { if(this.state.route==='storefront' && this.state.sfProduct){ this.setState({sfProduct:null}); return; } this.setState({routeClosing:true}); setTimeout(()=>this.setState({route:null,activeThread:null,sfProduct:null,routeClosing:false}),320); };
+  openSettings = () => { this.setState({sheetMounted:true,sheetClosing:false}); };
+  closeSettings = () => { this.setState({sheetClosing:true}); setTimeout(()=>this.setState({sheetMounted:false,sheetClosing:false}),300); };
+  setReplyMode = (m) => () => { this.setState({replyMode:m}); };
+  setTheme = (t) => () => this.setState({theme:t});
+  toggleSetting = (k) => () => this.setState(s=>({ settings: Object.assign({}, s.settings, { [k]: !s.settings[k] }) }));
+  signOut = () => { this.closeSettings(); setTimeout(()=>this.setState({stage:'signin',tab:'home',route:null,routeOpen:false}),300); };
+
+  // ---------- pull to refresh ----------
+  pullDown = (e) => { const sc=e.currentTarget; if(sc.scrollTop<=0){ this._py=e.clientY; this._pulling=true; } };
+  pullMove = (e) => { if(!this._pulling) return; const d=e.clientY-this._py; if(d>0){ this.setState({pulling:true,pullDist:Math.min(90,d*0.55)}); } };
+  pullUp = () => { if(!this._pulling) return; this._pulling=false; if(this.state.pullDist>52){ this.setState({refreshing:true,pulling:false,pullDist:46}); setTimeout(()=>this.setState({refreshing:false,pullDist:0}),1200); } else { this.setState({pulling:false,pullDist:0}); } };
+
+  // ---------- drafts swipe ----------
+  draftDown = (id) => (e) => { this._sx=e.clientX; this.setState({dragId:id,dragX:0}); try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){} };
+  draftMove = (e) => { if(this.state.dragId==null) return; this.setState({dragX:e.clientX-this._sx}); };
+  draftUp = () => { const {dragX,dragId}=this.state; if(dragId==null) return; if(dragX>92) this.approveDraft(dragId)(); else if(dragX<-92) this.skipDraft(dragId)(); this.setState({dragId:null,dragX:0}); };
+  approveDraft = (id) => () => { this.setState(s=>({drafts:s.drafts.map(d=>d.id===id?Object.assign({},d,{st:'approved'}):d)})); this.flashToast('Reply sent ✓'); setTimeout(()=>this.setState(s=>({drafts:s.drafts.filter(d=>d.id!==id)})),360); };
+  skipDraft = (id) => () => { this.setState(s=>({drafts:s.drafts.map(d=>d.id===id?Object.assign({},d,{st:'dismissed'}):d)})); setTimeout(()=>this.setState(s=>({drafts:s.drafts.filter(d=>d.id!==id)})),360); };
+  _restoreDrafts(){ this.setState({ drafts:[
+    { id:1, name:'sara_codes', handle:'@sara_codes', initials:'SC', av:'#e08a3c', intent:'Question', time:'2m', window:'23h 12m left', comment:'do you ship to canada? 👀', draft:"Yes — free shipping over $80, here's the link 🇨🇦", st:'idle' },
+    { id:2, name:'ayaan.k', handle:'@ayaan.k', initials:'AK', av:'#4f6bed', intent:'Buyer', time:'6m', window:'22h 40m left', comment:'bhai price kya hai serum ka? 🔥', draft:'Arre ₹1,299 only! DM kar diya link, free shipping above ₹999 ✨', st:'idle' },
+    { id:3, name:'meera.rao', handle:'@meera.rao', initials:'MR', av:'#5e9e6e', intent:'Praise', time:'14m', window:'21h 02m left', comment:'obsessed with this reel, the glow is unreal 😍', draft:"You're the sweetest 🥹 it's the niacinamide doing its thing — thank you!", st:'idle' },
+    { id:4, name:'studio.luxe', handle:'@studio.luxe', initials:'SL', av:'#9b5de5', intent:'Brand deal', time:'31m', window:'19h 48m left', comment:'we run a skincare collab program — open to partnering?', draft:'Love that! Sending our rate card + audience deck over now — what timeline are you thinking?', st:'idle' },
+  ]}); }
+
+  // ---------- opportunities ----------
+  setOppFilter = (k) => () => this.setState({oppFilter:k});
+  setStage = (id, stage) => () => { this.setState(s=>({opps:s.opps.map(o=>o.id===id?Object.assign({},o,{stage}):o)})); if(stage===3) this.flashToast('🎉 Deal moved to Won'); };
+  advanceOpp = (id) => () => { const o=this.state.opps.find(x=>x.id===id); if(!o) return; const ns=Math.min(3,o.stage+1); this.setState(s=>({opps:s.opps.map(x=>x.id===id?Object.assign({},x,{stage:ns}):x)})); if(ns===3) this.flashToast('🎉 Deal moved to Won'); };
+
+  // ---------- flows / builder ----------
+  toggleFlow = (id) => () => this.setState(s=>({flows:s.flows.map(f=>f.id===id?Object.assign({},f,{active:!f.active}):f)}));
+  openBuilder = (id) => { this.setState({activeFlowId:id}); this.push('builder'); };
+  newFlow = () => { const id=Date.now(); const f={id,name:'Untitled flow',active:false,runs:'Not run yet',trigger:null,steps:[]}; this.setState(s=>({flows:s.flows.concat([f]),activeFlowId:id})); this.push('builder'); };
+  renameFlow = (e) => { const v=e.target.value; this.setState(s=>({flows:s.flows.map(f=>f.id===s.activeFlowId?Object.assign({},f,{name:v}):f)})); };
+  _curFlow(){ return this.state.flows.find(f=>f.id===this.state.activeFlowId); }
+  _updateFlow(fn){ this.setState(s=>({flows:s.flows.map(f=>f.id===s.activeFlowId?fn(f):f)})); }
+  _newNode(def){ return {uid:++this._uid,type:def.t,config:Object.assign({},def.defaults||{})}; }
+
+  openPicker = (mode, insertAt) => { this.setState({bsheet:{kind:'picker',mode,insertAt,tab:'action'}}); this._openBsheet(); };
+  setPickerTab = (t) => () => this.setState(s=>({bsheet:Object.assign({},s.bsheet,{tab:t})}));
+  pickNode = (t) => () => { const def=this.nodeDefs().map[t]; const node=this._newNode(def); const bs=this.state.bsheet;
+    if(bs.mode==='trigger'){ this._updateFlow(f=>Object.assign({},f,{trigger:node})); }
+    else { const at=bs.insertAt; this._updateFlow(f=>{ const steps=f.steps.slice(); steps.splice(at,0,node); return Object.assign({},f,{steps}); }); }
+    if(def.fields && def.fields.length){ const target= bs.mode==='trigger'?'trigger':bs.insertAt; this.setState({bsheet:{kind:'config',target,type:t},chipDraft:''}); }
+    else { this._closeBsheet(); }
+  };
+  openConfig = (target, type) => () => { this.setState({bsheet:{kind:'config',target,type},chipDraft:''}); this._openBsheet(); };
+  _curConfig(){ const f=this._curFlow(); const bs=this.state.bsheet; if(!f||!bs) return {}; if(bs.target==='trigger') return (f.trigger&&f.trigger.config)||{}; return (f.steps[bs.target]&&f.steps[bs.target].config)||{}; }
+  setField = (key, val) => { const bs=this.state.bsheet; const target=bs.target;
+    this._updateFlow(f=>{ if(target==='trigger'){ return Object.assign({},f,{trigger:Object.assign({},f.trigger,{config:Object.assign({},f.trigger.config,{[key]:val})})}); }
+      const steps=f.steps.slice(); steps[target]=Object.assign({},steps[target],{config:Object.assign({},steps[target].config,{[key]:val})}); return Object.assign({},f,{steps}); });
+  };
+  setChipDraft = (e) => this.setState({chipDraft:e.target.value});
+  addChip = (key) => () => { const v=this.state.chipDraft.trim(); if(!v) return; const cur=this._curConfig()[key]||[]; this.setField(key,cur.concat([v])); this.setState({chipDraft:''}); };
+  removeChip = (key,i) => () => { const cur=(this._curConfig()[key]||[]).slice(); cur.splice(i,1); this.setField(key,cur); };
+  deleteStep = (i) => () => this._updateFlow(f=>{ const steps=f.steps.slice(); steps.splice(i,1); return Object.assign({},f,{steps}); });
+  moveStep = (i,dir) => () => this._updateFlow(f=>{ const steps=f.steps.slice(); const j=i+dir; if(j<0||j>=steps.length) return f; const tmp=steps[i]; steps[i]=steps[j]; steps[j]=tmp; return Object.assign({},f,{steps}); });
+  runTest = () => { this.setState({bsheet:{kind:'test'}}); this._openBsheet(); };
+  _openBsheet(){ this.setState({bsheetMounted:true,bsheetClosing:false}); }
+  _closeBsheet(){ this.setState({bsheetClosing:true}); setTimeout(()=>this.setState({bsheetMounted:false,bsheet:null,bsheetClosing:false}),300); }
+  closeBsheet = () => this._closeBsheet();
+
+  // ---------- thread ----------
+  _seedThread(c){
+    if(c.intent==='Question'||c.handle==='@sara_codes') return [ {from:'them',text:'hey! love the new serum drop 🙌'},{from:'them',text:'do you ship to canada? 👀'},{from:'ai',text:"Yes — free shipping over $80, here's the link 🇨🇦", ai:true} ];
+    if(c.handle==='@ayaan.k') return [ {from:'them',text:'bhai price kya hai serum ka? 🔥'},{from:'ai',text:'Arre ₹1,299 only! DM kar diya link, free shipping above ₹999 ✨', ai:true},{from:'them',text:'done ordered 🙌'} ];
+    return [ {from:'them',text:c.last||'hi!'} ];
+  }
+  openThread = (c) => () => { const msgs=this._seedThread(c); const last=msgs[msgs.length-1]; const suggest=last.from==='them';
+    this.setState({ activeThread:{ name:c.name, handle:c.handle, initials:c.initials, av:c.av||'#4f6bed', msgs, typing:false, suggest, suggestText: suggest?'Thanks so much! Let me get you sorted 💛':'' } }); this.push('thread'); };
+  onCompose = (e) => this.setState({composer:e.target.value});
+  sendMsg = () => { const t=this.state.composer.trim(); if(!t||!this.state.activeThread) return; const at=this.state.activeThread;
+    this.setState({ activeThread:Object.assign({},at,{msgs:at.msgs.concat([{from:'me',text:t}]),typing:true,suggest:false}), composer:'' });
+    setTimeout(()=>{ const a=this.state.activeThread; if(!a) return; this.setState({activeThread:Object.assign({},a,{typing:false,msgs:a.msgs.concat([{from:'them',text:'amazing, thank you! 🙌'}])})}); },1400); };
+  sendSuggest = () => { const at=this.state.activeThread; if(!at) return; this.setState({activeThread:Object.assign({},at,{suggest:false,msgs:at.msgs.concat([{from:'me',text:at.suggestText}])})}); this.flashToast('Reply sent ✓'); };
+
+  // ---------- storefront / catalog ----------
+  openStorefront = () => { this.setState({sfProduct:null}); this.push('storefront'); };
+  openCatalog = () => this.push('catalog');
+  openSfProduct = (id) => () => { this.setState({sfProduct:id}); };
+  sfBack = () => this.setState({sfProduct:null});
+  previewInShop = (id) => () => { this.setState({sfProduct:id}); this.push('storefront'); };
+  toggleAvail = (id) => () => this.setState(s=>({products:s.products.map(p=>p.id===id?Object.assign({},p,{available:!p.available}):p)}));
+  toggleFeatured = (id) => () => this.setState(s=>({products:s.products.map(p=>p.id===id?Object.assign({},p,{featured:!p.featured}):p)}));
+  copyUrl = () => this.flashToast('Link copied ✓');
+  setSf = (k,v) => () => this.setState(s=>({storefront:Object.assign({},s.storefront,{[k]:v})}));
+  setSfVal = (k) => (e) => this.setState(s=>({storefront:Object.assign({},s.storefront,{[k]:e.target.value})}));
+  toggleSf = (k) => () => this.setState(s=>({storefront:Object.assign({},s.storefront,{[k]:!s.storefront[k]})}));
+  openCustomize = () => this.setState({csheetMounted:true,csheetClosing:false});
+  closeCustomize = () => { this.setState({csheetClosing:true}); setTimeout(()=>this.setState({csheetMounted:false,csheetClosing:false}),300); };
+  addProduct = () => this.flashToast('Product editor coming soon');
+
+  // ---------- test builder ----------
+  _buildTest(f,defs){ if(!f) return {title:'',msgs:[]}; const msgs=[]; const td=f.trigger?defs.map[f.trigger.type]:null;
+    const tt=f.trigger&&f.trigger.config.kw&&f.trigger.config.kw.length? f.trigger.config.kw[0] : (td&&td.t==='comment'?'love this! where to buy? 😍':'hey! 👋');
+    msgs.push({kind:'bubble',who:'them',text:tt,tag:td?td.label:'Trigger'});
+    f.steps.forEach(st=>{ const d=defs.map[st.type]; const c=st.config;
+      if(st.type==='private_reply'||st.type==='send_dm') msgs.push({kind:'bubble',who:'ai',text:c.text||d.sum(c)});
+      else if(st.type==='send_link') msgs.push({kind:'bubble',who:'ai',text:((c.text||'Here you go')+' '+(c.url||'')).trim()});
+      else if(st.type==='ai_reply') msgs.push({kind:'bubble',who:'ai',text:'Thanks so much! 💛 ('+(c.tone||'Warm')+' AI reply)',tag:'Mira drafted'});
+      else if(st.type==='quick_replies') msgs.push({kind:'bubble',who:'ai',text:'',btns:(c.btns&&c.btns.length?c.btns:['Option A','Option B'])});
+      else if(st.type==='ask_email') msgs.push({kind:'bubble',who:'ai',text:c.text||'Drop your email 👇',btns:['📧 Share email']});
+      else if(st.type==='ask_phone') msgs.push({kind:'bubble',who:'ai',text:c.text||'Share your number',btns:['📱 Share number']});
+      else if(st.type==='carousel') msgs.push({kind:'bubble',who:'ai',text:'',carousel:true});
+      else msgs.push({kind:'note',text:d.label+' — '+d.sum(c)});
+    });
+    return { title:f.name, msgs };
+  }
+
+  // ---------- render ----------
+  renderVals(){
+    const s=this.state, A='var(--accent)', SUB='var(--text-subtle)', PUR='var(--purple)', WARM='var(--st-warm)';
+    const defs=this.nodeDefs();
+    const greet='Good morning';
+
+    const modeDefs=[ {k:'shadow',label:'Shadow',sub:'draft only'},{k:'assisted',label:'Assisted',sub:'you approve'},{k:'auto',label:'Auto',sub:'send now'} ];
+    const modes=modeDefs.map(m=>{ const on=s.replyMode===m.k; return { label:m.label, sub:m.sub, set:this.setReplyMode(m.k), bg:on?'var(--bg-elev)':'transparent', fg:on?A:'var(--text-muted)', sh:on?'var(--shadow-card)':'none' }; });
+
+    const todayDefs=[ {label:'New comments',value:24,col:SUB},{label:'Auto-replied',value:18,col:'var(--st-done)'},{label:'Pending',value:s.drafts.length,col:A},{label:'Needs you',value:2,col:WARM},{label:"Links DM'd",value:11,col:SUB} ];
+    const today=todayDefs.map(c=>({label:c.label,value:c.value,col:c.col,vcol:c.label==='Pending'&&c.value>0?A:c.label==='Needs you'&&c.value>0?WARM:'var(--text)'}));
+    const todayRows=today.map((c,i)=>Object.assign({},c,{divider:i>0}));
+    const modeDescs={ shadow:'Mira drafts replies silently in the background — nothing is sent.', assisted:'Mira drafts every reply in your voice — you approve before it sends.', auto:'Mira sends high-confidence replies instantly, on its own.' };
+    const modeDesc=modeDescs[s.replyMode]||modeDescs.assisted;
+    const dash={ coverage:87, replies:'1,240', comments:'1,602', facts:48, sent:64, cap:180, capPct:Math.round(64/180*100)+'%', today,
+      activity:"Today, Mira saw 24 new comments, auto-replied to 18, drafted "+s.drafts.length+" for you and DM'd 11 links — flagging the rest for your eyes." };
+
+    const jumpDefs=[
+      {label:'Contacts',meta:s.contacts.length+' people',go:()=>this.push('contacts'),icon:this.nodeIcon('user',17)},
+      {label:'Analytics',meta:'+12% this week',go:()=>this.push('analytics'),icon:this.ic('<path d="M4 19V5M4 19h16"/><path d="M8 16v-4M13 16V8M18 16v-6"/>',17)},
+    ];
+    const jumps=jumpDefs.map((j,i)=>Object.assign({},j,{divider:i>0}));
+
+    const navDefs=[
+      {k:'home',go:this.setTab('home'),p:'<path d="M4 11.4 12 4.4l8 7"/><path d="M6.4 10.4V18.5a1 1 0 0 0 1 1h9.2a1 1 0 0 0 1-1v-8.1"/>'},
+      {k:'opps',go:this.setTab('opps'),p:'<path d="M4 20V4.5M4 20h16"/><path d="M8 17v-5M13 17V8M18 17v-8"/>'},
+      {k:'inbox',center:true,go:this.setTab('inbox'),p:'<path d="M5 4.5h14a2.2 2.2 0 0 1 2.2 2.2v7.4A2.2 2.2 0 0 1 19 16.3h-7.2L7.4 20v-3.7H5A2.2 2.2 0 0 1 2.8 14V6.7A2.2 2.2 0 0 1 5 4.5Z"/>'},
+      {k:'auto',go:this.setTab('auto'),p:'<circle cx="6" cy="6" r="2.3"/><circle cx="18" cy="18" r="2.3"/><circle cx="18" cy="6" r="2.3"/><path d="M8.3 6H15M18 8.3v7.4M16.1 16.1 9 8.4"/>'},
+      {k:'profile',go:this.openSettings,p:'<circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="10" r="3"/><path d="M6.8 18.4a5.8 5.8 0 0 1 10.4 0"/>'},
+    ];
+    const tabs=navDefs.map(d=>{ if(d.center){ return { isCenter:true, normal:false, go:d.go, icon:this.icFill(d.p,23), centerBg:'var(--text)', centerFg:'var(--bg)', badge:s.drafts.length>0 }; }
+      const active = d.k==='profile'? s.sheetMounted : s.tab===d.k;
+      return { isCenter:false, normal:true, go:d.go, icon:this.icN(d.p,26), col: active?A:'var(--text-subtle)' }; });
+
+    const tagColors={ Question:['var(--accent-soft)','var(--accent-deep)'], Buyer:['color-mix(in srgb,var(--st-warm) 16%,transparent)','var(--st-warm)'], Praise:['color-mix(in srgb,var(--st-done) 15%,transparent)','var(--st-done)'], 'Brand deal':['color-mix(in srgb,var(--purple) 16%,transparent)','var(--purple)'] };
+    const drafts=s.drafts.map(d=>{ let tf='translateX(0)',tr='transform .28s cubic-bezier(.32,.72,0,1)';
+      if(d.st==='approved') tf='translateX(115%)'; else if(d.st==='dismissed') tf='translateX(-115%)'; else if(s.dragId===d.id){ tf='translateX('+s.dragX+'px)'; tr='none'; }
+      const dx=s.dragId===d.id?s.dragX:0; const tc=tagColors[d.intent]||tagColors.Question;
+      return Object.assign({},d,{ tf,tr, revR:Math.max(0,Math.min(1,dx/92)).toFixed(2), revL:Math.max(0,Math.min(1,-dx/92)).toFixed(2), tagbg:tc[0], tagfg:tc[1],
+        down:this.draftDown(d.id), move:this.draftMove, up:this.draftUp, approve:this.approveDraft(d.id), skip:this.skipDraft(d.id),
+        open:this.openThread({name:d.name,handle:d.handle,initials:d.initials,av:d.av,intent:d.intent,last:d.comment}) }); });
+
+    // opportunities feed
+    const oStages=['New','Review','Negotiating','Won'];
+    const cnt=[0,1,2,3].map(i=>s.opps.filter(o=>o.stage===i).length);
+    const oppChips=[{k:'all',label:'All',n:s.opps.length}].concat(oStages.map((nm,i)=>({k:i,label:nm,n:cnt[i]}))).map(c=>{ const on=s.oppFilter===c.k; return { label:c.label, n:c.n, set:this.setOppFilter(c.k), bg:on?A:'var(--bg-elev)', fg:on?'#fff':'var(--text-muted)', bd:on?A:'var(--border)' }; });
+    const RING=2*Math.PI*17;
+    const feed=s.opps.filter(o=>s.oppFilter==='all'||o.stage===s.oppFilter).slice().sort((a,b)=>(a.stage-b.stage)||(b.conf-a.conf)).map(o=>{
+      const confcol=o.conf>=85?'var(--st-done)':o.conf>=70?A:WARM;
+      const stages=oStages.map((nm,i)=>{ const done=i<o.stage,on=i===o.stage; return { label:nm, set:this.setStage(o.id,i),
+        dot: (done||on)?(o.stage===3&&i===3?'var(--st-done)':A):'var(--bg-elev)', ring:(done||on)?(o.stage===3&&i===3?'var(--st-done)':A):'var(--border-strong)', lcol:on?'var(--text)':done?'var(--text-muted)':SUB }; });
+      const ctaLabel=o.stage===2?'Mark won':'Advance to '+oStages[o.stage+1];
+      return { initials:o.initials, av:o.conf>=90?'#5e9e6e':o.conf>=80?'#4f6bed':'#7a8a9a', name:o.name, handle:o.handle, type:o.type, value:o.value, conf:o.conf, confcol,
+        ringC:RING.toFixed(1), ringOff:(RING*(1-o.conf/100)).toFixed(1), fillW:(o.stage/3*84)+'%', stages,
+        hasCta:o.stage<3, won:o.stage===3, cta:this.advanceOpp(o.id), ctaLabel, ctaBg:o.stage===2?'var(--st-done)':A, ctaFg:'#fff' };
+    });
+    const wonCount=s.opps.filter(o=>o.stage===3).length;
+    const oppSummary={ pipeline:'₹4.8L', won:String(wonCount), rate:'68%' };
+
+    // flows list
+    const catCol={trigger:[WARM,'color-mix(in srgb,var(--st-warm) 14%,transparent)'], condition:[PUR,'color-mix(in srgb,var(--purple) 14%,transparent)'], action:[A,'var(--accent-soft)'], more:[SUB,'var(--bg-inset)']};
+    const flows=s.flows.map(f=>{ const td=f.trigger?defs.map[f.trigger.type]:null;
+      const chipDefs=[{label:td?td.label:'No trigger',cat:'trigger'}].concat(f.steps.slice(0,3).map(st=>({label:defs.map[st.type].label,cat:defs.map[st.type].cat}))); if(f.steps.length>3) chipDefs.push({label:'+'+(f.steps.length-3),cat:'more'});
+      const chips=chipDefs.map((c,i)=>{ const cc=catCol[c.cat]||catCol.action; return { label:c.label, fg:cc[0], bg:cc[1], arrow:i<chipDefs.length-1 }; });
+      return { id:f.id, name:f.name, runs:f.runs, icon:this.nodeIcon(td?td.icon:'spark',20), iconbg:f.active?'var(--accent-soft)':'var(--bg-inset)', iconfg:f.active?'var(--accent-deep)':SUB,
+        runDot:f.active?'var(--st-done)':SUB, chips, statusLabel:f.active?'Active':'Inactive', statusCol:f.active?'var(--st-done)':SUB,
+        trackbg:f.active?A:'var(--border-strong)', knob:f.active?'translateX(19px)':'translateX(0)', toggle:this.toggleFlow(f.id), open:()=>this.openBuilder(f.id) }; });
+    const flowsActive=s.flows.filter(f=>f.active).length;
+
+    // builder
+    const cf=this._curFlow();
+    let builder={steps:[],hasTrigger:false,noTrigger:true,name:'',runs:'',runDot:SUB,trackbg:'var(--border-strong)',knob:'translateX(0)'};
+    if(cf){ const td=cf.trigger?defs.map[cf.trigger.type]:null;
+      const steps=cf.steps.map((st,i)=>{ const d=defs.map[st.type]; const cond=d.cat==='condition'; const col=cond?PUR:A;
+        return { label:d.label, summary:d.sum(st.config), icon:this.nodeIcon(d.icon,18), col, catLabel:cond?'IF':'DO',
+          iconbg:cond?'color-mix(in srgb,var(--purple) 14%,transparent)':'var(--accent-soft)', iconfg:cond?PUR:'var(--accent-deep)',
+          open:this.openConfig(i,st.type), up:this.moveStep(i,-1), down:this.moveStep(i,1), del:this.deleteStep(i),
+          insertBefore:()=>this.openPicker('step',i), upcol:i>0?'var(--text-muted)':'var(--border-strong)', downcol:i<cf.steps.length-1?'var(--text-muted)':'var(--border-strong)' }; });
+      builder={ name:cf.name, runs:cf.runs, runDot:cf.active?'var(--st-done)':SUB, rename:this.renameFlow,
+        hasTrigger:!!cf.trigger, noTrigger:!cf.trigger,
+        trigger: cf.trigger?{ label:td.label, sub:td.sub, summary:td.sum(cf.trigger.config), icon:this.nodeIcon(td.icon,20), open:this.openConfig('trigger',cf.trigger.type), swapTrigger:()=>this.openPicker('trigger',-1) }:null,
+        addTrigger:()=>this.openPicker('trigger',-1), steps, hasSteps:cf.steps.length>0, addStep:()=>this.openPicker('step',cf.steps.length),
+        toggleActive:this.toggleFlow(cf.id), test:this.runTest, trackbg:cf.active?A:'var(--border-strong)', knob:cf.active?'translateX(19px)':'translateX(0)' };
+    }
+
+    // builder sheet
+    const bs=s.bsheet;
+    let picker={nodes:[]}, config={fields:[]}, test={msgs:[]};
+    const catColor=(cat)=> cat==='trigger'?[WARM,'color-mix(in srgb,var(--st-warm) 15%,transparent)']: cat==='condition'?[PUR,'color-mix(in srgb,var(--purple) 15%,transparent)']:[A,'var(--accent-soft)'];
+    if(bs&&bs.kind==='picker'){ const isTrig=bs.mode==='trigger'; const cats= isTrig?defs.triggers:(bs.tab==='condition'?defs.conditions:defs.actions);
+      picker={ title:isTrig?'Choose a trigger':'Add a step', showTabs:!isTrig,
+        tabCondSet:this.setPickerTab('condition'), tabActSet:this.setPickerTab('action'),
+        tabCondBg:bs.tab==='condition'?'var(--bg-elev)':'transparent', tabCondFg:bs.tab==='condition'?PUR:'var(--text-muted)', tabCondSh:bs.tab==='condition'?'var(--shadow-card)':'none',
+        tabActBg:bs.tab==='action'?'var(--bg-elev)':'transparent', tabActFg:bs.tab==='action'?A:'var(--text-muted)', tabActSh:bs.tab==='action'?'var(--shadow-card)':'none',
+        nodes:cats.map(d=>{ const cc=catColor(d.cat); return { label:d.label, sub:d.sub||'flow step', icon:this.nodeIcon(d.icon,18), pick:this.pickNode(d.t), col:cc[0], bg:cc[1] }; }) };
+    }
+    if(bs&&bs.kind==='config'){ const d=defs.map[bs.type]; const cfg=this._curConfig(); const cc=catColor(d.cat);
+      config={ title:d.label, sub:d.sub||'', icon:this.nodeIcon(d.icon,18), col:cc[0], bg:cc[1], empty:d.fields.length===0, emptyText:d.sum(cfg)+'. No settings needed — it just works.',
+        fields:d.fields.map(f=>{ const val=cfg[f.key]; const selVal=(f.kind==='select')?(val||f.opts[0]):val;
+          return { label:f.label, ph:f.ph||'', unit:f.unit||'', isText:f.kind==='text', isArea:f.kind==='area', isChips:f.kind==='chips', isSelect:f.kind==='select', isNumber:f.kind==='number',
+            value: f.kind==='number'?(val==null?'':val):(typeof val==='string'?val:''),
+            set:(e)=>this.setField(f.key, f.kind==='number'?(parseInt(e.target.value)||0):e.target.value),
+            chips:(Array.isArray(val)?val:[]).map((c,i)=>({label:c, remove:this.removeChip(f.key,i)})), addChip:this.addChip(f.key), addChipKey:(e)=>{ if(e.key==='Enter'){ e.preventDefault(); this.addChip(f.key)(); } },
+            opts:(f.opts||[]).map(o=>{ const on=selVal===o; return { label:o, set:()=>this.setField(f.key,o), bg:on?A:'var(--bg-elev)', fg:on?'#fff':'var(--text-muted)', bd:on?A:'var(--border)' }; }) };
+        }) };
+    }
+    if(bs&&bs.kind==='test'){ const t=this._buildTest(cf,defs);
+      test={ title:t.title, msgs:t.msgs.map(m=>{ if(m.kind==='note') return {isNote:true,isBubble:false,text:m.text};
+        const me=m.who==='ai'; return { isNote:false,isBubble:true, justify:me?'flex-end':'flex-start', align:me?'flex-end':'flex-start',
+          hasText:!!m.text, text:m.text, tag:!!m.tag, tagText:m.tag||'', bg:me?A:'var(--bubble-them)', fg:me?'#fff':'var(--bubble-them-fg)',
+          corner:me?'border-bottom-right-radius:5px;':'border-bottom-left-radius:5px;',
+          hasBtns:!!m.btns, btns:m.btns||[], hasCarousel:!!m.carousel, cards:m.carousel?s.products.slice(0,3).map(p=>({mono:p.mono,title:p.title,price:p.price})):[] }; }) };
+    }
+
+    const stColors={ hot:['color-mix(in srgb,var(--st-blocked) 14%,transparent)','var(--st-blocked)'], warm:['color-mix(in srgb,var(--st-warm) 16%,transparent)','var(--st-warm)'], cold:['var(--bg-inset)',SUB], vip:['color-mix(in srgb,var(--purple) 15%,transparent)','var(--purple)'], customer:['color-mix(in srgb,var(--st-done) 14%,transparent)','var(--st-done)'] };
+    const contacts=s.contacts.map(c=>{ const sc=stColors[c.status]||stColors.cold; return Object.assign({},c,{ stbg:sc[0], stfg:sc[1], open:this.openThread(c) }); });
+    // ── storefront + catalog ──
+    const SF=s.storefront, acc=SF.accent;
+    const mkShop=(p)=>({ id:p.id, title:p.title, subtitle:p.subtitle, price:p.price, mono:p.mono, available:p.available, ph:'linear-gradient(155deg,'+acc+'26,'+acc+'0a)', monoCol:acc, open:this.openSfProduct(p.id) });
+    const shopAll=s.products.filter(p=>p.available).map(mkShop);
+    const shopFeatured=SF.showFeatured? s.products.filter(p=>p.featured&&p.available).map(mkShop):[];
+    const heroThumbs=s.products.filter(p=>p.available).slice(0,3).map(p=>p.mono);
+    const catThumbs=s.products.slice(0,4).map(p=>p.mono);
+    const sf={ accent:acc, handle:SF.handle, title:SF.title, heroThumbs, catThumbs, productCount:s.products.length, inStock:s.products.filter(p=>p.available).length };
+    const storefront={ accent:acc, accentSoft:acc+'1f', accentFg:'#ffffff', title:SF.title, url:'mira.shop/'+SF.handle, heroHeadline:SF.heroHeadline, heroTagline:SF.heroTagline, hasTagline:!!SF.heroTagline, minimal:SF.heroLayout==='minimal', split:SF.heroLayout!=='minimal', heroMono:(SF.title.trim()[0]||'M').toUpperCase(), showFeatured:shopFeatured.length>0, featured:shopFeatured, products:shopAll, productCount:shopAll.length, showAbout:SF.showAbout&&!!SF.about, about:SF.about, customize:this.openCustomize, copyUrl:this.copyUrl };
+    const sfp=s.sfProduct? s.products.find(p=>p.id===s.sfProduct):null;
+    const sfShowProduct=!!sfp, sfShowShop=!sfp;
+    const sfDetail=sfp? { title:sfp.title, subtitle:sfp.subtitle, hasSub:!!sfp.subtitle, price:sfp.price, desc:sfp.desc, mono:sfp.mono, ph:'linear-gradient(155deg,'+acc+'2e,'+acc+'0d)', accent:acc, cta:sfp.cta, noCta:!sfp.cta, buyLabel:SF.buyLabel, host:'dslabs.in', more:s.products.filter(p=>p.available&&p.id!==sfp.id).slice(0,4).map(mkShop) }:{more:[]};
+    const catalog=s.products.map(p=>({ id:p.id, title:p.title, subtitle:p.subtitle, price:p.price, mono:p.mono, available:p.available, featured:p.featured, divider:p.id!==s.products[0].id,
+      ph:'linear-gradient(150deg,var(--accent-soft),color-mix(in srgb,var(--accent) 5%,var(--bg-inset)))', monoCol: p.available?'var(--accent-deep)':'var(--text-subtle)',
+      availLabel:p.available?'In stock':'Sold out', availCol:p.available?'var(--st-done)':'var(--text-subtle)',
+      trackbg:p.available?A:'var(--border-strong)', knob:p.available?'translateX(19px)':'translateX(0)', toggleAvail:this.toggleAvail(p.id),
+      starCol:p.featured?'var(--st-progress)':'var(--text-subtle)', starFill:p.featured?'var(--st-progress)':'none', toggleFeatured:this.toggleFeatured(p.id), preview:this.previewInShop(p.id) }));
+    const catInStock=s.products.filter(p=>p.available).length, catFeatured=s.products.filter(p=>p.featured).length;
+    const accentOpts=['#4f6bed','#1f8a5b','#d9534f','#e08a3c','#9b5de5','#111114'];
+    const customize={ title:SF.title, setTitle:this.setSfVal('title'), headline:SF.heroHeadline, setHeadline:this.setSfVal('heroHeadline'), tagline:SF.heroTagline, setTagline:this.setSfVal('heroTagline'),
+      accents:accentOpts.map(c=>({ color:c, ring:acc.toLowerCase()===c.toLowerCase()?'0 0 0 2.5px var(--bg-elev),0 0 0 4.5px '+c:'none', set:this.setSf('accent',c) })),
+      heroLayoutOpts:[['minimal','Minimal'],['split','Split']].map(o=>({ label:o[1], bg:SF.heroLayout===o[0]?'var(--bg-elev)':'transparent', fg:SF.heroLayout===o[0]?A:'var(--text-muted)', sh:SF.heroLayout===o[0]?'var(--shadow-card)':'none', set:this.setSf('heroLayout',o[0]) })),
+      buyLabelOpts:['Buy','Shop','Order'].map(o=>({ label:o, bg:SF.buyLabel===o?'var(--bg-elev)':'transparent', fg:SF.buyLabel===o?A:'var(--text-muted)', sh:SF.buyLabel===o?'var(--shadow-card)':'none', set:this.setSf('buyLabel',o) })),
+      showFeatured:SF.showFeatured, toggleFeatured:this.toggleSf('showFeatured'), ftTrack:SF.showFeatured?A:'var(--border-strong)', ftKnob:SF.showFeatured?'translateX(19px)':'translateX(0)',
+      showAbout:SF.showAbout, toggleAbout:this.toggleSf('showAbout'), abTrack:SF.showAbout?A:'var(--border-strong)', abKnob:SF.showAbout?'translateX(19px)':'translateX(0)', about:SF.about, setAbout:this.setSfVal('about') };
+
+    const stats=[ {label:'Avg response',value:'1m 12s',delta:'↓ 34% faster',dcol:'var(--st-done)'},{label:'Leads captured',value:'186',delta:'+24 this week',dcol:'var(--st-done)'},{label:'Conversion',value:'12.4%',delta:'+1.8 pts',dcol:'var(--st-done)'},{label:'Pipeline',value:'₹2.4L',delta:'4 open deals',dcol:SUB} ];
+    const chartRaw=[8,12,6,14,10,18,22,16,24,19,28,21,30,26]; const cmax=Math.max.apply(null,chartRaw);
+    const chart=chartRaw.map(v=>({ h:Math.round(v/cmax*100)+'%', op:(0.4+v/cmax*0.6).toFixed(2) }));
+    const intentRaw=[['Praise',31,'var(--st-done)'],['Question',42,A],['Link request',28,'var(--st-warm)'],['Buyer',12,'var(--purple)'],['Business',7,'#7a8a9a']]; const imax=Math.max.apply(null,intentRaw.map(x=>x[1]));
+    const intents=intentRaw.map(x=>({ label:x[0], n:x[1], w:Math.round(x[1]/imax*100)+'%', col:x[2] }));
+
+    const routeTitles={ contacts:'Contacts', catalog:'Catalog', analytics:'Analytics', storefront: sfp?sfp.title:SF.title, thread:s.activeThread?s.activeThread.name:'', builder:cf?cf.name:'Flow' };
+    const at=s.activeThread;
+    const thread = at? { meta:at.handle+' · 24h window open', typing:at.typing, suggest:at.suggest, suggestText:at.suggestText,
+      msgs: at.msgs.map((m,i)=>{ const me=m.from==='me'||m.from==='ai'; const prev=at.msgs[i-1]; const gap=(prev&&((prev.from==='me'||prev.from==='ai')===me))?'2px':'9px';
+        return { text:m.text, justify:me?'flex-end':'flex-start', align:me?'flex-end':'flex-start', aiTag:!!m.ai, gap, bg:m.ai?'var(--accent-soft)':me?A:'var(--bubble-them)', fg:m.ai?'var(--text)':me?'#fff':'var(--bubble-them-fg)',
+          corner:m.ai?'border:1px solid color-mix(in srgb,var(--accent) 24%,transparent);border-bottom-right-radius:5px;':me?'border-bottom-right-radius:5px;':'border-bottom-left-radius:5px;' }; }) } : {msgs:[]};
+
+    const sr=s.settings;
+    const sIcons={ disc:this.ic('<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>'), auto:this.nodeIcon('spark'), bell:this.nodeIcon('bell') };
+    const mkRow=(k,label,sub,icon,on)=>({ label,sub,icon, toggle:this.toggleSetting(k), trackbg:on?A:'var(--border-strong)', knob:on?'translateX(19px)':'translateX(0)' });
+    const settingsRows=[ mkRow('disclosure','AI disclosure','Add a subtle "AI-assisted" note',sIcons.disc,sr.disclosure), mkRow('autonomous','Autonomous mode','Let Mira send high-confidence replies',sIcons.auto,sr.autonomous), mkRow('notifications','Push notifications','Hot leads & deals',sIcons.bell,sr.notifications) ];
+
+    const introSlides=[
+      { ic:this.ic('<path d="M21 11.5a8 8 0 0 1-11.6 7.1L4 20l1.4-5.4A8 8 0 1 1 21 11.5Z"/>',32), title:'Mira reads every comment & DM', body:'She watches your Instagram around the clock — every comment, every DM — so nothing slips through.' },
+      { ic:this.ic('<path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6L12 3Z"/>',32), title:'Replies in your voice', body:'Mira learns your answers once and reuses them everywhere — in English or Hinglish. You always stay in control.' },
+      { ic:this.ic('<path d="M3 3h7l11 11-7 7L3 10z"/><circle cx="7.5" cy="7.5" r="1.6"/>',30), title:'Turns DMs into deals', body:'She spots buyers and brand deals, drafts the reply, and DMs links automatically — while you sleep.' },
+    ];
+    const introCur=introSlides[s.introSlide]||introSlides[0];
+    const introDots=[0,1,2].map(i=>({ on:i===s.introSlide, w:i===s.introSlide?'20px':'7px', bg:i===s.introSlide?A:'var(--border-strong)' }));
+    const connectFeatures=[
+      { ic:this.ic('<path d="M21 11.5a8 8 0 0 1-11.6 7.1L4 20l1.4-5.4A8 8 0 1 1 21 11.5Z"/>',15), text:'Auto-reply to comments in your voice' },
+      { ic:this.ic('<path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6L12 3Z"/>',15), text:'Learns your answers once, reuses everywhere' },
+      { ic:this.ic('<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',15), text:'DMs links to anyone who asks' },
+    ];
+    const brainChips=['“free shipping over ₹999 ✨”','“DM kar diya link 🔥”','“thank you so much 🥹”'];
+    const isDark=s.theme==='dark';
+    return {
+      theme:s.theme,
+      showPreApp:s.stage!=='app', booted:s.stage==='app',
+      stageSignin:s.stage==='signin', stageIntro:s.stage==='intro', stageConnect:s.stage==='connect', stageBrain:s.stage==='brain',
+      signIn:this.signIn, gBusy:s.gBusy, gIdle:!s.gBusy, gLabel:s.gBusy?'Signing in…':'Continue with Google',
+      intro:introCur, introDots, introNext:this.introNext, introBack:this.introBack, introSkip:this.introSkip, introBackShow:s.introSlide>0, introCta:s.introSlide>=2?'Get started':'Next',
+      connect:this.connect, connecting:s.connecting, notConnecting:!s.connecting, connectLabel:s.connecting?'Waiting for Instagram…':'Connect Instagram',
+      connectFeatures, previewApp:this.previewApp, brainDone:this.brainDone, brainChips,
+      greeting:greet,
+      isHome:s.tab==='home', isInbox:s.tab==='inbox', isOpps:s.tab==='opps', isAuto:s.tab==='auto',
+      modes, modeDesc, dash, todayRows, jumps, tabs,
+      drafts, hasDrafts:s.drafts.length>0, noDrafts:s.drafts.length===0, resetDrafts:()=>this._restoreDrafts(),
+      inboxSub:s.drafts.length>0?'← skip · swipe to send →':'All caught up',
+      oppSummary, oppChips, feed,
+      flows, flowsActive, flowsCount:s.flows.length, newFlow:this.newFlow,
+      builder,
+      contacts, stats, chart, intents,
+      sf, openStorefront:this.openStorefront, openCatalog:this.openCatalog,
+      storefront, sfShowShop, sfShowProduct, sfDetail, sfBack:this.sfBack, copyUrl:this.copyUrl,
+      catalog, catInStock, catFeatured, addProduct:this.addProduct,
+      customize, openCustomize:this.openCustomize, closeCustomize:this.closeCustomize,
+      csheetMounted:s.csheetMounted, csheetAnim: s.csheetClosing?'shout .26s ease forwards':'shin .34s cubic-bezier(.16,.84,.44,1) forwards', cScrimAnim: s.csheetClosing?'fout .24s forwards':'fin .3s forwards',
+      openSettings:this.openSettings, closeSettings:this.closeSettings,
+      hasRoute:!!s.route, routeAnim: s.routeClosing?'rout .3s cubic-bezier(.4,0,1,1) forwards':'rin .34s cubic-bezier(.16,.84,.44,1) forwards', pop:this.pop,
+      routeTitle:routeTitles[s.route]||'', routeBack: s.route==='thread'?(at?at.handle:''): s.route==='builder'?'Flows': s.route==='storefront'?(sfp?'Shop':'Home'):'Home',
+      rContacts:s.route==='contacts', rCatalog:s.route==='catalog', rAnalytics:s.route==='analytics', rThread:s.route==='thread', rBuilder:s.route==='builder', rStorefront:s.route==='storefront',
+      thread, composer:s.composer, onCompose:this.onCompose, sendMsg:this.sendMsg, sendSuggest:this.sendSuggest, sendBtnBg:s.composer.trim()?A:'var(--border-strong)',
+      sheetMounted:s.sheetMounted, sheetAnim: s.sheetClosing?'shout .26s ease forwards':'shin .34s cubic-bezier(.16,.84,.44,1) forwards', sheetScrimAnim: s.sheetClosing?'fout .24s forwards':'fin .3s forwards',
+      setLight:this.setTheme('light'), setDark:this.setTheme('dark'),
+      lightBg:!isDark?'var(--bg-elev)':'transparent', lightFg:!isDark?A:'var(--text-muted)', lightSh:!isDark?'var(--shadow-card)':'none',
+      darkBg:isDark?'var(--bg-elev)':'transparent', darkFg:isDark?A:'var(--text-muted)', darkSh:isDark?'var(--shadow-card)':'none',
+      settingsRows, signOut:this.signOut,
+      bsheetMounted:s.bsheetMounted, bsheetAnim: s.bsheetClosing?'shout .26s ease forwards':'shin .34s cubic-bezier(.16,.84,.44,1) forwards', bScrimAnim: s.bsheetClosing?'fout .24s forwards':'fin .3s forwards', closeBsheet:this.closeBsheet,
+      bsPicker:!!(bs&&bs.kind==='picker'), bsConfig:!!(bs&&bs.kind==='config'), bsTest:!!(bs&&bs.kind==='test'),
+      picker, config, test, chipDraft:s.chipDraft, setChipDraft:this.setChipDraft,
+      pullH:(s.pullDist||0)+'px', pullTrans:s.pulling?'none':'height .3s cubic-bezier(.32,.72,0,1)', pullLabel:s.refreshing?'Refreshing…':s.pullDist>52?'Release to refresh':'Pull to refresh', pullSpin:s.refreshing?'animation:spin .7s linear infinite;':'', pullDown:this.pullDown, pullMove:this.pullMove, pullUp:this.pullUp,
+      toast:s.toast,
+    };
+  }
+}
+</script>
+</body>
+</html>
