@@ -1120,21 +1120,21 @@ class Component extends DCLogic {
       { id:7, name:'Nykaa', handle:'@nykaabeauty', initials:'NY', type:'Wholesale', value:'₹2,50,000', conf:90, stage:0, av:'#52525b' },
     ],
     flows: [
-      { id:1, name:'Comment → DM link', active:true, runs:'1,204 runs · 2m ago',
-        trigger:{uid:1,type:'comment_post',config:{scope:'All posts',kw:['link','price']}},
-        steps:[ {uid:2,type:'comment_reply',config:{text:"Just sent you a DM 📩 Check your inbox!"}}, {uid:3,type:'opening_message',config:{text:"Hey! 👋 Thanks for commenting — sending you the details right now!"}}, {uid:4,type:'text_message',config:{text:"Here's the link 👉 dslabs.in/serum"}} ] },
+      { id:1, name:'Comment-to-DM · link', active:true, runs:'1,204 runs · 2m ago',
+        trigger:{uid:1,type:'comment',config:{scope:'All posts',kw:['link','price']}},
+        steps:[ {uid:2,type:'private_reply',config:{text:'Sent it to your DMs 💌'}}, {uid:3,type:'send_link',config:{text:"Here's the link 👉",url:'dslabs.in/serum'}} ] },
       { id:2, name:'Welcome new DMs', active:true, runs:'318 runs · 18m ago',
-        trigger:{uid:5,type:'dm',config:{kw:[]}},
-        steps:[ {uid:6,type:'opening_message',config:{text:'Hey! 👋 Thanks for the message — how can I help?'}} ] },
-      { id:3, name:'Story reply → thanks', active:true, runs:'92 runs · 1h ago',
-        trigger:{uid:7,type:'story_reply',config:{}},
-        steps:[ {uid:8,type:'opening_message',config:{text:'Thank you for the love! 🥹 means the world'}} ] },
-      { id:4, name:'Follow to unlock', active:false, runs:'Draft · not live',
-        trigger:{uid:9,type:'comment_post',config:{scope:'All posts',kw:['free','guide']}},
-        steps:[ {uid:10,type:'comment_reply',config:{text:"Just sent you a DM 📩 Check your inbox!"}}, {uid:11,type:'opening_message',config:{text:"Hey! 👋 Thanks for commenting — sending you the details right now!"}}, {uid:12,type:'follow_gate',config:{text:"Hey! 👋 This content is for our community 💜\n\nFollow @[username] to unlock it — once you do, reply \"done\" and I'll send it right over! 🙏"}}, {uid:13,type:'text_message',config:{text:'Here you go 👉 dslabs.in/free-guide'}} ] },
-      { id:5, name:'Lead capture', active:false, runs:'Draft · not live',
-        trigger:{uid:14,type:'dm',config:{kw:['price','buy']}},
-        steps:[ {uid:15,type:'opening_message',config:{text:"Hey! 👋 Thanks for commenting — sending you the details right now!"}}, {uid:16,type:'lead_form',config:{text:"What's the best email to send this to? 📩"}}, {uid:17,type:'followup_message',config:{delay:'1 hour',text:"Hey! 👋 Just checking in — did you get a chance to look at what I sent?"}} ] },
+        trigger:{uid:4,type:'dm',config:{kw:[]}},
+        steps:[ {uid:5,type:'first_time',config:{}}, {uid:6,type:'ai_reply',config:{tone:'Warm'}} ] },
+      { id:3, name:'Story mention → thanks', active:true, runs:'92 runs · 1h ago',
+        trigger:{uid:7,type:'story_mention',config:{}},
+        steps:[ {uid:8,type:'send_dm',config:{text:'Thank you for the love! 🥹 means the world'}}, {uid:9,type:'add_tag',config:{tag:'advocate'}} ] },
+      { id:4, name:'Buyer funnel', active:false, runs:'Draft · not live',
+        trigger:{uid:10,type:'dm',config:{kw:['price','buy','cost']}},
+        steps:[ {uid:11,type:'intent',config:{val:'Buyer'}}, {uid:12,type:'quick_replies',config:{btns:['See products','Talk to founder']}}, {uid:13,type:'ask_email',config:{text:'Drop your email for 10% off 👇'}}, {uid:14,type:'carousel',config:{set:'Bestsellers'}} ] },
+      { id:5, name:'Ice breakers', active:false, runs:'Draft · not live',
+        trigger:{uid:15,type:'dm',config:{kw:[]}},
+        steps:[ {uid:16,type:'quick_replies',config:{btns:['Shipping?','Bestsellers','Track order']}} ] },
     ],
     contacts: [
       { id:1, name:'Sara Mitchell', handle:'@sara_codes', initials:'SC', av:'#52525b', status:'hot', score:92, last:'do you ship to canada? 👀', time:'2m' },
@@ -1189,9 +1189,6 @@ class Component extends DCLogic {
   icFill(p,sz){ return React.createElement('svg',{width:sz||24,height:sz||24,viewBox:'0 0 24 24',fill:'currentColor',stroke:'none',style:{display:'block'},dangerouslySetInnerHTML:{__html:p}}); }
   flashToast(t){ this.setState({ toast:t }); clearTimeout(this._tt); this._tt=setTimeout(()=>this.setState({toast:null}),1600); }
   nodeIcon(key,sz){ const M={
-    chat:'<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
-    image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="m4 18 5-5 3.5 3.5L16 13l4 4"/>',
-    userplus:'<circle cx="9" cy="8" r="3.4"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M15 11h6"/>',
     comment:'<path d="M21 11.5a8 8 0 0 1-11.6 7.1L4 20l1.4-5.4A8 8 0 1 1 21 11.5Z"/>',
     dm:'<path d="M4 5h16v12H8l-4 3z"/>',
     mention:'<circle cx="12" cy="12" r="4"/><path d="M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7"/>',
@@ -1223,19 +1220,39 @@ class Component extends DCLogic {
   // ---------- node library ----------
   nodeDefs(){ if(this._nd) return this._nd; const T='trigger',C='condition',A='action';
     const L=[
-      {t:'comment_post',cat:T,label:'New comment',sub:'comment_post',icon:'comment',fields:[{key:'scope',label:'Which posts',kind:'select',opts:['All posts','Specific posts']},{key:'kw',label:'Only if the comment contains',kind:'chips'}],sum:c=>c.kw&&c.kw.length?'Comment contains "'+c.kw.join('", "')+'"':'Any comment · '+(c.scope||'All posts')},
-      {t:'dm',cat:T,label:'New DM',sub:'dm',icon:'dm',fields:[{key:'kw',label:'Only if the message contains',kind:'chips'}],sum:c=>c.kw&&c.kw.length?'DM contains "'+c.kw.join('", "')+'"':'Any new direct message'},
-      {t:'live_comment',cat:T,label:'Live comment',sub:'live_comment',icon:'live',fields:[{key:'kw',label:'Only if the comment contains',kind:'chips'}],sum:c=>c.kw&&c.kw.length?'Live comment contains "'+c.kw.join('", "')+'"':'Any comment on your live'},
-      {t:'story_reply',cat:T,label:'Story reply',sub:'story_reply',icon:'reply',fields:[],sum:()=>'Someone replies to your story'},
-      {t:'opening_message',cat:A,label:'Opening message',sub:'First DM',icon:'dm',max:1,fields:[{key:'text',label:'Message',kind:'area',ph:"Hey! 👋 Thanks for commenting — sending you the details right now!"}],defaults:{text:"Hey! 👋 Thanks for commenting — sending you the details right now!"},sum:c=>c.text||'Send the opening DM'},
-      {t:'comment_reply',cat:A,label:'Comment reply',sub:'Public reply',icon:'reply',max:1,triggers:['comment_post','live_comment'],fields:[{key:'text',label:'Reply text',kind:'area',ph:"Just sent you a DM 📩 Check your inbox!"}],defaults:{text:"Just sent you a DM 📩 Check your inbox!"},sum:c=>c.text||'Reply under the comment'},
-      {t:'follow_gate',cat:A,label:'Follow gate',sub:'Skip if following · ask if not',icon:'usercheck',max:1,fields:[{key:'text',label:'Gate message',kind:'area',ph:"Hey! 👋 This content is for our community 💜\n\nFollow @[username] to unlock it — once you do, reply \"done\" and I'll send it right over! 🙏"}],defaults:{text:"Hey! 👋 This content is for our community 💜\n\nFollow @[username] to unlock it — once you do, reply \"done\" and I'll send it right over! 🙏"},sum:c=>'Gate until they follow you'},
-      {t:'ask_follow',cat:A,label:'Ask for follow',sub:'Always asks',icon:'userplus',max:1,fields:[{key:'text',label:'Message',kind:'area',ph:"Hey! 👋 To get exclusive access, follow @[username] first 💜\n\nOnce you do, reply \"done\" and I'll send it right over!"},{key:'buttons',label:'Button labels',kind:'chips'}],defaults:{text:"Hey! 👋 To get exclusive access, follow @[username] first 💜\n\nOnce you do, reply \"done\" and I'll send it right over!"},sum:c=>'Ask them to follow first'},
-      {t:'text_message',cat:A,label:'Text message',sub:'Link, info or any text',icon:'chat',fields:[{key:'text',label:'Message',kind:'area',ph:"Here's what you asked for 👇\n[paste your link or content here]\n\nLet me know if you need anything! 😊"},{key:'buttons',label:'Button labels',kind:'chips'}],defaults:{text:"Here's what you asked for 👇\n[paste your link or content here]\n\nLet me know if you need anything! 😊"},sum:c=>c.text||'Send a text message'},
-      {t:'card_message',cat:A,label:'Card message',sub:'Image · title · button',icon:'cards',fields:[{key:'imageUrl',label:'Image URL',kind:'text',ph:'https://…'},{key:'title',label:'Title',kind:'text'},{key:'subtitle',label:'Subtitle',kind:'text'},{key:'buttons',label:'Button labels',kind:'chips'}],defaults:{},sum:c=>c.title?'Card · '+c.title:'Send a rich card'},
-      {t:'image_message',cat:A,label:'Image message',sub:'DM attachment',icon:'image',fields:[{key:'imageUrl',label:'Image URL',kind:'text',ph:'https://…'}],defaults:{},sum:c=>'Send an image via DM'},
-      {t:'lead_form',cat:A,label:'Lead form',sub:'Capture a reply',icon:'mail',max:1,fields:[{key:'text',label:'Question',kind:'area',ph:"What's the best email to send this to? 📩"}],defaults:{text:"What's the best email to send this to? 📩"},sum:c=>c.text||'Ask for their email'},
-      {t:'followup_message',cat:A,label:'Follow-up message',sub:'Delayed send',icon:'clock',max:1,notTriggers:['live_comment'],fields:[{key:'delay',label:'Send after',kind:'select',opts:['1 min','5 min','10 min','15 min','30 min','1 hour','2 hours','3 hours','6 hours','12 hours','23.5 hours']},{key:'text',label:'Message',kind:'area',ph:"Hey! 👋 Just checking in — did you get a chance to look at what I sent?"}],defaults:{delay:'1 hour',text:"Hey! 👋 Just checking in — did you get a chance to look at what I sent?"},sum:c=>'Follow up after '+(c.delay||'1 hour')}
+      {t:'comment',cat:T,label:'New comment',sub:'webhook · comments',icon:'comment',fields:[{key:'scope',label:'On which media',kind:'select',opts:['All posts','Specific post','Reels only']},{key:'kw',label:'Only if it contains',kind:'chips'}],sum:c=>c.kw&&c.kw.length?'Comment contains "'+c.kw.join('", "')+'"':'Any new comment · '+(c.scope||'All posts')},
+      {t:'dm',cat:T,label:'New DM',sub:'webhook · messages',icon:'dm',fields:[{key:'kw',label:'Only if it contains',kind:'chips'}],sum:c=>c.kw&&c.kw.length?'DM contains "'+c.kw.join('", "')+'"':'Any new direct message'},
+      {t:'story_mention',cat:T,label:'Story mention',sub:'webhook · mentions',icon:'mention',fields:[],sum:()=>'Someone @mentions you in a story'},
+      {t:'story_reply',cat:T,label:'Story reply',sub:'webhook · messages',icon:'reply',fields:[],sum:()=>'Someone replies to your story'},
+      {t:'postback',cat:T,label:'Button tapped',sub:'webhook · messaging_postbacks',icon:'tap',fields:[{key:'payload',label:'Payload equals',kind:'text',ph:'BUY_NOW'}],sum:c=>c.payload?'Taps button "'+c.payload+'"':'Taps any quick-reply / button'},
+      {t:'reaction',cat:T,label:'Message reaction',sub:'webhook · message_reactions',icon:'heart',fields:[],sum:()=>'Reacts to one of your messages'},
+      {t:'seen',cat:T,label:'Message seen',sub:'webhook · messaging_seen',icon:'eye',fields:[],sum:()=>'Reads your message but no reply'},
+      {t:'optin',cat:T,label:'Opt-in',sub:'webhook · messaging_optins',icon:'check',fields:[],sum:()=>'Opts in to notifications'},
+      {t:'referral',cat:T,label:'Ad / ref link',sub:'webhook · messaging_referral',icon:'link2',fields:[{key:'ref',label:'Ref / ad id',kind:'text',ph:'summer_sale'}],sum:c=>c.ref?'Starts from ref "'+c.ref+'"':'Starts from an ad or ig.me link'},
+      {t:'live_comment',cat:T,label:'Live comment',sub:'webhook · live_comments',icon:'live',fields:[],sum:()=>'Comments during a live broadcast'},
+      {t:'contains',cat:C,label:'Text contains',icon:'filter',fields:[{key:'kw',label:'Any of these words',kind:'chips'}],sum:c=>c.kw&&c.kw.length?'Contains '+c.kw.join(' / '):'Message contains a keyword'},
+      {t:'is_follower',cat:C,label:'Follower check',icon:'usercheck',fields:[{key:'val',label:'Must be',kind:'select',opts:['A follower','Not a follower']}],sum:c=>(c.val||'A follower')},
+      {t:'first_time',cat:C,label:'First-time contact',icon:'spark',fields:[],sum:()=>'Only the first time they reach out'},
+      {t:'window',cat:C,label:'24h window',icon:'clock',fields:[{key:'val',label:'Window is',kind:'select',opts:['Open','Closed']}],sum:c=>'24-hour window is '+(c.val||'Open').toLowerCase()},
+      {t:'intent',cat:C,label:'AI intent is',icon:'spark',fields:[{key:'val',label:'Detected intent',kind:'select',opts:['Question','Buyer','Praise','Spam','Business']}],sum:c=>'AI reads intent as '+(c.val||'Buyer')},
+      {t:'business_hours',cat:C,label:'Business hours',icon:'cal',fields:[],sum:()=>'Only 9am–6pm, Mon–Sat'},
+      {t:'split',cat:C,label:'Random A/B split',icon:'branch',fields:[{key:'pct',label:'Send to path A',kind:'number',unit:'%'}],sum:c=>'Split — '+(c.pct||50)+'% take path A'},
+      {t:'private_reply',cat:A,label:'Private reply',sub:'primitive · Private Replies',icon:'reply',fields:[{key:'text',label:'Reply text',kind:'area',ph:'Sent it to your DMs 💌'}],sum:c=>c.text||'Reply privately to the comment'},
+      {t:'send_dm',cat:A,label:'Send DM',sub:'primitive · Send API',icon:'plane',fields:[{key:'text',label:'Message',kind:'area',ph:'Hey! Thanks for reaching out ✨'}],sum:c=>c.text||'Send a direct message'},
+      {t:'send_link',cat:A,label:'Send link',sub:'primitive · Send API',icon:'link2',fields:[{key:'text',label:'Message',kind:'text',ph:"Here's the link"},{key:'url',label:'URL',kind:'text',ph:'dslabs.in/serum'}],sum:c=>c.url?'Link · '+c.url:'Send a link in the DM'},
+      {t:'carousel',cat:A,label:'Product carousel',sub:'primitive · Generic Template',icon:'cards',fields:[{key:'set',label:'Show',kind:'select',opts:['Bestsellers','New arrivals','Full catalog']}],sum:c=>'Carousel · '+(c.set||'Bestsellers')},
+      {t:'quick_replies',cat:A,label:'Quick replies',sub:'primitive · Quick Replies',icon:'buttons',fields:[{key:'btns',label:'Buttons (max 13)',kind:'chips'}],sum:c=>c.btns&&c.btns.length?c.btns.join(' · '):'Show tappable buttons'},
+      {t:'ask_email',cat:A,label:'Ask for email',sub:'Quick Reply · email',icon:'mail',fields:[{key:'text',label:'Prompt',kind:'text',ph:'Drop your email for the discount 👇'}],sum:c=>c.text||'Capture email (consent logged)'},
+      {t:'ask_phone',cat:A,label:'Ask for phone',sub:'Quick Reply · phone',icon:'phone',fields:[{key:'text',label:'Prompt',kind:'text',ph:'Share your number for order updates'}],sum:c=>c.text||'Capture phone (consent logged)'},
+      {t:'ai_reply',cat:A,label:'AI draft reply',sub:'Assisted · brand voice',icon:'spark',fields:[{key:'tone',label:'Tone',kind:'select',opts:['Warm','Witty','Professional','Hinglish']}],sum:c=>'AI replies in '+(c.tone||'Warm')+' tone'},
+      {t:'add_tag',cat:A,label:'Add tag',sub:'CRM',icon:'tag',fields:[{key:'tag',label:'Tag',kind:'text',ph:'advocate'}],sum:c=>c.tag?'Tag contact · '+c.tag:'Add a tag to the contact'},
+      {t:'set_status',cat:A,label:'Set lead status',sub:'CRM',icon:'check',fields:[{key:'val',label:'Status',kind:'select',opts:['Cold','Warm','Hot','VIP','Customer']}],sum:c=>'Lead status → '+(c.val||'Warm')},
+      {t:'assign',cat:A,label:'Notify / assign',sub:'Handover',icon:'user',fields:[{key:'val',label:'Action',kind:'select',opts:['Notify me','Assign to agent','Escalate']}],sum:c=>(c.val||'Notify me')},
+      {t:'wait',cat:A,label:'Wait',sub:'Delay',icon:'clock',fields:[{key:'n',label:'Delay',kind:'number',unit:'min'}],sum:c=>'Wait '+(c.n||5)+' min before next step'},
+      {t:'hide_comment',cat:A,label:'Hide comment',sub:'primitive · Moderation',icon:'eyeoff',fields:[],sum:()=>'Hide the comment from the post'},
+      {t:'react',cat:A,label:'React / like',sub:'primitive · Reaction',icon:'heart',fields:[{key:'emoji',label:'Reaction',kind:'select',opts:['❤️','🔥','👍','🙏','😍']}],sum:c=>'React with '+(c.emoji||'❤️')},
+      {t:'optin_topic',cat:A,label:'Marketing opt-in',sub:'primitive · Marketing Messages',icon:'bell',fields:[{key:'topic',label:'Topic',kind:'text',ph:'Drops & restocks'}],sum:c=>c.topic?'Opt-in topic · '+c.topic:'Add to a marketing topic'},
+      {t:'end',cat:A,label:'End flow',sub:'',icon:'stop',fields:[],sum:()=>'Stop the automation here'}
     ];
     const map={}; L.forEach(d=>map[d.t]=d);
     this._nd={list:L,map,triggers:L.filter(d=>d.cat===T),conditions:L.filter(d=>d.cat===C),actions:L.filter(d=>d.cat===A)};
@@ -1288,7 +1305,7 @@ class Component extends DCLogic {
   // ---------- flows / builder ----------
   toggleFlow = (id) => () => this.setState(s=>({flows:s.flows.map(f=>f.id===id?Object.assign({},f,{active:!f.active}):f)}));
   openBuilder = (id) => { this.setState({activeFlowId:id}); this.push('builder'); };
-  newFlow = () => { const id=Date.now(); const mk=(t)=>this._newNode(this.nodeDefs().map[t]); const f={id,name:'Untitled automation',active:false,runs:'Draft · not live',trigger:mk('comment_post'),steps:[mk('comment_reply'),mk('opening_message')]}; this.setState(s=>({flows:s.flows.concat([f]),activeFlowId:id})); this.push('builder'); };
+  newFlow = () => { const id=Date.now(); const f={id,name:'Untitled flow',active:false,runs:'Not run yet',trigger:null,steps:[]}; this.setState(s=>({flows:s.flows.concat([f]),activeFlowId:id})); this.push('builder'); };
   renameFlow = (e) => { const v=e.target.value; this.setState(s=>({flows:s.flows.map(f=>f.id===s.activeFlowId?Object.assign({},f,{name:v}):f)})); };
   _curFlow(){ return this.state.flows.find(f=>f.id===this.state.activeFlowId); }
   _updateFlow(fn){ this.setState(s=>({flows:s.flows.map(f=>f.id===s.activeFlowId?fn(f):f)})); }
@@ -1297,7 +1314,7 @@ class Component extends DCLogic {
   openPicker = (mode, insertAt) => { this.setState({bsheet:{kind:'picker',mode,insertAt,tab:'action'}}); this._openBsheet(); };
   setPickerTab = (t) => () => this.setState(s=>({bsheet:Object.assign({},s.bsheet,{tab:t})}));
   pickNode = (t) => () => { const def=this.nodeDefs().map[t]; const node=this._newNode(def); const bs=this.state.bsheet;
-    if(bs.mode==='trigger'){ this._updateFlow(f=>{ let nf=Object.assign({},f,{trigger:node}); if(t==='comment_post'){ const have=new Set(nf.steps.map(x=>x.type)); const add=[]; if(!have.has('comment_reply')) add.push(this._newNode(this.nodeDefs().map.comment_reply)); if(!have.has('opening_message')) add.push(this._newNode(this.nodeDefs().map.opening_message)); if(add.length) nf=Object.assign({},nf,{steps:add.concat(nf.steps)}); } return nf; }); }
+    if(bs.mode==='trigger'){ this._updateFlow(f=>Object.assign({},f,{trigger:node})); }
     else { const at=bs.insertAt; this._updateFlow(f=>{ const steps=f.steps.slice(); steps.splice(at,0,node); return Object.assign({},f,{steps}); }); }
     if(def.fields && def.fields.length){ const target= bs.mode==='trigger'?'trigger':bs.insertAt; this.setState({bsheet:{kind:'config',target,type:t},chipDraft:''}); }
     else { this._closeBsheet(); }
@@ -1367,11 +1384,11 @@ class Component extends DCLogic {
 
   // ---------- automation templates ----------
   flowTemplates(){ if(this._ft) return this._ft; this._ft=[
-    { id:'comment_dm', name:'Comment → DM link', icon:'comment', desc:'When someone comments a keyword, reply publicly then DM them your link.', trigger:{type:'comment_post',config:{scope:'All posts',kw:['link','price']}}, steps:[ {type:'comment_reply',config:{text:"Just sent you a DM 📩 Check your inbox!"}}, {type:'opening_message',config:{text:"Hey! 👋 Thanks for commenting — sending you the details right now!"}}, {type:'text_message',config:{text:"Here's the link 👉 dslabs.in/serum"}} ] },
-    { id:'welcome_dm', name:'Welcome new DMs', icon:'dm', desc:'Greet first-time DMs the moment they land.', trigger:{type:'dm',config:{kw:[]}}, steps:[ {type:'opening_message',config:{text:'Hey! 👋 Thanks for the message — how can I help?'}} ] },
-    { id:'follow_unlock', name:'Follow to unlock', icon:'usercheck', desc:'Make them follow you before you send the content.', trigger:{type:'comment_post',config:{scope:'All posts',kw:['free','guide']}}, steps:[ {type:'comment_reply',config:{text:"Just sent you a DM 📩 Check your inbox!"}}, {type:'opening_message',config:{text:"Hey! 👋 Thanks for commenting — sending you the details right now!"}}, {type:'follow_gate',config:{text:"Hey! 👋 This content is for our community 💜\n\nFollow @[username] to unlock it — once you do, reply \"done\" and I'll send it right over! 🙏"}}, {type:'text_message',config:{text:'Here you go 👉 dslabs.in/free-guide'}} ] },
-    { id:'lead_capture', name:'Lead capture', icon:'mail', desc:'Collect an email, then follow up automatically.', trigger:{type:'dm',config:{kw:['price','buy']}}, steps:[ {type:'opening_message',config:{text:"Hey! 👋 Thanks for commenting — sending you the details right now!"}}, {type:'lead_form',config:{text:"What's the best email to send this to? 📩"}}, {type:'followup_message',config:{delay:'1 hour',text:"Hey! 👋 Just checking in — did you get a chance to look at what I sent?"}} ] },
-    { id:'story_thanks', name:'Story reply → thanks', icon:'reply', desc:'Send a warm thank-you when someone replies to your story.', trigger:{type:'story_reply',config:{}}, steps:[ {type:'opening_message',config:{text:'Thank you for the love! 🥹 means the world'}} ] },
+    { id:'comment_dm', name:'Comment → DM link', icon:'comment', desc:'When someone comments a keyword, DM them your link privately.', trigger:{type:'comment',config:{scope:'All posts',kw:['link','price']}}, steps:[ {type:'private_reply',config:{text:'Sent it to your DMs 💌'}}, {type:'send_link',config:{text:"Here's the link 👉",url:'dslabs.in/serum'}} ] },
+    { id:'welcome_dm', name:'Welcome new DMs', icon:'dm', desc:'Greet first-time DMs in your brand voice, automatically.', trigger:{type:'dm',config:{kw:[]}}, steps:[ {type:'first_time',config:{}}, {type:'ai_reply',config:{tone:'Warm'}} ] },
+    { id:'link_delivery', name:'Link delivery', icon:'link2', desc:'Anyone who asks for the link gets it instantly in their DMs.', trigger:{type:'dm',config:{kw:['link','buy','shop']}}, steps:[ {type:'send_link',config:{text:'Here you go 👉',url:'dslabs.in'}}, {type:'add_tag',config:{tag:'link-sent'}} ] },
+    { id:'lead_capture', name:'Lead form capture', icon:'mail', desc:'Qualify buyers, then capture their email for 10% off.', trigger:{type:'dm',config:{kw:['price','cost','order']}}, steps:[ {type:'intent',config:{val:'Buyer'}}, {type:'ask_email',config:{text:'Drop your email for 10% off 👇'}}, {type:'set_status',config:{val:'Hot'}} ] },
+    { id:'story_reply', name:'Story-reply autoresponder', icon:'reply', desc:'Auto-thank anyone who replies to your story.', trigger:{type:'story_reply',config:{}}, steps:[ {type:'send_dm',config:{text:'Thanks for the love! 🥹'}}, {type:'add_tag',config:{tag:'advocate'}} ] },
   ]; return this._ft; }
   openTemplates = () => this.push('templates');
   toggleAutoMenu = () => this.setState({autoMenu:!this.state.autoMenu});
@@ -1521,11 +1538,10 @@ class Component extends DCLogic {
     let picker={nodes:[]}, config={fields:[]}, test={msgs:[]};
     const catColor=(cat)=> cat==='trigger'?[WARM,'color-mix(in srgb,var(--st-warm) 15%,transparent)']: cat==='condition'?[PUR,'color-mix(in srgb,var(--purple) 15%,transparent)']:[A,'var(--accent-soft)'];
     if(bs&&bs.kind==='picker'){ const isTrig=bs.mode==='trigger';
-      const _cf=cf, _ttype=_cf&&_cf.trigger?_cf.trigger.type:null, _cnt={}; if(_cf){ _cf.steps.forEach(x=>{_cnt[x.type]=(_cnt[x.type]||0)+1;}); }
-      const avail=d=>{ if(d.triggers && !d.triggers.includes(_ttype)) return false; if(d.notTriggers && d.notTriggers.includes(_ttype)) return false; if(d.max!=null && (_cnt[d.t]||0)>=d.max) return false; return true; };
-      const mkNode=d=>({ label:d.label, desc:d.sub||'', icon:this.nodeIcon(d.icon,18), pick:this.pickNode(d.t), col:catColor(d.cat)[0], bg:catColor(d.cat)[1] });
+      const PDESC={contains:'Run only if the message matches',is_follower:'Check if they follow you',first_time:'Only their first time reaching out',window:'Gate on the 24-hour reply window',intent:'Branch on what AI reads they want',business_hours:'Only during your open hours',split:'Randomly send down two paths',private_reply:'Reply privately to the comment',send_dm:'Send them a direct message',send_link:'Drop a link in the DM',carousel:'Show a swipeable product carousel',quick_replies:'Show tappable reply buttons',ask_email:'Capture their email (consent logged)',ask_phone:'Capture their phone (consent logged)',ai_reply:'Let AI draft in your brand voice',add_tag:'Tag the contact in your CRM',set_status:'Set their lead status',assign:'Notify you or hand to an agent',wait:'Pause before the next step',hide_comment:'Hide the comment from the post',react:'React to their message',optin_topic:'Add them to a marketing topic',end:'Stop the automation here'};
+      const mkNode=d=>{ const cc=catColor(d.cat); return { label:d.label, desc:isTrig?(d.sub||''):(PDESC[d.t]||d.sub||''), icon:this.nodeIcon(d.icon,18), pick:this.pickNode(d.t), col:cc[0], bg:cc[1] }; };
       const groups= isTrig? [{title:'', hasTitle:false, nodes:defs.triggers.map(mkNode)}]
-        : [{title:'', hasTitle:false, nodes:defs.actions.filter(avail).map(mkNode)}];
+        : [{title:'Conditions', hasTitle:true, nodes:defs.conditions.map(mkNode)},{title:'Actions', hasTitle:true, nodes:defs.actions.map(mkNode)}];
       picker={ title:isTrig?'Choose a trigger':'Add a step', groups };
     }
     if(bs&&bs.kind==='config'){ const d=defs.map[bs.type]; const cfg=this._curConfig(); const cc=catColor(d.cat);
