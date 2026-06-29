@@ -15,38 +15,18 @@
 ## 1. Runtime topology (the 4 processes)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Next.js (port 3000)                                                  │
-│   • Serves dashboard UI (app/, components/)                           │
-│   • proxy.ts        → optimistic BetterAuth gate on /api/ig/*         │
-│   • next.config.ts  → STRANGLER: rewrites /api/ig/* → Elysia :4000    │
-│   • Still hosts: /api/auth/[...all] (BetterAuth), /api/ig/webhook     │
-│   • instrumentation.ts → auto-boots the watcher loops on server start │
-└─────────────────────────────────────────────────────────────────────┘
-              │ rewrite (afterFiles catch-all)
-              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  Elysia API — apps/api (Bun, port 4000)                               │
-│   • All ported routes: posts, inbox, analytics, llm, automations,     │
-│     postConfigs, control, settings, status, stream, auth              │
-│   • Imports lib/ig/* via @/* path alias (resolves to repo root)       │
-└─────────────────────────────────────────────────────────────────────┘
-              │
-              ▼
-┌──────────────────────────┐      ┌──────────────────────────────────┐
-│  BullMQ worker            │      │  Watcher loops (in Next process)  │
-│  worker/index.ts (tsx)    │      │  lib/ig/watcher.ts                │
-│   • Drains "ingest" queue │      │   • 1s realtime comment poll      │
-│   • processIngestJob()    │      │   • DM poll, 7s full tick         │
-│   • Scale = more procs    │      │   • token refresh                 │
-└──────────────────────────┘      └──────────────────────────────────┘
-              │                                  │
-              ▼                                  ▼
-        Redis (BullMQ + dedup)            Postgres / Supabase
+Next.js web (apps/web :3000)          Elysia API (apps/api :4000)         Worker (worker/index.ts, tsx)
+  app router UI + /api/auth      ──▶    routes → controllers → services      drains BullMQ queues:
+  proxy.ts (auth gate)                  imports the @/lib/ig engine            ingest-comments, ingest-dm,
+  next.config.ts strangler              + @shaiz/{db,auth,shared}              outbound, reconcile (+ 2 DLQs)
+  rewrites /api/ig|store|chat|              │                                          │
+  playground/* ──▶ :4000                   ▼                                          ▼
+                                Postgres / Supabase                          Redis
+                                (Drizzle = single DDL source)                (BullMQ + dedup/locks)
 ```
 
-**External deps:** Redis (BullMQ + claimOnce dedup), Postgres/Supabase (state), Ollama
-(local LLM), ngrok/cloudflare tunnel (Meta webhook ingress), Meta Graph API (IG).
+External deps: Postgres/Supabase (state), Redis (queues + `claimOnce` dedup + locks), Ollama /
+Claude (LLM), ngrok/cloudflare tunnel (Meta webhook ingress), Meta Graph API.
 
 ---
 
@@ -201,10 +181,12 @@ validated by both Next proxy and Elysia. Google OAuth needs client id/secret in 
 
 ## 6. Suggested cleanup order (for the agent)
 
-1. Delete dead artifacts: `data/` (gitignored SQLite), stale sqlite comments. Commit the untracked WIP or remove it.
-2. **Unify the DB stack** (§3) → single Drizzle source of truth, drop raw `pg.ts`/`initSchema`.
-3. Move the watcher out of `instrumentation.ts` into the worker tier (§13).
-4. Refactor `webhook/route.ts` to enqueue-and-return; kill the 1s poll once webhook-first lands (§4, §7).
-5. Decompose god components (§9).
-6. Lock down config: fail-fast on missing secrets, parameterize the tunnel URL (§12, §14).
-7. Add a real test suite around `automation.ts` / `pipeline.ts` (§15).
+1. **Tests:** only 5 unit-test files today (`tests/unit/`, 46 cases) — add coverage around
+   `automation.ts` / `pipeline.ts`.
+2. **Config hardening:** fail-fast on missing prod secrets; parameterize the tunnel URL in scripts.
+3. **Pre-existing typecheck debt:** `apps/web` `landing/` needs `gsap`/`three`/`@react-three/fiber`
+   installed; `apps/api` + `lib/ig` have a handful of latent type errors (the app runs via bun/tsx,
+   which don't typecheck). Worth clearing for a clean `tsc`.
+
+Done in the last cleanup pass: dead-code/doc removal, god-component split (Brain→`brain/`,
+InboxView→`inbox/`), and the full DB unification onto a single postgres-js pool (`pg.ts` deleted).

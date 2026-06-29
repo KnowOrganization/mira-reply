@@ -20,7 +20,8 @@ import { controlRoute } from "./routes/control";
 import { webhookRoute } from "./routes/webhook";
 import { storeRoute } from "./routes/store";
 
-const PORT = Number(process.env.API_PORT || 4000);
+// Railway (and most PaaS) inject PORT; honor it first, then API_PORT, then 4000.
+const PORT = Number(process.env.PORT || process.env.API_PORT || 4000);
 
 // Fail fast on missing required secrets/connections. In production a missing
 // var is fatal (no silent insecure fallback); in dev we warn and continue so
@@ -76,9 +77,10 @@ export const app = new Elysia()
   .use(webhookRoute)
   // public storefront (no auth — field-whitelisted, slug-resolved server-side)
   .use(storeRoute)
-  // bind loopback only — the API is reached via the Next rewrite proxy, never
-  // directly from the network (defense in depth; each route also requires auth).
-  .listen({ port: PORT, hostname: "127.0.0.1" });
+  // Bind all interfaces — on Railway the API runs as its own service reached over
+  // the network (Vercel rewrites /api/* here). Security rests on per-route auth,
+  // webhook HMAC, and the CORS allowlist (ALLOWED_ORIGINS) — not on loopback.
+  .listen({ port: PORT, hostname: "0.0.0.0" });
 
 console.log(`[api] mira backend listening on :${PORT}`);
 

@@ -3,23 +3,28 @@
 #   api   :4000  — Elysia backend + Meta webhook receiver
 #   worker        — BullMQ DM/comment/reconcile/outbound queues
 #   web   :3000  — Next app (8GB heap; turbopack dev OOMs on the default ~4GB)
-#   tunnel        — ngrok reserved domain -> :3000 (Meta MUST reach this; no tunnel = no DMs)
+#   tunnel        — cloudflared named tunnel (stable dev.yourdomain.com) -> :3000
+#                   (Meta MUST reach this; no tunnel = no DMs)
 #
 # Messaging brain = Claude SDK (Sonnet). NO ollama — do not start it.
 #
 # Why this script exists: the pipeline broke twice from orchestration gaps, not code —
 # (1) tunnel never started -> Meta webhooks hit a dead domain; (2) web OOM-crashed.
 # This starts everything, health-checks it, and auto-respawns web/tunnel if they die.
+#
+# Tunnel = cloudflared named tunnel "mira-dev" (config in ~/.cloudflared/config.yml,
+# routes TUNNEL_URL -> localhost:3000). Override the public URL with TUNNEL_URL=…
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-TUNNEL_URL="https://unveiled-walrus-blade.ngrok-free.dev"
+TUNNEL_URL="${TUNNEL_URL:-https://dev.yourdomain.com}"
+CF_TUNNEL="${CF_TUNNEL:-mira-dev}"
 LOG=/tmp
 mkdir -p "$LOG"
 
 echo "▶ Mira full stack — $ROOT"
-pkill -f "ngrok http 3000" 2>/dev/null || true
+pkill -f "cloudflared tunnel" 2>/dev/null || true
 pkill -x ollama 2>/dev/null || true   # messaging uses Claude SDK, not ollama
 
 start() { # name  logfile  command...
@@ -37,11 +42,11 @@ start() { # name  logfile  command...
 web_loop() { while true; do bun --filter @shaiz/web dev >"$LOG/mira-web.log" 2>&1; echo "[mira] web exited, respawning $(date)" >>"$LOG/mira-web.log"; sleep 2; done; }
 web_loop & WEB_PID=$!
 
-# tunnel — respawn on drop. Meta callback points at $TUNNEL_URL.
-tunnel_loop() { while true; do ngrok http 3000 --url="$TUNNEL_URL" >"$LOG/mira-ngrok.log" 2>&1; echo "[mira] tunnel exited, respawning $(date)" >>"$LOG/mira-ngrok.log"; sleep 2; done; }
+# tunnel — respawn on drop. Meta callback points at $TUNNEL_URL (cloudflared config).
+tunnel_loop() { while true; do cloudflared tunnel run "$CF_TUNNEL" >"$LOG/mira-tunnel.log" 2>&1; echo "[mira] tunnel exited, respawning $(date)" >>"$LOG/mira-tunnel.log"; sleep 2; done; }
 tunnel_loop & TUNNEL_PID=$!
 
-cleanup() { echo; echo "▶ stopping…"; kill "$API_PID" "$WORKER_PID" "$WEB_PID" "$TUNNEL_PID" 2>/dev/null; pkill -f "ngrok http 3000" 2>/dev/null; pkill -P "$WEB_PID" 2>/dev/null; pkill -P "$TUNNEL_PID" 2>/dev/null; exit 0; }
+cleanup() { echo; echo "▶ stopping…"; kill "$API_PID" "$WORKER_PID" "$WEB_PID" "$TUNNEL_PID" 2>/dev/null; pkill -f "cloudflared tunnel" 2>/dev/null; pkill -P "$WEB_PID" 2>/dev/null; pkill -P "$TUNNEL_PID" 2>/dev/null; exit 0; }
 trap cleanup INT TERM
 
 # health gate
