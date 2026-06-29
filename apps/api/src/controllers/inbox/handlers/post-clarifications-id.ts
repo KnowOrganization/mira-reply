@@ -12,5 +12,5 @@ export const postClarificationsIdHandler = new Elysia().use(authPlugin).post(
     if ("badAction" in result) { set.status = 400; return { error: "bad action" }; }
     return { ok: true };
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

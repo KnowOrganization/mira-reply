@@ -21,5 +21,5 @@ export const postAgentHandler = new Elysia().use(authPlugin).post(
       return { error: e instanceof Error ? e.message : "agent failed" };
     }
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

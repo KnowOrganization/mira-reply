@@ -292,23 +292,23 @@ export async function injectEvent(opts: {
     let handledByPostConfig = false;
     if (postId) {
       try {
-        const config = await getPostConfigByPostId(postId);
+        const config = await getPostConfigByPostId(accountId, postId);
         const store = await readStore(accountId);
         const ownId = store.account?.igUserId;
-        if (config && fromUserId !== ownId && !await isCommentProcessed(fakeId)) {
+        if (config && fromUserId !== ownId && !await isCommentProcessed(accountId, fakeId)) {
           const kws: string[] = config.keywords;
           const matches = kws.length === 0 || kws.some((k) => text.toLowerCase().includes(k.toLowerCase()));
           if (matches) {
             handledByPostConfig = true;
-            await markCommentProcessed(fakeId, fromUserId, config.id);
-            await upsertUserState({ igsid: fromUserId, post_id: config.id, comment_id: fakeId, state: "awaiting_tap", payload: null });
-            await insertLog({ direction: "in", event_type: "comment", igsid: fromUserId, post_id: config.id, payload: JSON.stringify({ commentId: fakeId, text }), status: "matched", error: null });
+            await markCommentProcessed(accountId, fakeId, fromUserId, config.id);
+            await upsertUserState(accountId, { igsid: fromUserId, post_id: config.id, comment_id: fakeId, state: "awaiting_tap", payload: null });
+            await insertLog(accountId, { direction: "in", event_type: "comment", igsid: fromUserId, post_id: config.id, payload: JSON.stringify({ commentId: fakeId, text }), status: "matched", error: null });
             publish({ type: "log", level: "info", msg: `inject: post_config matched — @${fromUsername} → awaiting_tap (config: ${config.id})`, ts: Date.now() });
             publish({ type: "log", level: "info", msg: `inject: would send button DM: "${config.welcome_msg}" | btn: "${config.button_label}"`, ts: Date.now() });
           } else {
             publish({ type: "log", level: "info", msg: `inject: post_config found but keywords not matched (kws=${JSON.stringify(kws)})`, ts: Date.now() });
           }
-        } else if (config && await isCommentProcessed(fakeId)) {
+        } else if (config && await isCommentProcessed(accountId, fakeId)) {
           publish({ type: "log", level: "warn", msg: `inject: post_config — comment already processed (dedup)`, ts: Date.now() });
         } else if (!config) {
           publish({ type: "log", level: "info", msg: `inject: no post_config for postId=${postId}`, ts: Date.now() });

@@ -65,5 +65,5 @@ export const postChatHandler = new Elysia().use(authPlugin).post(
 
     return new Response(upstream.body, { headers: NDJSON_HEADERS });
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

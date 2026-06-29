@@ -11,5 +11,5 @@ export const postConversationSendHandler = new Elysia().use(authPlugin).post(
     if (!result.ok) { set.status = result.status; return { error: result.reason }; }
     return { ok: true, messageId: result.messageId, via: result.via };
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

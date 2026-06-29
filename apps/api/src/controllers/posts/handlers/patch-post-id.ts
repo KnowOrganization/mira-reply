@@ -17,5 +17,5 @@ export const patchPostIdHandler = new Elysia().use(authPlugin).patch(
 
     return patchPost(auth.accountId, params.postId, b, set);
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

@@ -11,5 +11,5 @@ export const deletePlaygroundTrainHandler = new Elysia().use(authPlugin).delete(
     await deleteTraining(id);
     return { ok: true };
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

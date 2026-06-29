@@ -27,5 +27,5 @@ export const postAutomationsTestHandler = new Elysia().use(authPlugin).post(
       return { error: e instanceof Error ? e.message : "test failed" };
     }
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

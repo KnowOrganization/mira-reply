@@ -59,7 +59,22 @@ export const opportunitiesRoute = new Elysia()
     );
     if (!rows[0]) { set.status = 404; return { error: "not found" }; }
     return { opportunity: rows[0] };
-  }, { auth: true })
+  }, { requireRole: "agent" })
+  .post("/api/ig/crm/opportunities/:id/confirm", async ({ auth, params, body, set }) => {
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
+    const b = (body ?? {}) as { approve?: boolean; note?: string };
+    if (typeof b.approve !== "boolean") { set.status = 400; return { error: "approve (boolean) required" }; }
+    const status = b.approve ? "confirmed" : "rejected";
+    const args: unknown[] = [auth.accountId, params.id, status];
+    let setClause = "status = $3";
+    if (typeof b.note === "string") { args.push(b.note); setClause += `, notes = $${args.length}`; }
+    const rows = await query(
+      `UPDATE opportunities SET ${setClause} WHERE account_id = $1 AND id = $2 RETURNING *`,
+      args
+    );
+    if (!rows[0]) { set.status = 404; return { error: "not found" }; }
+    return { opportunity: rows[0] };
+  }, { requireRole: "agent" })
   .get("/api/ig/crm/decisions", async ({ auth, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const decisions = await query(

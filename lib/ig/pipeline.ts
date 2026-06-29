@@ -440,7 +440,7 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
     return null;
   }
 
-  if (allowAutoSend && !(await withinDailyCap(settings))) {
+  if (allowAutoSend && !(await withinDailyCap(input.accountId, settings))) {
     allowAutoSend = false;
     publish({
       type: "log",

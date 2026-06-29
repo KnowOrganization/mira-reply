@@ -10,5 +10,5 @@ export const postPostIdExtractHandler = new Elysia().use(authPlugin).post(
     const { paragraph } = (body ?? {}) as { paragraph: string };
     return extractPost(auth.accountId, params.postId, paragraph, set);
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

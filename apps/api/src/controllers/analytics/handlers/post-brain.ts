@@ -15,5 +15,5 @@ export const postBrainHandler = new Elysia().use(authPlugin).post(
       throw e;
     }
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

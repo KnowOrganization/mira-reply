@@ -2,6 +2,7 @@
 // rhythm, and never exceeds a safe daily volume. Anti-ban, the timing half.
 
 import { readStore, updateStore, updateStoreFor, type Settings, type DailyStat } from "./store";
+import { planDailyCapForAccount } from "./entitlements";
 
 function todayKey(d = new Date()): string {
   return d.toISOString().slice(0, 10);
@@ -30,16 +31,18 @@ export async function awaitSendSlot(settings: Settings): Promise<void> {
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
 }
 
-/** Replies sent today. */
-export async function sentToday(): Promise<number> {
-  const s = await readStore();
+/** Replies sent today by this account. */
+export async function sentToday(accountId: string): Promise<number> {
+  const s = await readStore(accountId);
   return s.dailyStats[todayKey()]?.sent ?? 0;
 }
 
-/** Is there still room under today's send cap? */
-export async function withinDailyCap(settings: Settings): Promise<boolean> {
-  if (settings.dailySendCap <= 0) return true;
-  return (await sentToday()) < settings.dailySendCap;
+/** Room under today's cap — the tighter of the account setting and the plan. */
+export async function withinDailyCap(accountId: string, settings: Settings): Promise<boolean> {
+  const settingCap = settings.dailySendCap > 0 ? settings.dailySendCap : Infinity;
+  const cap = Math.min(settingCap, await planDailyCapForAccount(accountId));
+  if (cap === Infinity) return true;
+  return (await sentToday(accountId)) < cap;
 }
 
 /** Atomically bump today's counters. */

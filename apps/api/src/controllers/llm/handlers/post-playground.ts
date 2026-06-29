@@ -27,5 +27,5 @@ export const postPlaygroundHandler = new Elysia().use(authPlugin).post(
       return { error: e instanceof Error ? e.message : "decide failed" };
     }
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

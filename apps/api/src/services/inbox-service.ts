@@ -17,7 +17,8 @@ import {
 } from "@/lib/ig/knowledge";
 import { sendDraft, reprocessClarification } from "@/lib/ig/pipeline";
 import { serveLinkForPost } from "@/lib/ig/links";
-import { getTaggedMedia } from "@/lib/ig/graph";
+import { getTaggedMedia, replyToComment } from "@/lib/ig/graph";
+import { primeSeen } from "@/lib/ig/seen";
 import { publish } from "@/lib/ig/bus";
 import { reconcileAccount } from "@/lib/ig/reconcile";
 
@@ -71,6 +72,51 @@ export async function patchKnowledge(
 }
 
 export async function removeKnowledge(id: string): Promise<void> {
+  await deleteFact(id);
+}
+
+// ── kb (tag-centric view over the knowledge table) ────────────────────────────
+// KbEntry is a projection of an account-scoped Fact: free-form `tags` ride in
+// the fact's `aliases` array (lossless round-trip); topic stays "general".
+
+export type KbEntry = { id: string; question: string; answer: string; tags: string[] };
+
+const toKbEntry = (f: Fact): KbEntry => ({
+  id: f.id,
+  question: f.question,
+  answer: f.answer,
+  tags: f.aliases ?? [],
+});
+
+export async function getKb(): Promise<{ entries: KbEntry[] }> {
+  await backfillEmbeddings().catch(() => {});
+  const facts = await listFacts();
+  return { entries: facts.filter((f) => f.scope === "account").map(toKbEntry) };
+}
+
+export async function addKb(b: {
+  question?: string;
+  answer?: string;
+  tags?: string[];
+}): Promise<{ entry: KbEntry } | { validationError: string }> {
+  const question = (b.question || "").trim();
+  const answer = (b.answer || "").trim();
+  if (!question || !answer) {
+    return { validationError: "question and answer are required" };
+  }
+  const tags = (b.tags ?? []).map((t) => t.trim()).filter(Boolean);
+  const fact = await addFact({
+    question,
+    answer,
+    topic: "general",
+    scope: "account",
+    aliases: tags,
+    durable: true,
+  });
+  return { entry: toKbEntry(fact) };
+}
+
+export async function removeKb(id: string): Promise<void> {
   await deleteFact(id);
 }
 
@@ -292,6 +338,62 @@ export async function getComments(
   });
 
   return { rows, count: rows.length, live };
+}
+
+export type CommentReplyResult =
+  | { ok: true }
+  | { notFound: true }
+  | { notConnected: true }
+  | { validationError: string }
+  | { sendError: string };
+
+// Manual owner reply to a comment (the "reply" button in the inbox). Mirrors
+// the pipeline's send path: post via graph, prime seen so we don't re-ingest
+// our own reply, and log to history so the comment flips to "replied".
+export async function replyToCommentManual(
+  accountId: string,
+  commentId: string,
+  text: string
+): Promise<CommentReplyResult> {
+  const message = (text || "").trim();
+  if (!message) return { validationError: "text is required" };
+
+  const store = await readStore(accountId);
+  if (!store.account) return { notConnected: true };
+  const c = store.commentsCache.find((x) => x.id === commentId);
+  if (!c) return { notFound: true };
+
+  try {
+    const posted = (await replyToComment(
+      commentId,
+      message,
+      store.account.accessToken
+    )) as { id?: string } | undefined;
+    if (posted?.id) primeSeen([posted.id]);
+  } catch (e) {
+    return { sendError: e instanceof Error ? e.message : "reply failed" };
+  }
+
+  await updateStoreFor(accountId, (s) => ({
+    ...s,
+    history: [
+      {
+        id: `r_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        kind: "comment" as const,
+        commentId,
+        inbound: c.text,
+        outbound: message,
+        intent: "manual",
+        postId: c.postId,
+        toUserId: c.fromUserId,
+        sentAt: Date.now(),
+        status: "sent" as const,
+      },
+      ...s.history,
+    ].slice(0, 10000),
+  }));
+
+  return { ok: true };
 }
 
 // ── mentions ─────────────────────────────────────────────────────────────────

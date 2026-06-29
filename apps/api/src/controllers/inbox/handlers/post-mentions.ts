@@ -13,5 +13,5 @@ export const postMentionsHandler = new Elysia().use(authPlugin).post(
     }
     return result;
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

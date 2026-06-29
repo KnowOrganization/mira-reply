@@ -8,5 +8,5 @@ export const postPostsSyncHandler = new Elysia().use(authPlugin).post(
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     return syncPosts(auth.accountId, set);
   },
-  { auth: true }
+  { requireRole: "agent" }
 );

@@ -10,6 +10,7 @@ import { postConfigsRoute } from "./routes/postConfigs";
 import { productsRoute } from "./routes/products";
 import { streamRoute } from "./routes/stream";
 import { authRoute } from "./routes/auth";
+import { teamRoute } from "./routes/team";
 import { postsRoute } from "./routes/posts";
 import { inboxRoute } from "./routes/inbox";
 import { crmRoute } from "./routes/crm";
@@ -19,6 +20,9 @@ import { llmRoute } from "./routes/llm";
 import { controlRoute } from "./routes/control";
 import { webhookRoute } from "./routes/webhook";
 import { storeRoute } from "./routes/store";
+import { moderationRoute } from "./routes/moderation";
+import { profileRoute } from "./routes/profile";
+import { pushRoute } from "./routes/push";
 
 const PORT = Number(process.env.API_PORT || 4000);
 
@@ -65,6 +69,7 @@ export const app = new Elysia()
   .use(productsRoute)
   .use(streamRoute)
   .use(authRoute)
+  .use(teamRoute)
   .use(postsRoute)
   .use(inboxRoute)
   .use(crmRoute)
@@ -72,6 +77,9 @@ export const app = new Elysia()
   .use(analyticsRoute)
   .use(llmRoute)
   .use(controlRoute)
+  .use(moderationRoute)
+  .use(profileRoute)
+  .use(pushRoute)
   // public Meta endpoint (signature-verified, not session-authed)
   .use(webhookRoute)
   // public storefront (no auth — field-whitelisted, slug-resolved server-side)
