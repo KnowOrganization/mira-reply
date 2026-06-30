@@ -76,13 +76,11 @@ export async function setBrainBuiltAt(accountId: string, at: number): Promise<vo
 
 // ── ai settings ──────────────────────────────────────────────────────────────
 // model is derived from provider + env defaults (not stored per-account).
-const aiModelFor = (provider: string): string =>
-  provider === "ollama"
-    ? process.env.MIRA_OLLAMA_MODEL || "llama3.1"
-    : process.env.MIRA_CLAUDE_MODEL || "claude-sonnet-4-6";
+const aiModelFor = (): string =>
+  process.env.NIM_MODELS?.split(",")[0]?.trim() || "meta/llama-3.1-405b-instruct";
 
 export type AiSettings = {
-  provider: "claude" | "ollama";
+  provider: "nim";
   byokKeySet: boolean;
   model: string;
   voice: { toneSummary: string; styleSampleCount: number };
@@ -91,7 +89,6 @@ export type AiSettings = {
 export async function getAiSettings(accountId: string): Promise<AiSettings | null> {
   const [a] = await db
     .select({
-      provider: accounts.aiProvider,
       byokKey: accounts.byokKey,
       toneSummary: accounts.toneSummary,
       styleSamples: accounts.styleSamples,
@@ -99,21 +96,19 @@ export async function getAiSettings(accountId: string): Promise<AiSettings | nul
     .from(accounts)
     .where(eq(accounts.igUserId, accountId));
   if (!a) return null;
-  const provider = a.provider === "ollama" ? "ollama" : "claude";
   return {
-    provider,
+    provider: "nim",
     byokKeySet: !!a.byokKey,
-    model: aiModelFor(provider),
+    model: aiModelFor(),
     voice: { toneSummary: a.toneSummary ?? "", styleSampleCount: (a.styleSamples ?? []).length },
   };
 }
 
 export async function patchAiSettings(
   accountId: string,
-  patch: { provider?: "claude" | "ollama"; byokKey?: string | null }
+  patch: { provider?: string; byokKey?: string | null }
 ): Promise<AiSettings | null> {
-  const set: Record<string, unknown> = { updatedAt: Date.now() };
-  if (patch.provider === "claude" || patch.provider === "ollama") set.aiProvider = patch.provider;
+  const set: Record<string, unknown> = { updatedAt: Date.now(), aiProvider: "nim" };
   // null/"" clears the key; any other string stores it.
   if (patch.byokKey !== undefined) set.byokKey = patch.byokKey ? patch.byokKey : null;
   await db.update(accounts).set(set).where(eq(accounts.igUserId, accountId));

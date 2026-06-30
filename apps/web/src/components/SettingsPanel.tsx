@@ -226,27 +226,15 @@ function AiSection({ canManage }: { canManage: boolean }) {
   const patch = usePatchAiSettings();
   const [key, setKey] = useState("");
   if (!data) return null;
-  const providers: Array<"claude" | "ollama"> = ["claude", "ollama"];
 
   return (
     <div>
       <SectionLabel>AI provider</SectionLabel>
-      <div className="flex gap-2 mb-2" style={!canManage ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
-        {providers.map((p) => (
-          <button key={p} onClick={() => patch.mutate({ provider: p })}
-            className="flex-1 py-2 rounded-xl text-[11.5px] font-semibold capitalize"
-            style={data.provider === p
-              ? { background: "var(--accent)", color: "var(--accent-fg)" }
-              : { background: "var(--bg-inset)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
-            {p}
-          </button>
-        ))}
-      </div>
-      <p className="text-[10px] mb-2" style={{ color: "var(--text-subtle)" }}>Model: {data.model}</p>
+      <p className="text-[11px] font-semibold mb-2" style={{ color: "var(--text-muted)" }}>NVIDIA NIM</p>
       {canManage && (
         <div className="flex items-center gap-2">
           <input type="password" value={key} onChange={(e) => setKey(e.target.value)}
-            placeholder={data.byokKeySet ? "Key set — enter new to replace" : "Bring your own API key"}
+            placeholder={data.byokKeySet ? "Key set — enter new to replace" : "Bring your own NVIDIA API key"}
             className="flex-1 h-8 px-2.5 rounded-md border bg-transparent text-[12px] outline-none focus:border-strong" style={{ borderColor: "var(--border-strong)" }} />
           <button onClick={() => { patch.mutate({ byokKey: key }); setKey(""); }} disabled={!key.trim()}
             className="h-8 px-2.5 rounded-md text-[11px] font-medium disabled:opacity-40" style={{ background: "var(--accent)", color: "var(--accent-fg)" }}>Save</button>

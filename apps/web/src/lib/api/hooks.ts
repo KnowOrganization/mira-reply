@@ -607,7 +607,7 @@ export function usePatchConversation() {
 // ── Phase 2: AI settings, KB, analytics ───────────────────────────────────────
 
 export type AiSettings = {
-  provider: "claude" | "ollama";
+  provider: "nim";
   byokKeySet: boolean;
   model: string;
   voice: { toneSummary: string; styleSampleCount: number };
