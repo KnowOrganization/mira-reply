@@ -9,9 +9,18 @@ import { db, authSchema } from "@shaiz/db";
 
 const baseURL = process.env.BETTER_AUTH_URL || "http://localhost:3000";
 
+// Hard-fail outside dev if the secret is missing or left at the known dev
+// default — a misconfigured NODE_ENV must never silently sign sessions with a
+// public secret. In dev we fall back so local work isn't blocked.
+const DEV_SECRET = "dev-insecure-secret-change-me";
+const secret = process.env.BETTER_AUTH_SECRET || DEV_SECRET;
+if (process.env.NODE_ENV === "production" && secret === DEV_SECRET) {
+  throw new Error("BETTER_AUTH_SECRET is unset or set to the insecure dev default in production");
+}
+
 export const auth = betterAuth({
   baseURL,
-  secret: process.env.BETTER_AUTH_SECRET || "dev-insecure-secret-change-me",
+  secret,
   database: drizzleAdapter(db, { provider: "pg", schema: authSchema }),
   // Validate the session from a short-lived signed cookie instead of a DB lookup
   // on every request — the DB is far (Supabase ap-northeast-1), so a per-request

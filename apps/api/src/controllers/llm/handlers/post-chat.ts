@@ -3,7 +3,7 @@
 //   ollama           — passthrough to the local Ollama upstream (original path)
 // Both emit Ollama-shaped NDJSON lines ({message:{content},done}) so the
 // playground/chat frontend needs no changes.
-import { Elysia } from "elysia";
+import { Elysia, t } from "elysia";
 import { authPlugin } from "../../../plugins/auth";
 import { aiProvider } from "@/lib/ig/llm";
 import { claudeChatStream } from "@/lib/ig/providers/claude";
@@ -65,5 +65,13 @@ export const postChatHandler = new Elysia().use(authPlugin).post(
 
     return new Response(upstream.body, { headers: NDJSON_HEADERS });
   },
-  { requireRole: "agent" }
+  {
+    requireRole: "agent",
+    // Cap message count (cost/memory); leave other fields open for the
+    // provider-specific options the chat frontend sends.
+    body: t.Object(
+      { messages: t.Optional(t.Array(t.Unknown(), { maxItems: 200 })) },
+      { additionalProperties: true }
+    ),
+  }
 );

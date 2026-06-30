@@ -1,7 +1,14 @@
 // POST /api/ig/agent — Mira agent tool-loop (auth-gated)
-import { Elysia } from "elysia";
+import { Elysia, t } from "elysia";
 import { authPlugin } from "../../../plugins/auth";
 import { runAgentService, type AgentMsg } from "../../../services/llm-service";
+
+// Bound the message array — the cost/memory abuse vector. Field shapes stay open
+// (additionalProperties) so the frontend contract isn't constrained.
+const agentBody = t.Object(
+  { messages: t.Array(t.Unknown(), { minItems: 1, maxItems: 200 }) },
+  { additionalProperties: true }
+);
 
 export const postAgentHandler = new Elysia().use(authPlugin).post(
   "/api/ig/agent",
@@ -21,5 +28,5 @@ export const postAgentHandler = new Elysia().use(authPlugin).post(
       return { error: e instanceof Error ? e.message : "agent failed" };
     }
   },
-  { requireRole: "agent" }
+  { requireRole: "agent", body: agentBody }
 );
