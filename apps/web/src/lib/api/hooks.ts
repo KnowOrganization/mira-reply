@@ -447,7 +447,7 @@ export function useCreateAutomation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.post<{ automation: Automation }>("/api/ig/automations", { name: "New Automation" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.automations }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.automations }),
   });
 }
 
@@ -456,7 +456,21 @@ export function usePatchAutomation() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Partial<Automation> }) =>
       api.patch<{ automation: Automation }>(`/api/ig/automations/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.automations }),
+    onMutate: async ({ id, patch }) => {
+      await qc.cancelQueries({ queryKey: qk.automations });
+      const prev = qc.getQueryData<AutomationsResp>(qk.automations);
+      qc.setQueryData<AutomationsResp>(qk.automations, (old) => old ? ({
+        ...old,
+        automations: (old.automations ?? []).map((a) =>
+          a.id === id ? { ...a, ...patch, updatedAt: Date.now() } : a
+        ),
+      }) : old);
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(qk.automations, ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.automations }),
   });
 }
 
@@ -464,7 +478,19 @@ export function useDeleteAutomation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.del(`/api/ig/automations/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.automations }),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: qk.automations });
+      const prev = qc.getQueryData<AutomationsResp>(qk.automations);
+      qc.setQueryData<AutomationsResp>(qk.automations, (old) => old ? ({
+        ...old,
+        automations: (old.automations ?? []).filter((a) => a.id !== id),
+      }) : old);
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(qk.automations, ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.automations }),
   });
 }
 

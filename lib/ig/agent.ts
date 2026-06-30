@@ -142,7 +142,7 @@ async function execTool(name: string, args: Record<string, unknown>): Promise<st
         await serveLinkForPost(c.postId).catch(() => {});
       } else {
         await promoteClarification(c, answer).catch(() => {});
-        await reprocessClarification(c).catch(() => {});
+        await reprocessClarification(s.account?.igUserId ?? "", c).catch(() => {});
       }
       return `answered ${id} — saved as a fact, Mira is re-drafting the reply`;
     }

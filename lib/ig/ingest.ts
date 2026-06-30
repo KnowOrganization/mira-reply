@@ -145,15 +145,30 @@ async function processComment(job: Extract<IngestJob, { kind: "comment" }>) {
   // stale backlog — cache only, never auto-act
   if (data.tsMs && Date.now() - data.tsMs > ACTION_WINDOW_MS) return;
 
-  // ── post_configs funnel (priority path) ───────────────────────────────────
-  let handledByNewAutomation = false;
+  // ── node-graph automations (highest priority) ─────────────────────────────
+  // Canvas-builder automations run first. post_configs only fire if no
+  // node-graph automation matched — prevents double-responses on the same post.
+  const evt: AutomationEvent = { type: "comment_post", commentId: cid, fromUserId: cfrom, fromUsername: cuser, text: ctext, postId: cmedia };
+  const automations = await listAutomations(accountId);
+  const matched = matchAutomations({ ...store, automations } as IgStore, evt);
+  if (matched.length > 0) {
+    for (const auto of matched) {
+      await executeAutomation(auto, evt, { accountId }).catch((e) =>
+        publish({ type: "log", level: "error", msg: `ingest automation [${auto.id}]: ${String(e)}`, ts: Date.now() })
+      );
+    }
+    return;
+  }
+
+  // ── post_configs funnel (fallback when no node-graph automation matched) ──
+  let handledByPostConfig = false;
   if (cmedia) {
     const config = await getPostConfigByPostId(accountId, cmedia);
     if (config && !(await isCommentProcessed(accountId, cid))) {
       const kws: string[] = config.keywords;
       const matches = kws.length === 0 || kws.some((kw) => ctext.toLowerCase().includes(kw.toLowerCase()));
       if (matches) {
-        handledByNewAutomation = true;
+        handledByPostConfig = true;
         await markCommentProcessed(accountId, cid, cfrom, config.id);
         await upsertUserState(accountId, { igsid: cfrom, post_id: config.id, comment_id: cid, state: "awaiting_tap", payload: null });
         await insertLog(accountId, { direction: "in", event_type: "comment", igsid: cfrom, post_id: config.id, payload: JSON.stringify({ commentId: cid, text: ctext }), status: "matched", error: null });
@@ -175,27 +190,16 @@ async function processComment(job: Extract<IngestJob, { kind: "comment" }>) {
           igsid: cfrom,
           postId: config.id,
         });
-        publish({ type: "log", level: "info", msg: `automation: queued private reply for @${cuser ?? cfrom} on post ${cmedia}`, ts: Date.now() });
+        publish({ type: "log", level: "info", msg: `post_config: queued private reply for @${cuser ?? cfrom} on post ${cmedia}`, ts: Date.now() });
       }
     }
   }
 
-  // ── node-graph automations / Mira pipeline ─────────────────────────────────
-  if (!handledByNewAutomation) {
-    const evt: AutomationEvent = { type: "comment_post", commentId: cid, fromUserId: cfrom, fromUsername: cuser, text: ctext, postId: cmedia };
-    const automations = await listAutomations(accountId);
-    const matched = matchAutomations({ ...store, automations } as IgStore, evt);
-    if (matched.length > 0) {
-      for (const auto of matched) {
-        await executeAutomation(auto, evt, { accountId }).catch((e) =>
-          publish({ type: "log", level: "error", msg: `ingest automation [${auto.id}]: ${String(e)}`, ts: Date.now() })
-        );
-      }
-    } else {
-      await processInbound({ accountId, kind: "comment", threadOrMediaId: cid, fromUserId: cfrom, fromUsername: cuser, text: ctext, postId: cmedia }).catch((e) =>
-        publish({ type: "log", level: "error", msg: `pipeline: ${String(e)}`, ts: Date.now() })
-      );
-    }
+  // ── AI pipeline (fallback when nothing else matched) ──────────────────────
+  if (!handledByPostConfig) {
+    await processInbound({ accountId, kind: "comment", threadOrMediaId: cid, fromUserId: cfrom, fromUsername: cuser, text: ctext, postId: cmedia }).catch((e) =>
+      publish({ type: "log", level: "error", msg: `pipeline: ${String(e)}`, ts: Date.now() })
+    );
   }
 }
 

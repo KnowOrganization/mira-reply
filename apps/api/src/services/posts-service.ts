@@ -353,7 +353,7 @@ export async function patchPost(
         ),
       });
       // re-run in the background — does not block the response
-      for (const c of open) void reprocessClarification(c);
+      for (const c of open) void reprocessClarification(accountId, c);
     }
   }
 

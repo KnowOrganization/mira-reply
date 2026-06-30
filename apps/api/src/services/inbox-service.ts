@@ -255,7 +255,7 @@ export async function actOnClarification(
       // context → promote into the knowledge base for cross-post recall,
       // then serve the comment + everyone queued behind it
       await promoteClarification(c, answer).catch(() => {});
-      await reprocessClarification(c).catch(() => {});
+      await reprocessClarification(accountId, c).catch(() => {});
     }
 
     return { ok: true };

@@ -10,7 +10,7 @@
 // messages from the same person are handled in order while different
 // conversations run in parallel.
 
-import { readStore, updateStore, normalizeMode, type IgStore, type PendingDraft } from "./store";
+import { readStore, updateStore, updateStoreFor, normalizeMode, type IgStore, type PendingDraft } from "./store";
 import { publish } from "./bus";
 import { chat } from "./llm";
 import { sanitizeReply } from "./variation";

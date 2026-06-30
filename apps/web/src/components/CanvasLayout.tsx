@@ -387,7 +387,10 @@ export function CanvasLayout() {
 
         {view === "automations" && (
           <div className="flex-1 min-h-0">
-            <AutomationsView onBack={() => { setView("dashboard"); localStorage.setItem("mira_view", "dashboard"); setExpanded(null); }} />
+            <AutomationsView
+              subView={subView}
+              onBack={() => { setView("dashboard"); localStorage.setItem("mira_view", "dashboard"); setExpanded(null); }}
+            />
           </div>
         )}
 

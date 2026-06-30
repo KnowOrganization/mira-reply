@@ -150,12 +150,13 @@ export async function runAgentService(
 // ── Playground ────────────────────────────────────────────────────────────────
 
 export async function runPlayground(opts: {
+  accountId: string;
   comment: string;
   caption?: string;
   notes?: string;
   qa?: { q: string; a: string }[];
 }): Promise<{ decision: unknown; ms: number }> {
-  const { comment, caption, notes, qa: rawQa } = opts;
+  const { accountId, comment, caption, notes, qa: rawQa } = opts;
 
   const qa = (Array.isArray(rawQa) ? rawQa : [])
     .filter((x) => x && x.q?.trim() && x.a?.trim())
@@ -172,6 +173,7 @@ export async function runPlayground(opts: {
     updatedAt: Date.now(),
   };
   const input: DraftInput = {
+    accountId,
     kind: "comment",
     threadOrMediaId: "playground_comment",
     fromUserId: "playground_user",
@@ -341,6 +343,7 @@ export async function injectEvent(opts: {
         // ── 3. Mira AI pipeline ────────────────────────────────────────────
         publish({ type: "log", level: "info", msg: `inject: no automation matched — sending to pipeline`, ts: Date.now() });
         processInbound({
+          accountId,
           kind,
           threadOrMediaId: fakeId,
           fromUserId,
@@ -354,6 +357,7 @@ export async function injectEvent(opts: {
     }
   } else {
     processInbound({
+      accountId,
       kind,
       threadOrMediaId: fakeId,
       fromUserId,
@@ -383,6 +387,7 @@ export async function reprocessComment(opts: {
   }
 
   processInbound({
+    accountId: opts.accountId,
     kind: "comment",
     threadOrMediaId: c.id,
     fromUserId: c.fromUserId,

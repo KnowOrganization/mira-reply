@@ -138,11 +138,14 @@ export function matchAutomations(store: IgStore, event: AutomationEvent): Automa
       return false;
     }
 
-    // postIds from trigger node data (UI sets it here) or trigger.postIds
+    // postIds: trigger.postIds > trigger node data > post_filter node data (canvas builder stores them here)
     const triggerNode = a.nodes.find((n) => n.type === "trigger");
+    const postFilterNode = a.nodes.find((n) => n.type === "post_filter");
     const postIds = a.trigger.postIds?.length
       ? a.trigger.postIds
-      : (triggerNode?.data.postIds?.length ? triggerNode.data.postIds : []);
+      : triggerNode?.data.postIds?.length
+      ? triggerNode.data.postIds
+      : (postFilterNode?.data.postIds ?? []);
 
     if (postIds.length && event.postId) {
       if (!postIds.includes(event.postId)) {

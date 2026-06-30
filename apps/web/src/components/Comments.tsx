@@ -115,14 +115,14 @@ export function Comments() {
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                 @{status?.account?.username}
               </span>
-              <IconBtn onClick={toggleWatcher} title={watching ? "Pause watcher" : "Resume watcher"}>
-                {watching ? <Pause size={12} /> : <Play size={12} />}
+              <IconBtn onClick={toggleWatcher} disabled={watcherAction.isPending} title={watching ? "Pause watcher" : "Resume watcher"}>
+                {watcherAction.isPending ? <Loader2 size={12} className="animate-spin" /> : watching ? <Pause size={12} /> : <Play size={12} />}
               </IconBtn>
               <IconBtn onClick={() => refreshLive()} disabled={loading} title="Refresh">
                 {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
               </IconBtn>
-              <IconBtn onClick={disconnect} title="Disconnect">
-                <Unplug size={12} />
+              <IconBtn onClick={disconnect} disabled={disconnectMut.isPending} title="Disconnect">
+                {disconnectMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
               </IconBtn>
             </>
           ) : (
@@ -168,6 +168,7 @@ export function Comments() {
               key={m.id}
               whileTap={{ scale: 0.97 }}
               onClick={() => setMode(m.id)}
+              disabled={setModeMut.isPending}
               title={m.hint}
               className={cn(
                 "h-7 px-2.5 rounded-md border transition",
