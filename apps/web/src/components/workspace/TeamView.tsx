@@ -6,7 +6,7 @@
 //  • Client roster — for agency orgs, every account the org owns; click to switch.
 // Management controls are gated by useMe().canManage; everyone can view.
 import { useState } from "react";
-import { Copy, ArrowRight } from "lucide-react";
+import { Copy, ArrowRight, Check } from "lucide-react";
 import {
   useMe, useOrgs, useAccounts, useOrgMembers, useAccountMembers,
   useInviteToOrg, useInviteToAccount, useChangeOrgMemberRole, useRemoveOrgMember,
@@ -19,7 +19,7 @@ const GRANTABLE: Role[] = ["admin", "agent", "viewer"];
 function InviteForm({ disabled, onInvite }: { disabled?: boolean; onInvite: (b: { email: string; role: Role }) => Promise<{ link: string }> }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("agent");
-  const [link, setLink] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ to: string; link: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   return (
     <div className="flex flex-col gap-2 mt-3">
@@ -36,8 +36,9 @@ function InviteForm({ disabled, onInvite }: { disabled?: boolean; onInvite: (b: 
         <button
           disabled={disabled}
           onClick={async () => {
-            setErr(null); setLink(null);
-            try { const r = await onInvite({ email: email.trim(), role }); setLink(r.link); setEmail(""); }
+            setErr(null); setSent(null);
+            const to = email.trim();
+            try { const r = await onInvite({ email: to, role }); setSent({ to, link: r.link }); setEmail(""); }
             catch (e) { setErr(e instanceof Error ? e.message : "failed"); }
           }}
           className="px-4 py-2 rounded-lg text-[13px] font-semibold disabled:opacity-50"
@@ -45,10 +46,15 @@ function InviteForm({ disabled, onInvite }: { disabled?: boolean; onInvite: (b: 
         >Invite</button>
       </div>
       {err && <p className="text-[12px]" style={{ color: "#ef4444" }}>{err}</p>}
-      {link && (
-        <div className="flex items-center gap-2 text-[11.5px] px-3 py-2 rounded-lg" style={{ background: "var(--bg-inset)", color: "var(--text-subtle)" }}>
-          <span className="truncate flex-1">{link}</span>
-          <button onClick={() => navigator.clipboard.writeText(link)} title="Copy link"><Copy size={13} /></button>
+      {sent && (
+        <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg" style={{ background: "var(--bg-inset)" }}>
+          <span className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: "var(--text)" }}>
+            <Check size={13} style={{ color: "#22c55e" }} /> Invitation emailed to {sent.to}
+          </span>
+          <span className="flex items-center gap-2 text-[11px]" style={{ color: "var(--text-subtle)" }}>
+            <span className="truncate flex-1">{sent.link}</span>
+            <button onClick={() => navigator.clipboard.writeText(sent.link)} title="Copy link"><Copy size={13} /></button>
+          </span>
         </div>
       )}
     </div>
@@ -86,11 +92,10 @@ export function TeamView() {
   const orgAccounts = accounts.filter((a) => a.orgId === activeOrgId);
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-7" style={{ background: "var(--bg)" }}>
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-[22px] font-bold" style={{ color: "var(--text)" }}>Team &amp; access</h1>
-          <p className="text-[13px] mt-1" style={{ color: "var(--text-subtle)" }}>
+    <div>
+      <div>
+        <div className="mb-5">
+          <p className="text-[13px]" style={{ color: "var(--text-subtle)" }}>
             {activeOrg?.name || "Your workspace"}{activeOrg?.type === "agency" ? " · agency" : ""}
             {me?.orgRole ? ` · you're ${me.orgRole}` : ""}
           </p>

@@ -10,10 +10,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@elysiajs/cors": "^1.2.0",
+    "@elysiajs/swagger": "^1.3.1",
     "@shaiz/auth": "workspace:*",
     "@shaiz/db": "workspace:*",
     "@shaiz/shared": "workspace:*",
-    "@elysiajs/cors": "^1.2.0",
     "elysia": "^1.2.10"
   }
 }

@@ -3,6 +3,7 @@
 // proxies /api/* here via next.config rewrites during the strangler migration.
 import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
+import { swagger } from "@elysiajs/swagger";
 import { statusRoute } from "./routes/status";
 import { settingsRoute } from "./routes/settings";
 import { automationsRoute } from "./routes/automations";
@@ -52,6 +53,28 @@ const ALLOWED_ORIGINS = [
 ].filter(Boolean);
 
 export const app = new Elysia()
+  .use(
+    swagger({
+      documentation: {
+        info: { title: "Mira API", version: "0.1.0" },
+        tags: [
+          { name: "auth", description: "Instagram OAuth & account connection" },
+          { name: "settings", description: "Account & AI settings" },
+          { name: "posts", description: "Posts management" },
+          { name: "inbox", description: "Comments, mentions, knowledge base, drafts" },
+          { name: "crm", description: "Conversations & DM management" },
+          { name: "opportunities", description: "CRM opportunities & decisions" },
+          { name: "analytics", description: "Dashboard, feed, brain, insights" },
+          { name: "llm", description: "Agent, chat, playground" },
+          { name: "automations", description: "Automation rules" },
+          { name: "moderation", description: "Comment & user moderation" },
+          { name: "team", description: "Orgs, members, invites" },
+          { name: "store", description: "Public storefront (no auth)" },
+          { name: "webhook", description: "Meta webhook (public)" },
+        ],
+      },
+    })
+  )
   .use(
     cors({
       origin: ALLOWED_ORIGINS,

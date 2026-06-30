@@ -14,6 +14,7 @@ import { MiraLogo } from "./MiraLogo";
 import { PostCanvas } from "./PostCanvas";
 import { MiraFeed } from "./MiraFeed";
 import { CanvasAccountSwitcher } from "./workspace/CanvasAccountSwitcher";
+import type { SettingsTab } from "./SettingsPanel";
 import { useStatus, type IgStatus } from "@/lib/api/hooks";
 
 // Heavy, non-default views — split out of the dashboard bundle so the first
@@ -43,10 +44,6 @@ const ProductsView = dynamic(() => import("./products/ProductsView").then((m) =>
   ssr: false,
   loading: () => <PanelBoot />,
 });
-const TeamView = dynamic(() => import("./workspace/TeamView").then((m) => m.TeamView), {
-  ssr: false,
-  loading: () => <PanelBoot />,
-});
 
 type TopView =
   | "dashboard"
@@ -60,7 +57,6 @@ type TopView =
   | "analytics"
   | "channels"
   | "billing"
-  | "team"
   | "settings";
 
 type SubView = string;
@@ -134,7 +130,6 @@ const NAV: NavGroup[] = [
 ];
 
 const BOTTOM_NAV: NavGroup[] = [
-  { id: "team", icon: <Users size={15} />, label: "Team & access" },
   { id: "billing", icon: <CreditCard size={15} />, label: "Billing", soon: true },
   { id: "settings", icon: <Settings size={15} />, label: "Settings" },
 ];
@@ -142,6 +137,7 @@ const BOTTOM_NAV: NavGroup[] = [
 export function CanvasLayout() {
   const [account, setAccount] = useState<string>("");
   const [settingsOpen, setSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("account");
   const [view, setView] = useState<TopView>(() => {
     if (typeof window === "undefined") return "dashboard";
     return (localStorage.getItem("mira_view") as TopView) ?? "dashboard";
@@ -160,7 +156,7 @@ export function CanvasLayout() {
   }, [status]);
 
   function navigate(id: TopView, sub?: SubView) {
-    if (id === "settings") { setSettings(true); return; }
+    if (id === "settings") { setSettingsTab("account"); setSettings(true); return; }
     const group = NAV.find((n) => n.id === id) ?? BOTTOM_NAV.find((n) => n.id === id);
     if (group?.soon) return;
     setView(id);
@@ -209,7 +205,7 @@ export function CanvasLayout() {
         </div>
 
         {/* account + org switcher */}
-        <CanvasAccountSwitcher account={account} onOpenTeam={() => navigate("team")} />
+        <CanvasAccountSwitcher account={account} onOpenTeam={() => { setSettingsTab("team"); setSettings(true); }} />
 
         {/* nav */}
         <nav style={{ flex: 1, overflowY: "auto", padding: "8px 8px 0" }} className="scrollbar-thin">
@@ -413,12 +409,6 @@ export function CanvasLayout() {
           </div>
         )}
 
-        {view === "team" && (
-          <div className="flex-1 min-h-0 flex">
-            <TeamView />
-          </div>
-        )}
-
         {(view === "contacts" || view === "ai-studio" || view === "analytics" || view === "channels" || view === "billing") && (
           <div className="flex-1 flex items-center justify-center flex-col gap-3" style={{ color: "var(--text-subtle)" }}>
             <Sparkles size={28} style={{ opacity: 0.3 }} />
@@ -427,7 +417,7 @@ export function CanvasLayout() {
         )}
       </div>
 
-      <SettingsPanel open={settingsOpen} onClose={() => setSettings(false)} onAccountChange={() => setAccount("")} />
+      <SettingsPanel open={settingsOpen} onClose={() => setSettings(false)} onAccountChange={() => setAccount("")} initialTab={settingsTab} />
 
       <style>{`
         .canvas-bg {
