@@ -29,6 +29,7 @@ import { funnelsRoute } from "./routes/funnels";
 import { inboxAiRoute } from "./routes/inboxAi";
 import { commerceRoute } from "./routes/commerce";
 import { contactsRoute } from "./routes/contacts";
+import { uploadsRoute } from "./routes/uploads";
 
 // Railway (and most PaaS) inject PORT; honor it first, then API_PORT, then 4000.
 const PORT = Number(process.env.PORT || process.env.API_PORT || 4000);
@@ -91,6 +92,7 @@ export const app = new Elysia()
   .use(inboxAiRoute)
   .use(commerceRoute)
   .use(contactsRoute)
+  .use(uploadsRoute)
   .use(profileRoute)
   .use(pushRoute)
   // public Meta endpoint (signature-verified, not session-authed)

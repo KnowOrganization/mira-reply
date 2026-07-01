@@ -217,9 +217,10 @@ export const scheduledPosts = pgTable("scheduled_posts", {
   id: text("id").primaryKey(),
   accountId: text("account_id").notNull(),
   caption: text("caption").notNull().default(""),
-  imageUrl: text("image_url"),
+  imageUrl: text("image_url"), // cover/single image — kept for back-compat
+  images: jsonb("images").$type<string[]>().notNull().default([]), // 2+ => carousel
   videoUrl: text("video_url"),
-  mediaType: text("media_type").notNull().default("IMAGE"), // IMAGE | VIDEO | REELS
+  mediaType: text("media_type").notNull().default("IMAGE"), // IMAGE | VIDEO | REELS | CAROUSEL
   scheduledAt: ms("scheduled_at").notNull().default(0),
   status: text("status").notNull().default("scheduled"), // scheduled | published | failed
   mediaId: text("media_id"), // IG media id once published

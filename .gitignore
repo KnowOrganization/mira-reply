@@ -2,6 +2,9 @@
 
 # dependencies
 node_modules/
+
+# uploaded media (local-disk image hosting for Schedule's photo picker)
+apps/api/uploads/
 /.pnp
 .pnp.*
 .yarn/*

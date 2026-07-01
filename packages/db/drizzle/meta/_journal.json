@@ -50,6 +50,13 @@
       "when": 1782862438864,
       "tag": "0006_peaceful_sleepwalker",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782867460675,
+      "tag": "0007_aspiring_the_watchers",
+      "breakpoints": true
     }
   ]
 }

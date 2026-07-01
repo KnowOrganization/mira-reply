@@ -36,7 +36,8 @@
           "photosPermission": "Mira needs photo access to add product photos to your catalog.",
           "cameraPermission": "Mira needs camera access to take product photos."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }

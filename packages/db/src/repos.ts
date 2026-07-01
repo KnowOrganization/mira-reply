@@ -8,6 +8,7 @@ import {
   accounts, automations, postConfigs, processedComments, userStates, knowledge, products,
   deviceTokens, moderationRules, moderationLog, scheduledPosts,
   funnelEntries, discountCodes, abAssignments, productInterest, commenters, conversations,
+  commentsCache,
 } from "./schema";
 import type { ProductVariant } from "./schema";
 import type { Settings } from "../../../lib/ig/store";
@@ -484,20 +485,39 @@ export async function interestCounts(accountId: string): Promise<Record<string, 
 }
 
 // ── Publishing: scheduled / published posts ──────────────────────────────────
-export type ScheduledPostApi = { id: string; caption: string; imageUrl: string | null; videoUrl: string | null; mediaType: string; scheduledAt: number; status: string; mediaId: string | null; error: string | null; createdAt: number };
+export type ScheduledPostApi = { id: string; caption: string; imageUrl: string | null; images: string[]; videoUrl: string | null; mediaType: string; scheduledAt: number; status: string; mediaId: string | null; error: string | null; createdAt: number };
 function toScheduledPost(r: typeof scheduledPosts.$inferSelect): ScheduledPostApi {
-  return { id: r.id, caption: r.caption, imageUrl: r.imageUrl, videoUrl: r.videoUrl, mediaType: r.mediaType, scheduledAt: r.scheduledAt, status: r.status, mediaId: r.mediaId, error: r.error, createdAt: r.createdAt };
+  return { id: r.id, caption: r.caption, imageUrl: r.imageUrl, images: r.images, videoUrl: r.videoUrl, mediaType: r.mediaType, scheduledAt: r.scheduledAt, status: r.status, mediaId: r.mediaId, error: r.error, createdAt: r.createdAt };
 }
 
-export async function createScheduledPost(accountId: string, input: { caption?: string; imageUrl?: string; videoUrl?: string; mediaType?: string; scheduledAt?: number }): Promise<ScheduledPostApi> {
+export async function createScheduledPost(accountId: string, input: { caption?: string; imageUrl?: string; images?: string[]; videoUrl?: string; mediaType?: string; scheduledAt?: number }): Promise<ScheduledPostApi> {
+  const images = input.images ?? [];
   const row = {
     id: crypto.randomUUID(), accountId, caption: input.caption ?? "",
-    imageUrl: input.imageUrl ?? null, videoUrl: input.videoUrl ?? null,
-    mediaType: input.mediaType ?? "IMAGE", scheduledAt: input.scheduledAt ?? Date.now(),
+    imageUrl: input.imageUrl ?? images[0] ?? null, images, videoUrl: input.videoUrl ?? null,
+    mediaType: input.mediaType ?? (images.length > 1 ? "CAROUSEL" : "IMAGE"), scheduledAt: input.scheduledAt ?? Date.now(),
     status: "scheduled", mediaId: null, error: null, createdAt: Date.now(),
   };
   await db.insert(scheduledPosts).values(row);
   return toScheduledPost(row as typeof scheduledPosts.$inferSelect);
+}
+
+export async function updateScheduledPost(accountId: string, id: string, patch: { caption?: string; imageUrl?: string; images?: string[]; videoUrl?: string; mediaType?: string; scheduledAt?: number }): Promise<ScheduledPostApi | null> {
+  const set: Partial<typeof scheduledPosts.$inferSelect> = {};
+  if (patch.caption !== undefined) set.caption = patch.caption;
+  if (patch.imageUrl !== undefined) set.imageUrl = patch.imageUrl;
+  if (patch.images !== undefined) set.images = patch.images;
+  if (patch.videoUrl !== undefined) set.videoUrl = patch.videoUrl;
+  if (patch.mediaType !== undefined) set.mediaType = patch.mediaType;
+  if (patch.scheduledAt !== undefined) set.scheduledAt = patch.scheduledAt;
+  if (Object.keys(set).length === 0) {
+    const [r] = await db.select().from(scheduledPosts).where(and(eq(scheduledPosts.accountId, accountId), eq(scheduledPosts.id, id)));
+    return r ? toScheduledPost(r) : null;
+  }
+  const rows = await db.update(scheduledPosts).set(set)
+    .where(and(eq(scheduledPosts.accountId, accountId), eq(scheduledPosts.id, id), eq(scheduledPosts.status, "scheduled")))
+    .returning();
+  return rows[0] ? toScheduledPost(rows[0]) : null;
 }
 
 export async function listScheduledPosts(accountId: string): Promise<ScheduledPostApi[]> {
@@ -523,6 +543,24 @@ export async function markScheduledPublished(accountId: string, id: string, medi
 
 export async function markScheduledFailed(accountId: string, id: string, error: string): Promise<void> {
   await db.update(scheduledPosts).set({ status: "failed", error }).where(and(eq(scheduledPosts.accountId, accountId), eq(scheduledPosts.id, id)));
+}
+
+/** Top 3 hours-of-day (0-23, UTC — explicitly, via `AT TIME ZONE 'UTC'`, since
+ *  EXTRACT(HOUR) otherwise follows the DB session's timezone setting and gave
+ *  wrong results in testing) with the most comment activity — a cheap
+ *  stand-in for real IG Insights "best time to post" data, which needs extra
+ *  API scope this account doesn't have reason to request yet. Callers must
+ *  convert to local time for display (see ComposeSheet.tsx). */
+export async function bestPostingHours(accountId: string): Promise<number[]> {
+  const rows = await db.execute<{ hour: number; n: number }>(rawSql`
+    select extract(hour from (to_timestamp(${commentsCache.ts} / 1000.0) at time zone 'UTC'))::int as hour, count(*)::int as n
+    from ${commentsCache}
+    where ${commentsCache.accountId} = ${accountId}
+    group by hour
+    order by n desc
+    limit 3
+  `);
+  return rows.map((r) => r.hour);
 }
 
 // ── Funnel Studio: giveaway entries / discount codes / A-B results ──────────
