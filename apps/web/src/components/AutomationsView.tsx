@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Zap, Plus, ArrowLeft, Trash2, X, CheckCircle2, Circle, BookOpen, BarChart2, Loader2,
 } from "lucide-react";
@@ -9,11 +10,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import type { Automation, AutomationTrigger, AutomationNode } from "@shaiz/shared";
 import {
   useAutomations,
+  useAutomation,
   useCreateAutomation,
   usePatchAutomation,
   useDeleteAutomation,
 } from "@/lib/api/hooks";
 import { AutomationCanvas } from "./automations/AutomationCanvas";
+
+// Known tab keywords for the /automations/[sub] route — anything else in that
+// slot is treated as an automation id (real per-automation routing, see plan).
+const KNOWN_SUBVIEWS = new Set(["all", "templates", "history", "create"]);
 
 // ── Templates ─────────────────────────────────────────────────────────────
 
@@ -417,44 +423,39 @@ export function AutomationsView({
   onBack?: () => void;
   subView?: string;
 }) {
-  const [mode, setMode] = useState<"grid" | "canvas" | "templates" | "history">("grid");
-  const [editing, setEditing] = useState<string | null>(null);
+  const router = useRouter();
   const [busyTemplate, setBusyTemplate] = useState<string | null>(null);
-  const prevSubView = useRef<string | undefined>(undefined);
+  const firedCreateRef = useRef(false);
+
+  // An unrecognized /automations/<sub> segment is a real automation id, not a tab.
+  const editingId = subView && !KNOWN_SUBVIEWS.has(subView) ? subView : null;
+  const view = editingId
+    ? "canvas"
+    : subView === "templates"
+      ? "templates"
+      : subView === "history"
+        ? "history"
+        : "grid";
 
   const automationsQ = useAutomations({ refetchInterval: 30_000 });
   const automations = automationsQ.data?.automations ?? [];
   const loading = automationsQ.isLoading;
 
+  // Direct nav/refresh to /automations/<id> won't have the list cached yet —
+  // dedicated single-automation fetch covers that; the list-cache hit below
+  // is preferred when available since it paints instantly (no network wait).
+  const singleQ = useAutomation(editingId ?? undefined);
+
   const createMut = useCreateAutomation();
   const patchMut = usePatchAutomation();
   const deleteMut = useDeleteAutomation();
 
-  // Sync mode when parent nav changes sub-view
+  // Stale bookmark/typed URL to /automations/create — no longer nav-linked,
+  // but redirect straight to a new automation instead of a dead end.
   useEffect(() => {
-    const prev = prevSubView.current;
-    prevSubView.current = subView;
-
-    if (subView === "templates") {
-      setMode("templates");
-      setEditing(null);
-      return;
-    }
-    if (subView === "history") {
-      setMode("history");
-      setEditing(null);
-      return;
-    }
-    if (subView === "create" && prev !== "create") {
+    if (subView === "create" && !firedCreateRef.current) {
+      firedCreateRef.current = true;
       createBlank();
-      return;
-    }
-    if (subView !== "create") {
-      // "all" or undefined → grid (unless user is actively editing)
-      if (subView === "all" || (subView !== prev && mode !== "canvas")) {
-        setMode("grid");
-        setEditing(null);
-      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subView]);
@@ -462,8 +463,7 @@ export function AutomationsView({
   async function createBlank() {
     try {
       const d = await createMut.mutateAsync();
-      setEditing(d.automation.id);
-      setMode("canvas");
+      router.push(`/automations/${d.automation.id}`);
     } catch {
       toast.error("Failed to create automation");
     }
@@ -472,22 +472,29 @@ export function AutomationsView({
   async function createFromTemplate(tpl: TemplateData) {
     if (busyTemplate) return;
     setBusyTemplate(tpl.id);
+    let created: Awaited<ReturnType<typeof createMut.mutateAsync>>;
     try {
-      const d = await createMut.mutateAsync();
+      created = await createMut.mutateAsync();
+    } catch {
+      toast.error("Failed to create automation");
+      setBusyTemplate(null);
+      return;
+    }
+    try {
       const now = Date.now();
       const nodes = tpl.nodes.map((n, i) => ({
         ...n,
         id: `node_${now.toString(36)}_${i}`,
       }));
       await patchMut.mutateAsync({
-        id: d.automation.id,
+        id: created.automation.id,
         patch: { name: tpl.name, trigger: tpl.trigger, nodes },
       });
-      setEditing(d.automation.id);
-      setMode("canvas");
+      router.push(`/automations/${created.automation.id}`);
     } catch {
+      // create succeeded, seeding failed — don't leave an invisible blank automation behind.
+      await deleteMut.mutateAsync(created.automation.id).catch(() => {});
       toast.error("Failed to create from template");
-      setBusyTemplate(null);
     }
     setBusyTemplate(null);
   }
@@ -496,10 +503,7 @@ export function AutomationsView({
     try {
       await deleteMut.mutateAsync(id);
       toast.success("Automation deleted");
-      if (editing === id) {
-        setEditing(null);
-        setMode("grid");
-      }
+      if (editingId === id) router.push("/automations/all");
     } catch {
       toast.error("Failed to delete automation");
     }
@@ -514,34 +518,50 @@ export function AutomationsView({
   }
 
   async function saveAuto(patch: Partial<Automation>) {
-    if (!editing) return;
-    await patchMut.mutateAsync({ id: editing, patch });
+    if (!editingId) return;
+    await patchMut.mutateAsync({ id: editingId, patch });
   }
 
-  const currentAuto = automations.find((a) => a.id === editing) ?? null;
+  const currentAuto =
+    (editingId && automations.find((a) => a.id === editingId)) || singleQ.data?.automation || null;
 
   // ── Canvas mode ────────────────────────────────────────────────────────────
-  if (mode === "canvas" && currentAuto) {
+  if (view === "canvas" && editingId) {
+    if (currentAuto) {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+          <CanvasHeader
+            auto={currentAuto}
+            onBack={() => router.push("/automations/all")}
+            onToggle={toggleEnabled}
+          />
+          <AutomationCanvas key={currentAuto.id} automation={currentAuto} onSave={saveAuto} />
+        </div>
+      );
+    }
+    // Not in the list-cache — either still loading (fresh nav/refresh) or a
+    // real 404 (deleted, wrong account, bad id).
+    if (singleQ.isError && !singleQ.isLoading) {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+          <PageHeader title="Automation not found" icon={<Zap size={14} />} onBack={() => router.push("/automations/all")} onBackLabel="All Automations" />
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 10 }}>
+            <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>
+              This automation doesn&apos;t exist, or you don&apos;t have access to it.
+            </span>
+          </div>
+        </div>
+      );
+    }
     return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-        <CanvasHeader
-          auto={currentAuto}
-          onBack={() => { setEditing(null); setMode("grid"); }}
-          onToggle={toggleEnabled}
-        />
-        <AutomationCanvas key={currentAuto.id} automation={currentAuto} onSave={saveAuto} />
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+        <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Loading…</span>
       </div>
     );
   }
 
-  // ── Canvas mode but auto not found (deleted / loading) ────────────────────
-  if (mode === "canvas" && !loading) {
-    setMode("grid");
-    setEditing(null);
-  }
-
   // ── Templates mode ─────────────────────────────────────────────────────────
-  if (mode === "templates") {
+  if (view === "templates") {
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
         <PageHeader
@@ -578,7 +598,7 @@ export function AutomationsView({
   }
 
   // ── History mode ───────────────────────────────────────────────────────────
-  if (mode === "history") {
+  if (view === "history") {
     const sorted = [...automations].sort((a, b) => (b.stats.lastTriggered ?? 0) - (a.stats.lastTriggered ?? 0));
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -628,7 +648,7 @@ export function AutomationsView({
                   return (
                     <div
                       key={a.id}
-                      onClick={() => { setEditing(a.id); setMode("canvas"); }}
+                      onClick={() => router.push(`/automations/${a.id}`)}
                       style={{
                         display: "grid",
                         gridTemplateColumns: "1fr 90px 90px 90px 130px",
@@ -781,7 +801,7 @@ export function AutomationsView({
                   <AutoCard
                     key={a.id}
                     auto={a}
-                    onOpen={() => { setEditing(a.id); setMode("canvas"); }}
+                    onOpen={() => router.push(`/automations/${a.id}`)}
                     onDelete={() => deleteAuto(a.id)}
                     onToggle={() => toggleEnabled(a.id, !a.enabled)}
                     isDeleting={deleteMut.isPending}

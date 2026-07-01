@@ -32,6 +32,7 @@ export const qk = {
   watcher: ["ig", "watcher"] as const,
   mentions: ["ig", "mentions"] as const,
   automations: ["ig", "automations"] as const,
+  automation: (id: string) => ["ig", "automations", id] as const,
   products: ["ig", "products"] as const,
   conversations: (folder?: string) => ["ig", "crm", "conversations", { folder: folder ?? "" }] as const,
   conversation: (id: string) => ["ig", "crm", "conversations", id] as const,
@@ -456,10 +457,23 @@ export function useAutomations(opts?: QOpts<AutomationsResp>) {
   });
 }
 
+/** Single automation by id — direct nav/refresh to /automations/<id> won't
+ *  have the list query cached yet, so the [sub] page needs its own fetch. */
+export function useAutomation(id: string | undefined, opts?: QOpts<{ automation: Automation }>) {
+  return useQuery<{ automation: Automation }>({
+    queryKey: qk.automation(id ?? ""),
+    queryFn: () => api.get<{ automation: Automation }>(`/api/ig/automations/${id}`),
+    enabled: !!id,
+    retry: false, // a 404 (deleted/wrong account) shouldn't retry into a long spinner
+    ...opts,
+  });
+}
+
 export function useCreateAutomation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.post<{ automation: Automation }>("/api/ig/automations", { name: "New Automation" }),
+    onSuccess: (d) => qc.setQueryData(qk.automation(d.automation.id), d),
     onSettled: () => qc.invalidateQueries({ queryKey: qk.automations }),
   });
 }
@@ -478,12 +492,20 @@ export function usePatchAutomation() {
           a.id === id ? { ...a, ...patch, updatedAt: Date.now() } : a
         ),
       }) : old);
-      return { prev };
+      const prevSingle = qc.getQueryData<{ automation: Automation }>(qk.automation(id));
+      qc.setQueryData<{ automation: Automation }>(qk.automation(id), (old) =>
+        old ? { automation: { ...old.automation, ...patch, updatedAt: Date.now() } } : old
+      );
+      return { prev, prevSingle, id };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(qk.automations, ctx.prev);
+      if (ctx?.prevSingle) qc.setQueryData(qk.automation(ctx.id), ctx.prevSingle);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.automations }),
+    onSettled: (_d, _e, { id }) => {
+      qc.invalidateQueries({ queryKey: qk.automations });
+      qc.invalidateQueries({ queryKey: qk.automation(id) });
+    },
   });
 }
 
@@ -779,6 +801,7 @@ export type BrainStatus = {
   kbCount: number;
   audienceMap: { themes?: { label: string; count: number }[]; topCommenters?: { username: string; count: number }[]; sampleSize?: number } | null;
   gaps: string[];
+  persona: { oneLiner: string; brief: string; full: string };
 };
 
 export function useBrainStatus() {
@@ -789,10 +812,18 @@ export function useBrainStatus() {
   });
 }
 
+export type RebuildBrainResp = {
+  ok: true;
+  status: string;
+  postsScanned: number;
+  factsCreated: number;
+  imagesDescribed: number;
+};
+
 export function useRebuildBrain() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.post<{ ok: true; status: string }>("/api/ig/brain/rebuild"),
+    mutationFn: () => api.post<RebuildBrainResp>("/api/ig/brain/rebuild"),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ig", "brain", "status"] }),
   });
 }

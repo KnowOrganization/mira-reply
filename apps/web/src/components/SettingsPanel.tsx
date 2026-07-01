@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Loader2, RefreshCw, Plus, Trash2, LogOut, X, Check, User, Users, MessageSquare, BrainCircuit, Bot, BookOpen } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk, useStatus, useSetChannelMode, useSyncPosts, useDisconnect, useKb, useAddKb, useDeleteKb, useAiSettings, usePatchAiSettings, useBrainStatus, useRebuildBrain, type IgStatus } from "@/lib/api/hooks";
@@ -217,6 +218,8 @@ function BrainSection({ canManage }: { canManage: boolean }) {
     ? new Date(data.builtAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
     : "never";
 
+  const persona = data.persona;
+
   return (
     <div>
       <SectionLabel>Brain</SectionLabel>
@@ -228,13 +231,51 @@ function BrainSection({ canManage }: { canManage: boolean }) {
           <p className="text-[10.5px] pt-1" style={{ color: "var(--text-subtle)" }}>Gaps: {data.gaps.join(", ")}</p>
         )}
         {canManage && (
-          <button onClick={() => rebuild.mutate()} disabled={rebuild.isPending}
+          <button
+            onClick={() =>
+              rebuild.mutate(undefined, {
+                onSuccess: (r) =>
+                  toast.success(
+                    r.factsCreated > 0
+                      ? `Rebuilt — scanned ${r.postsScanned} post${r.postsScanned === 1 ? "" : "s"}, found ${r.factsCreated} new fact${r.factsCreated === 1 ? "" : "s"}${r.imagesDescribed ? `, described ${r.imagesDescribed} image${r.imagesDescribed === 1 ? "" : "s"}` : ""}`
+                      : "Rebuilt — no new facts found (all posts already scanned, or captions too thin)"
+                  ),
+                onError: () => toast.error("Rebuild failed"),
+              })
+            }
+            disabled={rebuild.isPending}
             className="w-full mt-1 h-8 rounded-md text-[11.5px] font-medium flex items-center justify-center gap-1.5 disabled:opacity-40"
             style={{ background: "var(--accent)", color: "var(--accent-fg)" }}>
             {rebuild.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-            Rebuild brain
+            {rebuild.isPending ? "Scanning posts…" : "Rebuild brain"}
           </button>
         )}
+      </div>
+
+      {persona && (persona.oneLiner || persona.brief || persona.full) ? (
+        <div className="rounded-xl p-3 mt-2 space-y-2.5" style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}>
+          <PersonaTier label="One-liner" text={persona.oneLiner} empty="Not enough facts yet" />
+          <PersonaTier label="Brief" text={persona.brief} empty="Not enough facts yet — this is what gets injected into replies" />
+          <PersonaTier label="Full" text={persona.full} empty="Not enough facts yet — a synthesized markdown profile once there's enough content" />
+        </div>
+      ) : (
+        <p className="text-[10.5px] mt-2" style={{ color: "var(--text-subtle)" }}>
+          No persona yet — add facts (Interview or Paste, in the main Brain view) then Rebuild.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function PersonaTier({ label, text, empty }: { label: string; text: string; empty: string }) {
+  return (
+    <div>
+      <div className="text-[9.5px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-subtle)" }}>{label}</div>
+      <div
+        className="text-[11.5px] leading-[1.5] max-h-[280px] overflow-y-auto whitespace-pre-wrap"
+        style={{ color: text ? "var(--text)" : "var(--text-subtle)" }}
+      >
+        {text || empty}
       </div>
     </div>
   );

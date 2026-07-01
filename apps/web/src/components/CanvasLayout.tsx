@@ -53,7 +53,6 @@ const NAV: NavGroup[] = [
     id: "automations", icon: <Zap size={15} />, label: "Automations",
     sub: [
       { id: "all", label: "All Automations", icon: <Zap size={12} /> },
-      { id: "create", label: "Create New", icon: <Sparkles size={12} /> },
       { id: "templates", label: "Templates", icon: <BookOpen size={12} /> },
       { id: "history", label: "Execution History", icon: <BarChart2 size={12} /> },
     ],

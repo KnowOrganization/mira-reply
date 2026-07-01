@@ -31,6 +31,45 @@ function recencyDecay(ts: number): number {
 // Crude token estimate for budget cutoffs — not billing-accurate, doesn't need to be.
 const estTokens = (s: string) => Math.ceil(s.length / 4);
 
+// nomic-embed-text compresses cosine into a narrow band — paraphrases land
+// ~0.57-0.73, unrelated ~0.44 (see knowledge.ts's EMBED_HIGH=0.72, the same
+// model's calibrated "trust this is a real match" threshold). 0.9 would
+// almost never fire for this model; reuse the established value instead.
+const DEDUPE_THRESHOLD = 0.72;
+
+// keywordScore fallback threshold, calibrated same as recallFact's keyword
+// gray-zone band — question+answer text overlap this high is the same fact
+// reworded, not a coincidence.
+const DEDUPE_KEYWORD_THRESHOLD = 0.7;
+
+/** Collapse near-identical facts (same question asked/extracted multiple
+ *  times, often from separate posts about the same topic) before they
+ *  compete for ranking/budget slots — keeps whichever copy has the higher
+ *  hitCount. Falls back to keyword overlap when either fact lacks an
+ *  embedding (embed() degrades to null if the provider's unreachable — same
+ *  contract as retrievePersonaContext's scoring above). This is why a
+ *  thin-content account was showing the same "what's the account about"
+ *  fact 3x with slightly different wording: those facts had no embedding to
+ *  compare, and there was no fallback path at all before this. */
+export function dedupeFacts(facts: Fact[]): Fact[] {
+  const kept: Fact[] = [];
+  for (const f of facts) {
+    const fText = `${f.question} ${f.answer}`;
+    let dupIdx = -1;
+    for (let i = 0; i < kept.length; i++) {
+      const k = kept[i];
+      const similar =
+        f.embedding?.length && k.embedding?.length
+          ? cosine(f.embedding, k.embedding) >= DEDUPE_THRESHOLD
+          : keywordScore(fText, `${k.question} ${k.answer}`) >= DEDUPE_KEYWORD_THRESHOLD;
+      if (similar) { dupIdx = i; break; }
+    }
+    if (dupIdx === -1) kept.push(f);
+    else if (f.hitCount > kept[dupIdx].hitCount) kept[dupIdx] = f;
+  }
+  return kept;
+}
+
 export type RetrieveOpts = {
   queryText: string; // the inbound comment/DM text; empty string = no query (cold-open)
   facts: Fact[]; // candidate set, already scope/topic-filtered by the caller
@@ -43,7 +82,8 @@ export type RetrieveResult = { block: string; used: Fact[] };
 
 /** Score, floor-filter, budget, and render facts as an LLM-prompt-ready block. */
 export async function retrievePersonaContext(opts: RetrieveOpts): Promise<RetrieveResult> {
-  const { facts, queryText, postId, maxTokens, floor = DEFAULT_FLOOR } = opts;
+  const { queryText, postId, maxTokens, floor = DEFAULT_FLOOR } = opts;
+  const facts = dedupeFacts(opts.facts);
   if (!facts.length) return { block: "", used: [] };
 
   const hasQuery = !!queryText.trim();

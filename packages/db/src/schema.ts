@@ -318,12 +318,18 @@ export const graphEdges = pgTable("graph_edges", {
   uniqueIndex("uq_graph_edge").on(t.accountId, t.srcNodeId, t.dstNodeId, t.type),
 ]);
 
-// One row per account. Only the one-liner tier is materialized — brief/full
-// are always computed live from ranked retrieval (see plan: a static "full"
-// blob recreates the same unscoped-context bug this redesign fixes).
+// One row per account. "Brief" is never stored — it's always computed live
+// from ranked retrieval, budgeted small, injected into every reply prompt (see
+// lib/ig/graph/retrieve.ts — a static blob there recreates the bike-example
+// bug this redesign fixes). "oneLiner" and "full" ARE materialized: oneLiner
+// because it's the one legitimate static fallback (no query to rank against on
+// cold-opens); "full" because it's a synthesized markdown document (not a raw
+// fact dump), only ever shown in the owner-facing Settings view or the
+// agentic planner — never injected into the hot per-comment reply path.
 export const personas = pgTable("personas", {
   accountId: text("account_id").primaryKey().references(() => accounts.igUserId, { onDelete: "cascade" }),
   oneLiner: text("one_liner").notNull().default(""),
+  full: text("full").notNull().default(""),
   graphVersion: text("graph_version").notNull().default(""), // hash(nodeCount,edgeCount,maxUpdatedAt) — invalidation watermark
   generatedAt: ms("generated_at"),
   model: text("model"),

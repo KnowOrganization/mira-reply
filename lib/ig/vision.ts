@@ -8,7 +8,7 @@
 // this never risks the main reply pipeline picking up a vision-only model.
 import { chatVision } from "./llm";
 import type { Post, IgStore } from "./store";
-import { patchStoreFor } from "./store";
+import { updateStoreFor } from "./store";
 import { upsertEntityNode } from "./graph/nodes";
 import { linkPostFeaturesEntity } from "./graph/edges";
 
@@ -66,7 +66,7 @@ export async function describeAndStorePost(accountId: string, post: Post): Promi
   const out = await describePost(post);
   if (!out) return;
 
-  await patchStoreFor(accountId, (s: IgStore) => ({
+  await updateStoreFor(accountId, (s: IgStore) => ({
     ...s,
     posts: {
       ...s.posts,
