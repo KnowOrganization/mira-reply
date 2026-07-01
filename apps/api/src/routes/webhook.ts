@@ -108,8 +108,11 @@ function deriveEvents(accountId: string, entryTime: number | undefined, changes:
  *  test payloads with no entry.id); otherwise return null and drop the event. */
 async function resolveAccountId(entryId: string | undefined): Promise<string | null> {
   if (entryId) {
+    // entry.id is Meta's Instagram-scoped user ID — match ig_scoped_user_id
+    // first (the correct mapping), then fall back to ig_user_id (the app-scoped
+    // ID) in case they happen to coincide or the row predates the split.
     const rows = await query<{ ig_user_id: string }>(
-      "SELECT ig_user_id FROM accounts WHERE ig_user_id = $1 LIMIT 1",
+      "SELECT ig_user_id FROM accounts WHERE ig_scoped_user_id = $1 OR ig_user_id = $1 LIMIT 1",
       [entryId]
     ).catch(() => [] as { ig_user_id: string }[]);
     if (rows[0]?.ig_user_id) return rows[0].ig_user_id;

@@ -18,6 +18,8 @@ import {
 import { embed } from "./embed";
 import { buildTrainingBlock, matchTraining, type TrainedMatch } from "./training";
 import { tooSimilar } from "./variation";
+import { retrievePersonaContext, BUDGET } from "./graph/retrieve";
+import { getOneLiner } from "./graph/persona";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -58,7 +60,11 @@ export type AssembledContext = {
 // ── Module-level caches (HMR-safe via globalThis) ──────────────────────────
 
 type AccountCacheEntry = {
-  personaContext: string;
+  // Candidate facts for the persona block — not the rendered text. Rendering
+  // is query-aware (see retrievePersonaContext) so it can't be cached at the
+  // account level; only the (cheap to filter, expensive-ish to recompute)
+  // candidate set is cached here, same invalidation as before.
+  personaCandidates: Fact[];
   kb: Fact[];
   version: string; // `${knowledge.length}:${ownerProfile.voice}`
 };
@@ -101,29 +107,28 @@ function buildAccountCache(s: IgStore): AccountCacheEntry {
   const kb = s.knowledge.filter(
     (f) => !(f.expiresAt && f.expiresAt < now)
   );
-  const personaContext = kb
-    .filter(
-      (f) =>
-        f.scope === "account" &&
-        (f.topic === "personal" || f.topic === "general")
-    )
-    .slice(0, 12)
-    .map((f) => `- ${f.question} — ${f.answer}`)
-    .join("\n");
+  const personaCandidates = kb.filter(
+    (f) =>
+      f.scope === "account" &&
+      (f.topic === "personal" || f.topic === "general")
+  );
 
   return {
-    personaContext,
+    personaCandidates,
     kb,
     version: buildAccountVersion(s),
   };
 }
 
 function buildPostVersion(post: Post): string {
-  return `${post.updatedAt}:${post.notes.length}:${post.qa.length}:${post.links.length}`;
+  return `${post.updatedAt}:${post.notes.length}:${post.qa.length}:${post.links.length}:${post.insights?.fetchedAt ?? 0}:${post.carousel?.length ?? 0}:${post.visionDescription?.length ?? 0}`;
 }
 
 function buildPostContext(post: Post): string {
   const parts: string[] = [];
+  if (post.mediaType) parts.push(`Post type: ${post.mediaType}`);
+  if (post.timestamp) parts.push(`Posted: ${post.timestamp}`);
+  if (post.visionDescription) parts.push(`Image shows: ${post.visionDescription}`);
   if (post.caption) {
     parts.push(`Caption: "${post.caption}"`);
     const tags = post.caption.match(/#[\p{L}\d_]+/gu);
@@ -146,6 +151,20 @@ function buildPostContext(post: Post): string {
         post.links.map((l) => `${l.label} (${l.type})`).join(", ")
     );
   }
+  if (post.insights) {
+    const i = post.insights;
+    const stats = [
+      i.likes != null && `${i.likes} likes`,
+      i.comments != null && `${i.comments} comments`,
+      i.reach != null && `${i.reach} reach`,
+      i.saved != null && `${i.saved} saves`,
+      i.shares != null && `${i.shares} shares`,
+      i.plays != null && `${i.plays} plays`,
+    ].filter(Boolean);
+    if (stats.length) parts.push(`Engagement: ${stats.join(", ")}`);
+  }
+  if (post.permalink) parts.push(`Permalink: ${post.permalink}`);
+  if (post.carousel?.length) parts.push(`Carousel: ${post.carousel.length} images`);
   return parts.join("\n\n");
 }
 
@@ -209,14 +228,26 @@ export async function assembleContext(
   if (!s.account) throw new Error("assembleContext: no account in store");
   const acct = s.account.igUserId; // tenant key for every cache below
 
-  // ① Account cache — keyed by account, invalidated when KB or voice changes
+  // ① Account cache — keyed by account, invalidated when KB or voice changes.
+  // Only the candidate set is cached; rendering is query-aware (see below) so
+  // it can't be — a fixed account-level string is exactly the unranked-blob
+  // bug this replaces.
   const accountVersion = buildAccountVersion(s);
   let accountEntry = g.__mira_account_cache!.get(acct);
   if (!accountEntry || accountEntry.version !== accountVersion) {
     accountEntry = buildAccountCache(s);
     g.__mira_account_cache!.set(acct, accountEntry);
   }
-  const { personaContext, kb } = accountEntry;
+  const { kb } = accountEntry;
+  const { block: briefBlock } = await retrievePersonaContext({
+    queryText: commentText,
+    facts: accountEntry.personaCandidates,
+    postId,
+    maxTokens: BUDGET.brief,
+  });
+  // Nothing cleared the relevance floor (thin/new brain) — fall back to the
+  // one-liner identity string rather than sending no persona grounding at all.
+  const personaContext = briefBlock || (await getOneLiner(acct, s).catch(() => ""));
 
   // ② Post cache — keyed by (account, post), invalidated when post content changes
   const post = postId ? s.posts[postId] : undefined;

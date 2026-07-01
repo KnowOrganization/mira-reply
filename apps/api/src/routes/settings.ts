@@ -49,11 +49,8 @@ export const settingsRoute = new Elysia()
   }, { auth: true })
   .patch("/api/ig/ai-settings", async ({ auth, body, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
-    const { provider, byokKey } = (body ?? {}) as { provider?: "claude" | "ollama"; byokKey?: string | null };
-    if (provider !== undefined && provider !== "claude" && provider !== "ollama") {
-      set.status = 400; return { error: "bad provider" };
-    }
-    return (await patchAiSettings(auth.accountId, { provider, byokKey })) ?? { error: "no account" };
+    const { byokKey } = (body ?? {}) as { byokKey?: string | null };
+    return (await patchAiSettings(auth.accountId, { provider: "nim", byokKey })) ?? { error: "no account" };
   }, { requireRole: "admin" })
   .get("/api/ig/onboarding", async ({ auth, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }

@@ -15,8 +15,11 @@ export const postPlaygroundHandler = new Elysia().use(authPlugin).post(
     const text = (b.comment || "").trim();
     if (!text) { set.status = 400; return { error: "comment is required" }; }
 
+    if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
+
     try {
       return await runPlayground({
+        accountId: auth.accountId,
         comment: text,
         caption: b.caption,
         notes: b.notes,

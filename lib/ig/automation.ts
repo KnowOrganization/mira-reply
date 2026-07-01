@@ -23,6 +23,22 @@ import { parkPending, claimPending, claimDueRetries, bumpAutomationStats } from 
 import { getAutomation, currentAccountId } from "./accountsRepo";
 import { claimOnce, isClaimed, k } from "./redis";
 import { query } from "@shaiz/db";
+import { assembleContext } from "./ctx";
+import { generateAutomationMessage, type AutomationPurpose } from "./automationReply";
+
+// Every reply/DM-sending node has no manual text field — this is the single
+// call site that turns a node's fixed purpose + live context into a message.
+async function genMsg(
+  purpose: AutomationPurpose,
+  store: IgStore,
+  fromUserId: string,
+  inboundText: string,
+  postId?: string,
+  extraFacts?: string
+): Promise<string> {
+  const ctx = await assembleContext(inboundText, postId, fromUserId, store);
+  return generateAutomationMessage(purpose, ctx, inboundText || undefined, extraFacts);
+}
 
 // Resolve the account once per call. Engine paths pass it explicitly (worker);
 // webhook/test default to the single connected account.
@@ -138,11 +154,14 @@ export function matchAutomations(store: IgStore, event: AutomationEvent): Automa
       return false;
     }
 
-    // postIds from trigger node data (UI sets it here) or trigger.postIds
+    // postIds: trigger.postIds > trigger node data > post_filter node data (canvas builder stores them here)
     const triggerNode = a.nodes.find((n) => n.type === "trigger");
+    const postFilterNode = a.nodes.find((n) => n.type === "post_filter");
     const postIds = a.trigger.postIds?.length
       ? a.trigger.postIds
-      : (triggerNode?.data.postIds?.length ? triggerNode.data.postIds : []);
+      : triggerNode?.data.postIds?.length
+      ? triggerNode.data.postIds
+      : (postFilterNode?.data.postIds ?? []);
 
     if (postIds.length && event.postId) {
       if (!postIds.includes(event.postId)) {
@@ -219,6 +238,8 @@ export async function executeAutomation(
   const triggerNode = automation.nodes.find((n) => n.type === "trigger");
   if (!triggerNode) return steps;
 
+  const store = await readStore(accountId);
+
   const bfsQueue = resumeFrom?.length ? [...resumeFrom] : [triggerNode.id];
   const visited = new Set<string>();
   let sentCount = 0;
@@ -264,7 +285,7 @@ export async function executeAutomation(
     switch (node.type) {
       case "opening_message":
       case "text_message": {
-        const msg = d.text?.trim();
+        const msg = await genMsg("dm_message", store, event.fromUserId, event.text, event.postId);
         if (!msg) break;
         const hasButtons = (d.buttons?.length ?? 0) > 0;
         steps.push({ nodeType: node.type, action: hasButtons ? "private_reply_with_buttons + button_gate" : "private_reply", text: msg });
@@ -299,8 +320,8 @@ export async function executeAutomation(
       }
 
       case "card_message": {
-        const textParts = [d.title?.trim(), d.subtitle?.trim()].filter(Boolean).join("\n\n");
         const imgUrl = d.imageUrl?.trim();
+        const textParts = await genMsg("card_message", store, event.fromUserId, event.text, event.postId);
         if (!textParts && !imgUrl) break;
         if (imgUrl) {
           steps.push({ nodeType: "card_message", action: "dm_image", text: imgUrl });
@@ -342,8 +363,9 @@ export async function executeAutomation(
       }
 
       case "comment_reply": {
-        const msg = d.text?.trim();
-        if (!msg || !event.commentId) break; // no public-reply target on dm/story_reply
+        if (!event.commentId) break; // no public-reply target on dm/story_reply
+        const msg = await genMsg("comment_reply", store, event.fromUserId, event.text, event.postId);
+        if (!msg) break;
         steps.push({ nodeType: "comment_reply", action: "public_comment_reply", text: msg });
         if (!dryRun) {
           if (await textAlreadySent(accountId, event.commentId, `creply:${msg}`)) { sentCount++; break; }
@@ -369,7 +391,11 @@ export async function executeAutomation(
 
         // Not following — send gate message with button so user can tap to recheck
         const uname = account.username ?? "us";
-        const notFollowingMsg = (d.text?.trim()) ||
+        const generatedGate = await genMsg(
+          "follow_gate", store, event.fromUserId, event.text, event.postId,
+          `Your Instagram username is @${uname} — mention it when asking them to follow.`
+        );
+        const notFollowingMsg = generatedGate ||
           `Oops 👀 You're not following yet!\n\nFollow @${uname} then tap below ⬇️`;
 
         steps.push({ nodeType: "follow_gate", action: "gate_blocked", text: notFollowingMsg });
@@ -409,8 +435,11 @@ export async function executeAutomation(
             break;
           }
         }
-        const template = d.text?.trim() || `Follow @[username] to get exclusive updates 🙏`;
-        const msg = template.replace(/\[username\]/gi, uname);
+        const generatedAsk = await genMsg(
+          "ask_follow", store, event.fromUserId, event.text, event.postId,
+          `Your Instagram username is @${uname} — mention it when asking them to follow.`
+        );
+        const msg = generatedAsk || `Follow @${uname} to get exclusive updates 🙏`;
         steps.push({ nodeType: "ask_follow", action: "dm_button_template", text: msg });
         if (!dryRun) {
           const confirmLabel = d.buttons?.[0]?.label?.trim() || "I'm following ✓";
@@ -452,8 +481,9 @@ export async function executeAutomation(
       }
 
       case "followup_message": {
-        const msg = d.text?.trim();
-        if (!msg || !d.delayMinutes) break;
+        if (!d.delayMinutes) break;
+        const msg = await genMsg("followup_message", store, event.fromUserId, event.text, event.postId);
+        if (!msg) break;
         const delayMs = d.delayMinutes * 60_000;
         steps.push({ nodeType: "followup_message", action: `scheduled_send +${d.delayMinutes}m`, text: msg });
         if (!dryRun) {
@@ -532,6 +562,7 @@ export async function resumeAutomationAfterButtonClick(
   const account = await loadAccount(acct);
   if (!account) return false;
   if (!(await automationSendAllowed(acct, userId, username))) return false;
+  const store = await readStore(acct);
 
   for (const p of claimed) {
     const automation = await getAutomation(acct, p.automationId);
@@ -563,7 +594,8 @@ export async function resumeAutomationAfterButtonClick(
       switch (node.type) {
         case "text_message":
         case "opening_message": {
-          const msg = d.text?.trim(); if (!msg) break;
+          const msg = await genMsg("dm_message", store, userId, "", p.postId);
+          if (!msg) break;
           await tryDM(userId, msg); // open window → plain DM (no comment-anchor header)
           break;
         }
@@ -573,7 +605,7 @@ export async function resumeAutomationAfterButtonClick(
           break;
         }
         case "card_message": {
-          const textParts = [d.title?.trim(), d.subtitle?.trim()].filter(Boolean).join("\n\n");
+          const textParts = await genMsg("card_message", store, userId, "", p.postId);
           if (d.imageUrl?.trim()) await tryDMImage(userId, d.imageUrl.trim());
           if (textParts) await tryDM(userId, textParts);
           break;
@@ -595,7 +627,8 @@ export async function resumeAutomationAfterButtonClick(
         switch (node.type) {
           case "text_message":
           case "opening_message": {
-            const msg = d.text?.trim(); if (!msg) break;
+            const msg = await genMsg("dm_message", store, userId, "", p.postId);
+            if (!msg) break;
             await tryDM(userId, msg); // open window → plain DM (no comment-anchor header)
             break;
           }
@@ -605,7 +638,7 @@ export async function resumeAutomationAfterButtonClick(
             break;
           }
           case "card_message": {
-            const textParts = [d.title?.trim(), d.subtitle?.trim()].filter(Boolean).join("\n\n");
+            const textParts = await genMsg("card_message", store, userId, "", p.postId);
             if (d.imageUrl?.trim()) await tryDMImage(userId, d.imageUrl.trim());
             if (textParts) await tryDM(userId, textParts);
             break;
@@ -623,10 +656,13 @@ export async function resumeAutomationAfterButtonClick(
       const gateNode = nodeMap.get(askFollowId!);
       const isFollowGate = gateNode?.type === "follow_gate";
       const defaultMsg = isFollowGate
-        ? `Oops 👀 You're not following yet!\n\nFollow @[username] then tap below ⬇️`
-        : `Follow @[username] to get exclusive access 🙏`;
-      const template = gateNode?.data.text?.trim() || defaultMsg;
-      const msg = template.replace(/\[username\]/gi, account.username);
+        ? `Oops 👀 You're not following yet!\n\nFollow @${account.username} then tap below ⬇️`
+        : `Follow @${account.username} to get exclusive access 🙏`;
+      const generatedGate = await genMsg(
+        (isFollowGate ? "follow_gate" : "ask_follow"), store, userId, "", p.postId,
+        `Your Instagram username is @${account.username} — mention it when asking them to follow.`
+      );
+      const msg = generatedGate || defaultMsg;
       const confirmLabel = gateNode?.data.buttons?.[0]?.label?.trim() || "I'm following ✓";
       const templateButtons = [
         { type: "web_url" as const, title: "Visit Profile", url: `https://www.instagram.com/${account.username}` },
@@ -666,6 +702,7 @@ export async function resumeAutomationAfterFollow(
   const account = await loadAccount(acct);
   if (!account) return false;
   if (!(await automationSendAllowed(acct, userId, username))) return false;
+  const store = await readStore(acct);
 
   for (const p of claimed) {
     const automation = await getAutomation(acct, p.automationId);
@@ -703,7 +740,8 @@ export async function resumeAutomationAfterFollow(
       switch (node.type) {
         case "text_message":
         case "opening_message": {
-          const msg = d.text?.trim(); if (!msg) break;
+          const msg = await genMsg("dm_message", store, userId, "", p.postId);
+          if (!msg) break;
           await tryDM(userId, msg); // open window → plain DM (no comment-anchor header)
           break;
         }
@@ -713,7 +751,7 @@ export async function resumeAutomationAfterFollow(
           break;
         }
         case "card_message": {
-          const textParts = [d.title?.trim(), d.subtitle?.trim()].filter(Boolean).join("\n\n");
+          const textParts = await genMsg("card_message", store, userId, "", p.postId);
           if (d.imageUrl?.trim()) await tryDMImage(userId, d.imageUrl.trim());
           if (textParts) await tryDM(userId, textParts);
           break;
@@ -724,7 +762,9 @@ export async function resumeAutomationAfterFollow(
           break;
         }
         case "followup_message": {
-          const msg = d.text?.trim(); if (!msg || !d.delayMinutes) break;
+          if (!d.delayMinutes) break;
+          const msg = await genMsg("followup_message", store, userId, "", p.postId);
+          if (!msg) break;
           await enqueueOutbound({
             accountId: acct,
             id: `auto_resume_${p.automationId}_${userId}_fu`,

@@ -4,6 +4,7 @@ import { getFeedHandler } from "./handlers/get-feed";
 import { getLogsHandler } from "./handlers/get-logs";
 import { getDigestHandler } from "./handlers/get-digest";
 import { getBrainHandler } from "./handlers/get-brain";
+import { getBrainGraphHandler } from "./handlers/get-brain-graph";
 import { postBrainHandler } from "./handlers/post-brain";
 import { getBrainStatsHandler } from "./handlers/get-brain-stats";
 import { getBrainStatusHandler } from "./handlers/get-brain-status";
@@ -18,6 +19,7 @@ export const analyticsRoute = new Elysia()
   .use(getLogsHandler)
   .use(getDigestHandler)
   .use(getBrainHandler)
+  .use(getBrainGraphHandler)
   .use(postBrainHandler)
   .use(getBrainStatsHandler)
   .use(getBrainStatusHandler)

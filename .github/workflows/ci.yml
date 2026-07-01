@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Test
+        run: bun test tests/
+
+  # Lint runs but does NOT block merges yet: the repo currently has ~1100
+  # pre-existing eslint errors. Surfaces the report without a red gate. Once the
+  # backlog is cleared, drop `continue-on-error` to make it blocking.
+  lint:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+
+# Not gated yet (pre-existing debt — clear, then promote to blocking jobs):
+#   web production build (next build), web typecheck (tsc), api typecheck (tsc).

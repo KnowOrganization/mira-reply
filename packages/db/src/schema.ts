@@ -6,7 +6,7 @@
 // code, which uses Date.now() everywhere. jsonb columns are typed against the
 // existing store types (type-only import, erased at runtime — no coupling).
 import {
-  pgTable, text, bigint, boolean, integer, real, jsonb,
+  pgTable, text, bigint, boolean, integer, real, jsonb, vector,
   primaryKey, index, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type {
@@ -25,6 +25,11 @@ const ms = (name: string) => bigint(name, { mode: "number" });
 //    account-scoped singletons + small collections into jsonb columns) ────────
 export const accounts = pgTable("accounts", {
   igUserId: text("ig_user_id").primaryKey(),
+  // Instagram-scoped user ID (graph.instagram.com/me's "user_id" field) — this
+  // is what Meta puts in webhook entry.id, and it differs from ig_user_id (the
+  // "id" field / app-scoped ID we OAuth with). Two separate ID spaces for the
+  // same account; webhook resolution must match on THIS column, not the PK.
+  igScopedUserId: text("ig_scoped_user_id"),
   // "Connected by" user id (audit / token-refresh). Demoted from tenant owner —
   // authorization now resolves through organizations + org_members + account_access.
   userId: text("user_id"),
@@ -67,7 +72,9 @@ export const accounts = pgTable("accounts", {
   iceBreakers: jsonb("ice_breakers").$type<{ question: string; payload: string }[]>().notNull().default([]),
   persistentMenu: jsonb("persistent_menu").$type<{ title: string; type: "postback" | "web_url"; payload?: string; url?: string }[]>().notNull().default([]),
   updatedAt: ms("updated_at").notNull().default(0),
-});
+}, (t) => [
+  index("idx_accounts_ig_scoped_user_id").on(t.igScopedUserId),
+]);
 
 // ── raw webhook event log (append-only, replayable) ─────────────────────────
 // Every Meta webhook event lands here BEFORE any processing. The receiver
@@ -334,6 +341,12 @@ export const posts = pgTable("posts", {
   qa: jsonb("qa").$type<Post["qa"]>().notNull().default([]),
   links: jsonb("links").$type<PostLink[]>().notNull().default([]),
   insights: jsonb("insights").$type<PostInsights>(),
+  // location/carousel: fetched from IG Graph API MEDIA_FIELDS once wired (lib/ig/graph.ts) —
+  // nullable/additive, unpopulated until the sync path fills them in.
+  location: jsonb("location").$type<{ id?: string; name?: string; lat?: number; lng?: number }>(),
+  carousel: jsonb("carousel").$type<{ mediaUrl: string; mediaType: string }[]>(),
+  // One vision-LLM call per post at sync time (lib/ig/vision.ts), not per-reply.
+  visionDescription: text("vision_description"),
   updatedAt: ms("updated_at").notNull().default(0),
 }, (t) => [index("idx_posts_account").on(t.accountId)]);
 
@@ -360,6 +373,82 @@ export const knowledge = pgTable("knowledge", {
   index("idx_knowledge_account").on(t.accountId),
   index("idx_knowledge_scope_post").on(t.accountId, t.scope, t.postId),
 ]);
+
+// ── Brain v2: graph knowledge base ──────────────────────────────────────────
+// Additive layer on top of knowledge/posts/commenters — those stay
+// system-of-record. graph_nodes mirrors fact/post/commenter rows (refTable/
+// refId) plus genuinely new entity/topic nodes that don't exist elsewhere.
+// graph_edges are typed, weighted, sourced relationships between nodes.
+// See lib/ig/graph/ for the retrieval/generation code that populates and
+// reads these.
+
+export const graphNodeType = ["fact", "post", "entity", "topic", "commenter"] as const;
+export type GraphNodeType = (typeof graphNodeType)[number];
+
+export const graphNodes = pgTable("graph_nodes", {
+  id: text("id").primaryKey(),
+  accountId: text("account_id").notNull(),
+  type: text("type").$type<GraphNodeType>().notNull(),
+  refTable: text("ref_table"), // "knowledge" | "posts" | "commenters" | null (entity/topic nodes)
+  refId: text("ref_id"),
+  label: text("label").notNull(),
+  subtype: text("subtype"), // entity subtype: product | person | place | song | brand
+  summary: text("summary").notNull().default(""),
+  embedding: vector("embedding", { dimensions: 768 }), // nomic-embed-text, pinned
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: ms("created_at").notNull().default(0),
+  updatedAt: ms("updated_at").notNull().default(0),
+}, (t) => [
+  index("idx_graph_nodes_account_type").on(t.accountId, t.type),
+  index("idx_graph_nodes_ref").on(t.refTable, t.refId),
+  // no vector (HNSW) index yet — near-empty table at introduction; add once
+  // populated (Phase 3 backfill), sequential scan is fine at current row counts.
+]);
+
+export const graphEdgeType = [
+  "mentions", "relates_to", "answers", "contradicts", "part_of", "tagged_in", "similar_to",
+] as const;
+export type GraphEdgeType = (typeof graphEdgeType)[number];
+
+export const graphEdgeSource = ["manual", "embedding_similarity", "llm_extraction", "co_occurrence"] as const;
+export type GraphEdgeSource = (typeof graphEdgeSource)[number];
+
+export const graphEdges = pgTable("graph_edges", {
+  id: text("id").primaryKey(),
+  accountId: text("account_id").notNull(),
+  srcNodeId: text("src_node_id").notNull().references(() => graphNodes.id, { onDelete: "cascade" }),
+  dstNodeId: text("dst_node_id").notNull().references(() => graphNodes.id, { onDelete: "cascade" }),
+  type: text("type").$type<GraphEdgeType>().notNull(),
+  directed: boolean("directed").notNull().default(true),
+  weight: real("weight").notNull().default(1), // similarity score or LLM confidence
+  source: text("source").$type<GraphEdgeSource>().notNull(),
+  confidence: real("confidence").notNull().default(1),
+  hitCount: integer("hit_count").notNull().default(0), // reinforced on retrieval use, mirrors Fact.hitCount
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: ms("created_at").notNull().default(0),
+  lastReinforcedAt: ms("last_reinforced_at"),
+}, (t) => [
+  index("idx_graph_edges_src").on(t.accountId, t.srcNodeId),
+  index("idx_graph_edges_dst").on(t.accountId, t.dstNodeId),
+  uniqueIndex("uq_graph_edge").on(t.accountId, t.srcNodeId, t.dstNodeId, t.type),
+]);
+
+// One row per account. "Brief" is never stored — it's always computed live
+// from ranked retrieval, budgeted small, injected into every reply prompt (see
+// lib/ig/graph/retrieve.ts — a static blob there recreates the bike-example
+// bug this redesign fixes). "oneLiner" and "full" ARE materialized: oneLiner
+// because it's the one legitimate static fallback (no query to rank against on
+// cold-opens); "full" because it's a synthesized markdown document (not a raw
+// fact dump), only ever shown in the owner-facing Settings view or the
+// agentic planner — never injected into the hot per-comment reply path.
+export const personas = pgTable("personas", {
+  accountId: text("account_id").primaryKey().references(() => accounts.igUserId, { onDelete: "cascade" }),
+  oneLiner: text("one_liner").notNull().default(""),
+  full: text("full").notNull().default(""),
+  graphVersion: text("graph_version").notNull().default(""), // hash(nodeCount,edgeCount,maxUpdatedAt) — invalidation watermark
+  generatedAt: ms("generated_at"),
+  model: text("model"),
+});
 
 export const drafts = pgTable("drafts", {
   id: text("id").primaryKey(),

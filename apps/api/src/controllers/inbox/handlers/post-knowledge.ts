@@ -15,7 +15,7 @@ export const postKnowledgeHandler = new Elysia().use(authPlugin).post(
       postId?: string;
       durable?: boolean;
     };
-    const result = await createKnowledge(b);
+    const result = await createKnowledge(auth.accountId, b);
     if ("validationError" in result) {
       set.status = 400;
       return { error: result.validationError };

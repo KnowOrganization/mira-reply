@@ -3,7 +3,7 @@
 
 import {
   readStore,
-  updateStore,
+  updateStoreFor,
   makeFact,
   type Fact,
   type FactTopic,
@@ -11,6 +11,7 @@ import {
 } from "./store";
 import { embed, cosine, keywordScore } from "./embed";
 import { chatJSON } from "./llm";
+import { upsertFactNode, deleteFactNode } from "./graph/nodes";
 
 // nomic-embed-text works best with task prefixes — query vs document.
 const embedQuery = (t: string) => embed(`search_query: ${t}`);
@@ -109,23 +110,28 @@ export async function recallFact(
 
 /** Create a fact, compute its embedding, persist it. */
 export async function addFact(
-  input: Partial<Fact> & { question: string; answer: string }
+  input: Partial<Fact> & { question: string; answer: string },
+  accountId?: string
 ): Promise<Fact> {
   const fact = makeFact(input);
   if (!fact.embedding?.length) {
     fact.embedding = (await embedDoc(fact.question)) ?? undefined;
   }
-  await updateStore((s) => ({ ...s, knowledge: [fact, ...s.knowledge] }));
+  const next = await updateStoreFor(accountId, (s) => ({ ...s, knowledge: [fact, ...s.knowledge] }));
+  if (next.account?.igUserId) {
+    await upsertFactNode(fact, next.account.igUserId).catch(() => {});
+  }
   return fact;
 }
 
 /** Update a fact. Re-embeds when the question changes. */
 export async function updateFact(
   id: string,
-  patch: Partial<Fact>
+  patch: Partial<Fact>,
+  accountId?: string
 ): Promise<Fact | null> {
   let result: Fact | null = null;
-  await updateStore(async (s) => {
+  const updatedStore = await updateStoreFor(accountId, async (s) => {
     const idx = s.knowledge.findIndex((f) => f.id === id);
     if (idx < 0) return s;
     const merged: Fact = {
@@ -142,26 +148,32 @@ export async function updateFact(
     result = merged;
     return { ...s, knowledge: next };
   });
+  if (result && updatedStore.account?.igUserId) {
+    await upsertFactNode(result, updatedStore.account.igUserId).catch(() => {});
+  }
   return result;
 }
 
 /** Remove a fact. */
-export async function deleteFact(id: string): Promise<void> {
-  await updateStore((s) => ({
+export async function deleteFact(id: string, accountId?: string): Promise<void> {
+  const next = await updateStoreFor(accountId, (s) => ({
     ...s,
     knowledge: s.knowledge.filter((f) => f.id !== id),
   }));
+  if (next.account?.igUserId) {
+    await deleteFactNode(id, next.account.igUserId).catch(() => {});
+  }
 }
 
 /** List all facts, newest first. */
-export async function listFacts(): Promise<Fact[]> {
-  const s = await readStore();
+export async function listFacts(accountId?: string): Promise<Fact[]> {
+  const s = await readStore(accountId);
   return [...s.knowledge].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 /** Record that a fact was reused to answer a comment. */
-export async function bumpFactHit(id: string): Promise<void> {
-  await updateStore((s) => ({
+export async function bumpFactHit(id: string, accountId?: string): Promise<void> {
+  await updateStoreFor(accountId, (s) => ({
     ...s,
     knowledge: s.knowledge.map((f) =>
       f.id === id
@@ -178,7 +190,8 @@ export async function bumpFactHit(id: string): Promise<void> {
  */
 export async function promoteClarification(
   clar: Clarification,
-  answer: string
+  answer: string,
+  accountId?: string
 ): Promise<Fact> {
   const ans = answer.trim();
   const isLink = /^https?:\/\//i.test(ans);
@@ -233,15 +246,15 @@ export async function promoteClarification(
     aliases: clar.commentText ? [clar.commentText] : [],
     link: isLink ? { url: ans, label: linkLabel } : undefined,
     sourceCommentId: clar.id,
-  });
+  }, accountId);
 }
 
 /**
  * Compute embeddings for any facts missing them (e.g. facts migrated from the
  * old per-post Q&A). Embeds outside the write lock, then applies in one write.
  */
-export async function backfillEmbeddings(): Promise<number> {
-  const s = await readStore();
+export async function backfillEmbeddings(accountId?: string): Promise<number> {
+  const s = await readStore(accountId);
   const missing = s.knowledge.filter((f) => !f.embedding?.length);
   if (!missing.length) return 0;
   const vecs = new Map<string, number[]>();
@@ -250,7 +263,7 @@ export async function backfillEmbeddings(): Promise<number> {
     if (v) vecs.set(f.id, v);
   }
   if (!vecs.size) return 0;
-  await updateStore((st) => ({
+  await updateStoreFor(accountId, (st) => ({
     ...st,
     knowledge: st.knowledge.map((f) =>
       vecs.has(f.id) ? { ...f, embedding: vecs.get(f.id) } : f

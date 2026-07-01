@@ -26,7 +26,7 @@ export async function serveLinkForPost(postId: string): Promise<number> {
     }));
     // re-run the comment + everyone queued behind it — link_request now finds
     // the post's attached link
-    await reprocessClarification(c);
+    await reprocessClarification(s.account?.igUserId ?? "", c);
   }
 
   publish({

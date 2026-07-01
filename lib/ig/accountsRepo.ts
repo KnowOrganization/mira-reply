@@ -8,23 +8,25 @@ export type StoredAccount = IgAccount & { settings?: Record<string, unknown> };
 
 export async function upsertAccount(a: StoredAccount): Promise<void> {
   await query(
-    `INSERT INTO accounts (ig_user_id, username, access_token, token_expires_at, connected_at, settings, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
+    `INSERT INTO accounts (ig_user_id, ig_scoped_user_id, username, access_token, token_expires_at, connected_at, settings, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      ON CONFLICT (ig_user_id) DO UPDATE SET
+       ig_scoped_user_id=COALESCE(EXCLUDED.ig_scoped_user_id, accounts.ig_scoped_user_id),
        username=EXCLUDED.username, access_token=EXCLUDED.access_token,
        token_expires_at=EXCLUDED.token_expires_at, settings=EXCLUDED.settings,
        updated_at=EXCLUDED.updated_at`,
-    [a.igUserId, a.username ?? "", a.accessToken, a.tokenExpiresAt ?? 0, a.connectedAt ?? Date.now(), JSON.stringify(a.settings ?? {}), Date.now()]
+    [a.igUserId, a.igScopedUserId ?? null, a.username ?? "", a.accessToken, a.tokenExpiresAt ?? 0, a.connectedAt ?? Date.now(), JSON.stringify(a.settings ?? {}), Date.now()]
   );
 }
 
 type AccountRow = {
-  ig_user_id: string; username: string; access_token: string;
+  ig_user_id: string; ig_scoped_user_id: string | null; username: string; access_token: string;
   token_expires_at: string; connected_at: string; settings: Record<string, unknown>;
 };
 function rowToAccount(r: AccountRow): StoredAccount {
   return {
     igUserId: r.ig_user_id,
+    igScopedUserId: r.ig_scoped_user_id,
     username: r.username,
     accessToken: r.access_token,
     tokenExpiresAt: Number(r.token_expires_at),

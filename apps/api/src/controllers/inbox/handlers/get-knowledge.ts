@@ -6,7 +6,7 @@ export const getKnowledgeHandler = new Elysia().use(authPlugin).get(
   "/api/ig/knowledge",
   async ({ auth, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
-    return await getKnowledge();
+    return await getKnowledge(auth.accountId);
   },
   { auth: true }
 );

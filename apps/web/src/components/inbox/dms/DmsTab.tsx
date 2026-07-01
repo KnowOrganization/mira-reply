@@ -22,7 +22,6 @@ let dmSyncedThisSession = false;
 export function DmsTab() {
   const [folder, setFolder] = useState<(typeof FOLDERS)[number]>("all");
   const [selected, setSelected] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -71,10 +70,9 @@ export function DmsTab() {
   const canType = win.open || haWin.open;
 
   const doSend = async () => {
-    if (!selected || !draft.trim() || send.isPending) return;
+    if (!selected || !conv?.ai_draft?.trim() || send.isPending) return;
     try {
-      await send.mutateAsync({ id: selected, text: draft.trim() });
-      setDraft("");
+      await send.mutateAsync({ id: selected, text: conv.ai_draft.trim() });
     } catch {
       /* error surfaced below via send.error */
     }
@@ -243,13 +241,6 @@ export function DmsTab() {
                       </span>
                     )}
                   </span>
-                  <button
-                    onClick={() => setDraft(conv.ai_draft || "")}
-                    className="text-[10.5px] font-semibold px-2 py-0.5 rounded-md"
-                    style={{ background: "var(--accent)", color: "#fff" }}
-                  >
-                    Use draft
-                  </button>
                 </div>
                 <div className="text-[12px] leading-[1.45]" style={{ color: "var(--text)" }}>{conv.ai_draft}</div>
                 {conv.ai_reason && (
@@ -266,32 +257,25 @@ export function DmsTab() {
                   {(send.error as Error)?.message || "Send failed"}
                 </div>
               )}
-              <div className="flex gap-2">
-                <input
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && doSend()}
-                  disabled={!canType || send.isPending}
-                  placeholder={canType ? "Reply (sent as you — human)" : "Window closed — replies blocked by Meta policy"}
-                  className="flex-1 rounded-lg px-3.5 py-2.5 text-[13px] outline-none"
-                  style={{
-                    background: "var(--bg-elev)", color: "var(--text)",
-                    border: "1px solid var(--border)", opacity: canType ? 1 : 0.55,
-                  }}
-                />
+              {!conv.ai_draft ? (
+                <div className="text-[11.5px] text-center py-2" style={{ color: "var(--text-subtle)" }}>
+                  Waiting for Mira's draft…
+                </div>
+              ) : (
                 <button
                   onClick={doSend}
-                  disabled={!canType || !draft.trim() || send.isPending}
-                  className="rounded-lg px-4 flex items-center gap-1.5 text-[12.5px] font-semibold"
+                  disabled={!canType || send.isPending}
+                  className="w-full rounded-lg px-4 py-2.5 flex items-center justify-center gap-1.5 text-[12.5px] font-semibold"
                   style={{
-                    background: canType && draft.trim() ? "var(--accent)" : "var(--bg-elev)",
-                    color: canType && draft.trim() ? "#fff" : "var(--text-subtle)",
+                    background: canType ? "var(--accent)" : "var(--bg-elev)",
+                    color: canType ? "#fff" : "var(--text-subtle)",
                     border: "1px solid var(--border)",
+                    opacity: canType ? 1 : 0.55,
                   }}
                 >
-                  <Send size={13} /> {send.isPending ? "…" : "Send"}
+                  <Send size={13} /> {send.isPending ? "…" : canType ? "Send Mira's draft" : "Window closed — replies blocked by Meta policy"}
                 </button>
-              </div>
+              )}
             </div>
           </>
         )}

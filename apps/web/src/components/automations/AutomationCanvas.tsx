@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import type { Automation, AutomationNodeData, AutomationNodeType, AutomationNode } from "@shaiz/shared";
 import { useTestAutomation } from "@/lib/api/hooks";
 import { getNodeValidation, computeWindowOpen as _computeWindowOpen } from "./helpers";
-import { NODE_DEFAULTS } from "./constants";
 import { FreeDragCanvas } from "./FreeDragCanvas";
 import { SmartGridCanvas } from "./SmartGridCanvas";
 import { AddResponsePanel } from "./AddResponsePanel";
@@ -37,17 +36,9 @@ export function AutomationCanvas({
   >(null);
   const testAutomation = useTestAutomation();
 
-  // beforeunload guard when dirty
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (isDirty) {
-        e.preventDefault();
-        e.returnValue = "";
-      }
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [isDirty]);
+  // Autosave (below) means there's nothing to warn about on tab-close — a
+  // beforeunload guard here would just be a stale "unsaved changes" prompt
+  // for changes that are already (or about to be) persisted.
 
   // auto-open Add Response after user confirms posts in PostFilterNode with no messages yet
   useEffect(() => {
@@ -87,7 +78,7 @@ export function AutomationCanvas({
           id: `node_comment_reply_${Date.now().toString(36)}`,
           type: "comment_reply",
           position: { x: 0, y: 0 },
-          data: { enabled: true, text: NODE_DEFAULTS.comment_reply },
+          data: { enabled: true },
         };
         ns.splice(at, 0, cr);
       }
@@ -99,13 +90,15 @@ export function AutomationCanvas({
           id: `node_opening_message_${Date.now().toString(36)}`,
           type: "opening_message",
           position: { x: 0, y: 0 },
-          data: { enabled: true, text: NODE_DEFAULTS.opening_message },
+          data: { enabled: true },
         };
         ns.splice(at, 0, om);
       }
     }
     setNodes(ns);
-    setIsDirty(false);
+    // Seeded defaults above are client-side only until autosaved — mark dirty
+    // if any were actually added, so the seeded chain isn't silently lost.
+    setIsDirty(ns.length !== automation.nodes.length);
     setTestSteps(null);
   }, [automation.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -140,9 +133,9 @@ export function AutomationCanvas({
           if (!updated.some((n) => n.type === "post_filter"))
             missing.push({ id: `node_post_filter_${Date.now().toString(36)}`, type: "post_filter", position: { x: 0, y: 0 }, data: { postIds: [] } });
           if (!updated.some((n) => n.type === "comment_reply"))
-            missing.push({ id: `node_comment_reply_${Date.now().toString(36)}`, type: "comment_reply", position: { x: 0, y: 0 }, data: { enabled: true, text: NODE_DEFAULTS.comment_reply } });
+            missing.push({ id: `node_comment_reply_${Date.now().toString(36)}`, type: "comment_reply", position: { x: 0, y: 0 }, data: { enabled: true } });
           if (!updated.some((n) => n.type === "opening_message"))
-            missing.push({ id: `node_opening_message_${Date.now().toString(36)}`, type: "opening_message", position: { x: 0, y: 0 }, data: { enabled: true, text: NODE_DEFAULTS.opening_message } });
+            missing.push({ id: `node_opening_message_${Date.now().toString(36)}`, type: "opening_message", position: { x: 0, y: 0 }, data: { enabled: true } });
           return missing.length ? [updated[0], ...missing, ...updated.slice(1)] : updated;
         }
         if (triggerType === "live_comment") {
@@ -182,12 +175,11 @@ export function AutomationCanvas({
     const last = nodes[nodes.length - 1];
     const lastPos = last?.position ?? { x: 120, y: 0 };
     const position = dropPos ?? (freeMode ? { x: lastPos.x, y: lastPos.y + 260 } : { x: 0, y: 0 });
-    const defaultText = NODE_DEFAULTS[type];
     const newNode: AutomationNode = {
       id,
       type,
       position,
-      data: { enabled: true, ...(defaultText ? { text: defaultText } : {}) },
+      data: { enabled: true },
     };
     setNodes((ns) => {
       const next = [...ns];
@@ -219,18 +211,25 @@ export function AutomationCanvas({
 
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  // Refs so the debounce timer and the unmount-flush always see the LATEST
+  // nodes/dirty/save closure, not whatever was captured on first render.
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
 
   async function save() {
     if (saving) return;
     setSaving(true);
     try {
-      const edges = nodes.slice(0, -1).map((n, i) => ({
-        id: `e_${n.id}_${nodes[i + 1].id}`,
+      const currentNodes = nodesRef.current;
+      const edges = currentNodes.slice(0, -1).map((n, i) => ({
+        id: `e_${n.id}_${currentNodes[i + 1].id}`,
         source: n.id,
-        target: nodes[i + 1].id,
+        target: currentNodes[i + 1].id,
       }));
-      const triggerNode = nodes.find((n) => n.type === "trigger");
-      const postFilterNode = nodes.find((n) => n.type === "post_filter");
+      const triggerNode = currentNodes.find((n) => n.type === "trigger");
+      const postFilterNode = currentNodes.find((n) => n.type === "post_filter");
       const triggerPatch = triggerNode
         ? {
             type: (triggerNode.data.text ?? "comment_post") as import("@shaiz/shared").AutomationTriggerType,
@@ -238,14 +237,36 @@ export function AutomationCanvas({
             postIds: postFilterNode?.data.postIds ?? [],
           }
         : undefined;
-      await onSave({ nodes, edges, ...(triggerPatch ? { trigger: triggerPatch } : {}) });
+      await onSave({ nodes: currentNodes, edges, ...(triggerPatch ? { trigger: triggerPatch } : {}) });
       setIsDirty(false);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2000);
+    } catch {
+      toast.error("Failed to save — will retry on next edit");
     } finally {
       setSaving(false);
     }
   }
+  const saveRef = useRef(save);
+  saveRef.current = save;
+
+  // Debounced autosave — fires ~1s after the last edit, so rapid successive
+  // changes (drag, typing) coalesce into one save instead of one per tick.
+  useEffect(() => {
+    if (!isDirty) return;
+    const t = setTimeout(() => { saveRef.current(); }, 1000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty, nodes]);
+
+  // Flush on unmount (navigating away mid-edit, before the debounce fires) —
+  // this is what makes "no Save button" safe: nothing is ever lost.
+  useEffect(() => {
+    return () => {
+      if (isDirtyRef.current) saveRef.current();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div
@@ -342,37 +363,28 @@ export function AutomationCanvas({
         >
           ▶ Test
         </button>
-        <button
-          onClick={save}
-          disabled={saving || (!isDirty && !savedFlash)}
+        {/* Autosaves ~1s after the last edit — no Save button, nothing to lose
+            navigating away (flushed on unmount too). Status-only, not clickable. */}
+        <div
           style={{
             display: "flex",
             alignItems: "center",
             gap: 6,
-            padding: "6px 16px",
-            borderRadius: 8,
-            background: savedFlash
-              ? "rgba(34,197,94,0.15)"
-              : isDirty
-              ? "var(--bg-inset)"
-              : "transparent",
-            border: `1px solid ${
-              savedFlash
-                ? "rgba(34,197,94,0.3)"
-                : isDirty
-                ? "var(--border-strong)"
-                : "var(--border)"
-            }`,
-            color: savedFlash ? "#22c55e" : isDirty ? "var(--text)" : "var(--text-subtle)",
+            padding: "6px 12px",
             fontSize: 11.5,
             fontWeight: 600,
-            cursor: isDirty && !saving ? "pointer" : "default",
-            transition: "all 0.2s",
-            opacity: saving ? 0.7 : 1,
+            color: saving
+              ? "var(--text-muted)"
+              : savedFlash
+              ? "#22c55e"
+              : isDirty
+              ? "var(--text-muted)"
+              : "var(--text-subtle)",
+            transition: "color 0.2s",
           }}
         >
-          {saving ? "Saving…" : savedFlash ? "✓ Saved" : "Save"}
-        </button>
+          {saving ? "Saving…" : savedFlash ? "✓ Saved" : isDirty ? "Unsaved changes…" : "All changes saved"}
+        </div>
       </div>
 
       {/* test panel */}

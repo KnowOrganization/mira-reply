@@ -4,8 +4,9 @@ import { useCallback, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { useBrain, useBrainAction } from "@/lib/api/hooks";
-import { MessageSquareText, ClipboardPaste, ListTree } from "lucide-react";
+import { MessageSquareText, ClipboardPaste, ListTree, Network, Sparkles } from "lucide-react";
 import { BrainGraph, BRAIN_TOPICS } from "./BrainGraph";
+import { BrainGraphReal } from "./BrainGraphReal";
 import { MiraLogo } from "./MiraLogo";
 import { ModeTab, Legend } from "./brain/parts";
 import { Interview } from "./brain/Interview";
@@ -16,6 +17,7 @@ import type { Fact, BrainResp } from "./brain/types";
 
 export function Brain() {
   const [mode, setMode] = useState<"interview" | "paste" | "facts">("interview");
+  const [view, setView] = useState<"sunburst" | "graph">("sunburst");
   const [selected, setSelected] = useState<Fact | null>(null);
 
   const { data, refetch } = useBrain<BrainResp>();
@@ -86,16 +88,28 @@ export function Brain() {
 
       <div className="flex-1 flex min-h-0">
         {/* graph */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 relative">
+          <button
+            onClick={() => setView((v) => (v === "sunburst" ? "graph" : "sunburst"))}
+            className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold"
+            style={{ background: "var(--bg-elev)", border: "1px solid var(--border)", color: "var(--text-muted)" }}
+          >
+            {view === "sunburst" ? <Network size={12} /> : <Sparkles size={12} />}
+            {view === "sunburst" ? "Real graph" : "Sunburst"}
+          </button>
           <div className="flex-1 flex items-center justify-center p-6 min-h-0">
-            <BrainGraph
-              facts={facts}
-              handle={handle}
-              selectedId={selected?.id || null}
-              onSelect={(f) => setSelected(f as Fact | null)}
-            />
+            {view === "sunburst" ? (
+              <BrainGraph
+                facts={facts}
+                handle={handle}
+                selectedId={selected?.id || null}
+                onSelect={(f) => setSelected(f as Fact | null)}
+              />
+            ) : (
+              <BrainGraphReal onSelectFactId={(id) => setSelected(facts.find((f) => f.id === id) || null)} />
+            )}
           </div>
-          <Legend />
+          {view === "sunburst" && <Legend />}
         </div>
 
         {/* builder panel */}

@@ -183,7 +183,9 @@ async function runPipeline(input: DraftInput): Promise<PendingDraft | null> {
   const settings = store.settings;
 
   // ── 2. Hard pre-checks (no LLM, no context needed) ───────────────────────
-  if (input.fromUserId === store.account.igUserId && settings.skipOwnComments)
+  // IG-scoped, not app-scoped — see lib/ig/ingest.ts for why this matters.
+  const ownId = store.account.igScopedUserId ?? store.account.igUserId;
+  if (input.fromUserId === ownId && settings.skipOwnComments)
     return null;
 
   if (store.blocklist.includes(input.fromUserId)) {

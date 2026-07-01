@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import type { AutomationNodeData, AutomationNode } from "@shaiz/shared";
 import { NodeShell, NodeHeader } from "./NodeShell";
-import { Toggle, MessageBody, SuggestButton } from "./MessageBody";
+import { Toggle, MessageBody, AiGeneratedNote } from "./MessageBody";
 import { DELAY_OPTS } from "./constants";
 import type { NodeCardProps } from "./types";
 import { TriggerNode } from "./TriggerNode";
@@ -65,13 +65,7 @@ export function OpeningMessageNode({
         <Toggle on={enabled} onChange={(v) => onUpdate({ enabled: v })} />
       </div>
       {enabled ? (
-        <MessageBody
-          data={data}
-          onUpdate={onUpdate}
-          accentColor="#7c3aed"
-          placeholder="Hey there! I'm so happy you're here..."
-          nodeType="opening_message"
-        />
+        <MessageBody data={data} onUpdate={onUpdate} accentColor="#7c3aed" />
       ) : (
         <div style={{ height: 10 }} />
       )}
@@ -98,13 +92,7 @@ export function TextMessageNode({
         onDelete={onDelete}
         canDelete={canDelete}
       />
-      <MessageBody
-        data={data}
-        onUpdate={onUpdate}
-        accentColor="#6366f1"
-        placeholder="Your message here..."
-        nodeType="text_message"
-      />
+      <MessageBody data={data} onUpdate={onUpdate} accentColor="#6366f1" />
     </NodeShell>
   );
 }
@@ -114,8 +102,6 @@ export function TextMessageNode({
 // the message nodes; this is just the visible "Check your DMs!" acknowledgement.
 
 export function CommentReplyNode({
-  data,
-  onUpdate,
   onDelete,
   canDelete,
   dragMode,
@@ -131,39 +117,18 @@ export function CommentReplyNode({
         canDelete={canDelete}
       />
       <div style={{ padding: "9px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div
-            style={{
-              fontSize: 9.5,
-              color: "var(--text-subtle)",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.1em",
-            }}
-          >
-            Public reply
-          </div>
-          <SuggestButton nodeType="comment_reply" onSelect={(t) => onUpdate({ text: t })} />
-        </div>
-        <textarea
-          value={data.text ?? ""}
-          onChange={(e) => onUpdate({ text: e.target.value })}
-          placeholder="Just sent you a DM 📩"
-          rows={2}
+        <div
           style={{
-            width: "100%",
-            background: "var(--border)",
-            border: "1px solid rgba(14,165,233,0.2)",
-            borderRadius: 8,
-            padding: "7px 9px",
-            fontSize: 11,
-            color: "var(--text-muted)",
-            outline: "none",
-            resize: "none",
-            boxSizing: "border-box",
-            lineHeight: 1.5,
+            fontSize: 9.5,
+            color: "var(--text-subtle)",
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.1em",
           }}
-        />
+        >
+          Public reply
+        </div>
+        <AiGeneratedNote color="#0ea5e9" />
         <div style={{ fontSize: 9.5, color: "var(--text-subtle)", lineHeight: 1.4 }}>
           Publicly replies to the comment. Keep the DM copy in the message nodes.
         </div>
@@ -211,39 +176,7 @@ export function CardMessageNode({
         {data.imageUrl?.trim() && (
           <img src={data.imageUrl.trim()} alt="" style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid var(--border)" }} />
         )}
-        {(["title", "subtitle"] as const).map((key) => (
-          <div key={key} style={{ position: "relative" }}>
-            <input
-              value={(data as unknown as Record<string, string>)[key] ?? ""}
-              maxLength={80}
-              onChange={(e) => onUpdate({ [key]: e.target.value })}
-              placeholder={key.charAt(0).toUpperCase() + key.slice(1)}
-              style={{
-                width: "100%",
-                background: "var(--border)",
-                border: "1px solid var(--bg-inset)",
-                borderRadius: 8,
-                padding: "6px 28px 6px 9px",
-                fontSize: 11,
-                color: "var(--text-muted)",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-            <span
-              style={{
-                position: "absolute",
-                right: 7,
-                top: "50%",
-                transform: "translateY(-50%)",
-                fontSize: 9,
-                color: "var(--border)",
-              }}
-            >
-              {((data as unknown as Record<string, string>)[key] ?? "").length}/80
-            </span>
-          </div>
-        ))}
+        <AiGeneratedNote color="#ec4899" />
         {(data.buttons ?? []).map((b, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input
@@ -376,44 +309,18 @@ export function AskFollowNode({
         canDelete={canDelete}
       />
       <div style={{ padding: "9px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div
-            style={{
-              fontSize: 9.5,
-              color: "var(--text-subtle)",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.1em",
-            }}
-          >
-            Message
-          </div>
-          <SuggestButton nodeType="ask_follow" onSelect={(t) => onUpdate({ text: t })} />
-        </div>
-        <textarea
-          value={data.text ?? ""}
-          onChange={(e) => onUpdate({ text: e.target.value })}
-          placeholder="Follow @[username] then tap the button below 👇"
-          rows={2}
+        <div
           style={{
-            width: "100%",
-            background: "var(--border)",
-            border: "1px solid rgba(245,158,11,0.18)",
-            borderRadius: 8,
-            padding: "7px 9px",
-            fontSize: 11,
-            color: "var(--text-muted)",
-            outline: "none",
-            resize: "none",
-            boxSizing: "border-box",
-            lineHeight: 1.5,
+            fontSize: 9.5,
+            color: "var(--text-subtle)",
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.1em",
           }}
-        />
-        <div style={{ fontSize: 9.5, color: "var(--text-subtle)", lineHeight: 1.4 }}>
-          Use{" "}
-          <span style={{ color: "#f59e0b", fontFamily: "monospace" }}>[username]</span> as
-          placeholder — replaced with your IG handle at send time.
+        >
+          Message
         </div>
+        <AiGeneratedNote color="#f59e0b" />
         <div>
           <div
             style={{
@@ -529,8 +436,6 @@ export function LeadFormNode({
 // ── FollowGateNode ─────────────────────────────────────────────────────────
 
 export function FollowGateNode({
-  data,
-  onUpdate,
   onDelete,
   canDelete,
   dragMode,
@@ -584,48 +489,19 @@ export function FollowGateNode({
         <div>
           <div
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
+              fontSize: 9.5,
+              color: "var(--text-subtle)",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.1em",
               marginBottom: 5,
             }}
           >
-            <div
-              style={{
-                fontSize: 9.5,
-                color: "var(--text-subtle)",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.1em",
-              }}
-            >
-              Message when not following
-            </div>
-            <SuggestButton nodeType="follow_gate" onSelect={(t) => onUpdate({ text: t })} />
+            Message when not following
           </div>
-          <textarea
-            value={data.text ?? ""}
-            onChange={(e) => onUpdate({ text: e.target.value })}
-            placeholder={`Oops! 😅 This is for our community only 💜\n\nFollow @[username] to unlock it!\n\nReply "done" once you've followed 👇`}
-            rows={4}
-            style={{
-              width: "100%",
-              background: "var(--border)",
-              border: "1px solid rgba(236,72,153,0.2)",
-              borderRadius: 8,
-              padding: "7px 9px",
-              fontSize: 11,
-              color: "var(--text-muted)",
-              outline: "none",
-              resize: "none",
-              boxSizing: "border-box",
-              lineHeight: 1.5,
-            }}
-          />
+          <AiGeneratedNote color="#ec4899" />
           <div style={{ fontSize: 9.5, color: "var(--text-subtle)", marginTop: 4, lineHeight: 1.4 }}>
-            Use{" "}
-            <span style={{ color: "#ec4899", fontFamily: "monospace" }}>[username]</span> —
-            replaced with your IG handle. User replies "done" → re-checks follow status.
+            User replies "done" → re-checks follow status.
           </div>
         </div>
       </div>
@@ -657,25 +533,7 @@ export function FollowupMessageNode({
         canDelete={canDelete}
       />
       <div style={{ padding: "9px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
-        <textarea
-          value={data.text ?? ""}
-          onChange={(e) => onUpdate({ text: e.target.value })}
-          placeholder="Follow-up message..."
-          rows={2}
-          style={{
-            width: "100%",
-            background: "var(--border)",
-            border: "1px solid var(--bg-inset)",
-            borderRadius: 8,
-            padding: "7px 9px",
-            fontSize: 11,
-            color: "var(--text-muted)",
-            outline: "none",
-            resize: "none",
-            boxSizing: "border-box",
-            lineHeight: 1.5,
-          }}
-        />
+        <AiGeneratedNote color="#f97316" />
         <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
           {DELAY_OPTS.map((opt) => (
             <button

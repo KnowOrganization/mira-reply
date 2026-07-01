@@ -7,7 +7,7 @@ export const postKbHandler = new Elysia().use(authPlugin).post(
   async ({ body, auth, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const b = (body ?? {}) as { question?: string; answer?: string; tags?: string[] };
-    const result = await addKb(b);
+    const result = await addKb(auth.accountId, b);
     if ("validationError" in result) {
       set.status = 400;
       return { error: result.validationError };

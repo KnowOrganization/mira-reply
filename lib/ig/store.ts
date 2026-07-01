@@ -24,6 +24,10 @@ export const SCHEMA_VERSION = 2;
 
 export type IgAccount = {
   igUserId: string;
+  // Instagram-scoped user ID (graph.instagram.com/me's "user_id" field) — what
+  // Meta puts in webhook entry.id. Different ID space from igUserId (the "id"
+  // field / app-scoped ID we key rows with). Null until backfilled/reconnected.
+  igScopedUserId?: string | null;
   username: string;
   accessToken: string;
   tokenExpiresAt: number;
@@ -48,6 +52,8 @@ export type Post = {
   qa: { q: string; a: string; ts: number }[];
   links: PostLink[];
   insights?: PostInsights;
+  carousel?: { mediaUrl: string; mediaType: string }[];
+  visionDescription?: string;
   updatedAt: number;
 };
 

@@ -7,6 +7,7 @@ import { Elysia } from "elysia";
 import { query } from "@shaiz/db";
 import { authPlugin } from "../plugins/auth";
 import { roleFor, roleAtLeast, type Role } from "../lib/roles";
+import { sendInviteEmail } from "../lib/mail";
 
 const ROLES: Role[] = ["owner", "admin", "agent", "viewer"];
 const isRole = (v: unknown): v is Role => typeof v === "string" && ROLES.includes(v as Role);
@@ -25,6 +26,14 @@ async function userEmail(userId: string): Promise<string | null> {
   return r?.email ?? null;
 }
 const baseUrl = () => process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+async function orgName(orgId: string): Promise<string> {
+  const [r] = await query<{ name: string }>("SELECT name FROM organizations WHERE id=$1", [orgId]);
+  return r?.name ?? "your workspace";
+}
+async function accountName(accountId: string): Promise<string> {
+  const [r] = await query<{ username: string }>("SELECT username FROM accounts WHERE ig_user_id=$1", [accountId]);
+  return r?.username ?? accountId;
+}
 
 export const teamRoute = new Elysia()
   .use(authPlugin)
@@ -138,7 +147,11 @@ export const teamRoute = new Elysia()
        VALUES ($1,$2,$3,'org',$4,$5,$6,'pending',$7,$8)`,
       [crypto.randomUUID(), token, email, params.orgId, b.role, auth.userId, now + INVITE_TTL, now]
     );
-    return { ok: true, token, link: `${baseUrl()}/invite/${token}` };
+    const link = `${baseUrl()}/invite/${token}`;
+    try {
+      await sendInviteEmail({ to: email, link, label: await orgName(params.orgId), kind: "org", role: b.role, inviterEmail: await userEmail(auth.userId) });
+    } catch (e) { console.error("[invite] org email failed", e); }
+    return { ok: true, token, link };
   }, { auth: true })
 
   .post("/api/ig/accounts/:accountId/invite", async ({ auth, params, body, set }) => {
@@ -156,7 +169,11 @@ export const teamRoute = new Elysia()
        VALUES ($1,$2,$3,'account',$4,$5,$6,'pending',$7,$8)`,
       [crypto.randomUUID(), token, email, params.accountId, b.role, auth.userId, now + INVITE_TTL, now]
     );
-    return { ok: true, token, link: `${baseUrl()}/invite/${token}` };
+    const link = `${baseUrl()}/invite/${token}`;
+    try {
+      await sendInviteEmail({ to: email, link, label: await accountName(params.accountId), kind: "account", role: b.role, inviterEmail: await userEmail(auth.userId) });
+    } catch (e) { console.error("[invite] account email failed", e); }
+    return { ok: true, token, link };
   }, { auth: true })
 
   // Preview an invite (signed-in user; used by the accept page).

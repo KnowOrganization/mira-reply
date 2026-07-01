@@ -22,21 +22,23 @@
     "lint": "bun --filter @shaiz/web lint",
     "db:push": "bun --filter @shaiz/db db:push",
     "db:generate": "bun --filter @shaiz/db db:generate",
+    "db:migrate": "bun --filter @shaiz/db db:migrate",
     "db:import": "bun --filter @shaiz/db import",
     "test": "bun test tests/",
+    "typecheck": "tsc --noEmit -p apps/api/tsconfig.json",
     "mcp:brain": "tsx scripts/mcp-brain.mjs",
     "worker": "tsx --env-file=.env worker/index.ts",
     "worker:prod": "tsx worker/index.ts",
     "worker:watch": "tsx watch --env-file=.env worker/index.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.175",
     "@shaiz/auth": "workspace:*",
     "@shaiz/db": "workspace:*",
     "@shaiz/shared": "workspace:*",
     "bullmq": "^5.78.0",
+    "drizzle-orm": "^0.38.3",
     "ioredis": "^5.11.1",
-    "ollama": "^0.6.3",
+    "openai": "^6.45.0",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

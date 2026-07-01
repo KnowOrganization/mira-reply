@@ -41,12 +41,21 @@
       "runtimeArgs": ["test", "tests/"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal"
+    },
+    {
+      "name": "ngrok",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "ngrok",
+      "runtimeArgs": ["http", "3000"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
     }
   ],
   "compounds": [
     {
       "name": "dev:all",
-      "configurations": ["Next.js (web)", "API"],
+      "configurations": ["Next.js (web)", "API", "ngrok"],
       "stopAll": true
     }
   ]

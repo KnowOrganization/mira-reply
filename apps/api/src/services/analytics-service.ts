@@ -1,9 +1,15 @@
 // analytics-service.ts — pure business logic, no HTTP concerns.
 // All functions return plain data or throw; they never touch `set` or `status`.
-import { readStore, updateStoreFor, type FactTopic } from "@/lib/ig/store";
+import { readStore, updateStoreFor, type FactTopic, type Fact } from "@/lib/ig/store";
 import { addFact, deleteFact, backfillEmbeddings } from "@/lib/ig/knowledge";
 import { chatJSON } from "@/lib/ig/llm";
-import { getBrainBuiltAt, setBrainBuiltAt } from "@shaiz/db";
+import { upsertEntityNode } from "@/lib/ig/graph/nodes";
+import { linkFactMentionsEntity } from "@/lib/ig/graph/edges";
+import { warmOneLiner, getOneLiner, getFullPersona } from "@/lib/ig/graph/persona";
+import { retrievePersonaContext, BUDGET } from "@/lib/ig/graph/retrieve";
+import { backfillVisionForAccount } from "@/lib/ig/vision";
+import { getBrainBuiltAt, setBrainBuiltAt, db, graphNodes, graphEdges } from "@shaiz/db";
+import { eq } from "drizzle-orm";
 import { isConfigured } from "@/lib/ig/config";
 import { getRecentLogs } from "@/lib/ig/db";
 import { brain } from "@/lib/ig/mcp/client";
@@ -208,6 +214,20 @@ export async function getBrain(accountId: string) {
   };
 }
 
+/** Real graph read — nodes/edges shaped for a force-directed graph view
+ *  (react-force-graph-2d's {nodes, links} contract). Pure read of graph_nodes/
+ *  graph_edges (lib/ig/graph/), populated by Phase 3's backfill + live writes. */
+export async function getBrainGraph(accountId: string) {
+  const [nodes, edges] = await Promise.all([
+    db.select().from(graphNodes).where(eq(graphNodes.accountId, accountId)),
+    db.select().from(graphEdges).where(eq(graphEdges.accountId, accountId)),
+  ]);
+  return {
+    nodes: nodes.map((n) => ({ id: n.id, type: n.type, label: n.label, subtype: n.subtype })),
+    links: edges.map((e) => ({ source: e.srcNodeId, target: e.dstNodeId, type: e.type, weight: e.weight })),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // postBrain
 // ---------------------------------------------------------------------------
@@ -223,10 +243,10 @@ export type BrainBody = {
 };
 
 /** Returns the response payload or throws an object { status, error } for HTTP errors. */
-export async function postBrain(b: BrainBody): Promise<unknown> {
+export async function postBrain(accountId: string, b: BrainBody): Promise<unknown> {
   if (b.action === "delete") {
     if (!b.id) throw { status: 400, error: "id required" };
-    await deleteFact(b.id);
+    await deleteFact(b.id, accountId);
     return { ok: true };
   }
 
@@ -241,53 +261,91 @@ export async function postBrain(b: BrainBody): Promise<unknown> {
       topic: asTopic(b.topic),
       scope: "account",
       link: isLink ? { url: answer, label: question } : undefined,
-    });
+    }, accountId);
     return { ok: true, created: [fact] };
   }
 
   if (b.action === "extract") {
-    const text = (b.text || "").trim();
-    if (!text) return { ok: true, created: [] };
-    const hint = b.topicHint
-      ? `These facts are mostly about the owner's ${b.topicHint}. `
-      : "";
-    const out = await chatJSON<{
-      facts: { question: string; answer: string; topic: string }[];
-    }>(
-      [
-        {
-          role: "system",
-          content:
-            "You turn what an Instagram creator says about themselves and their account into reusable facts. " +
-            hint +
-            "Extract every distinct fact. Each fact: a natural question a follower might ask, the answer, and a topic " +
-            "(gear, location, song, personal, shop, general). Keep answers concise and factual. " +
-            'Output JSON only: {"facts":[{"question":"...","answer":"...","topic":"..."}]}',
-        },
-        { role: "user", content: text },
-      ],
-      { facts: [] }
-    );
-    const created = [];
-    for (const f of out.facts || []) {
-      const question = (f.question || "").trim();
-      const answer = (f.answer || "").trim();
-      if (!question || !answer) continue;
-      const isLink = /^https?:\/\//i.test(answer);
-      created.push(
-        await addFact({
-          question,
-          answer,
-          topic: asTopic(f.topic),
-          scope: "account",
-          link: isLink ? { url: answer, label: question } : undefined,
-        })
-      );
-    }
+    const created = await extractFactsFromText(accountId, b.text || "", { hint: b.topicHint });
     return { ok: true, created };
   }
 
   throw { status: 400, error: "bad action" };
+}
+
+/** Shared extraction core — one LLM call turns free text into facts + notable
+ *  entities. Used by postBrain's manual "extract" action (Interview/Paste) AND
+ *  rebuildBrain's per-post scan (caption/notes/qa/vision description).
+ *  `postId` present → location/song facts are tied to that post (they're true
+ *  of THIS post, not the account); gear/personal/shop/general stay account-wide. */
+async function extractFactsFromText(
+  accountId: string,
+  text: string,
+  opts: { hint?: string; postId?: string } = {}
+): Promise<Fact[]> {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  const hint = opts.hint ? `These facts are mostly about the owner's ${opts.hint}. ` : "";
+  const out = await chatJSON<{
+    facts: { question: string; answer: string; topic: string }[];
+    entities: { name: string; type: string; mentionedInQuestions: string[] }[];
+  }>(
+    [
+      {
+        role: "system",
+        content:
+          "You turn what an Instagram creator says about themselves and their account into reusable facts. " +
+          hint +
+          "Extract every distinct fact. Each fact: a natural question a follower might ask, the answer, and a topic " +
+          "(gear, location, song, personal, shop, general). Keep answers concise and factual. " +
+          "Also extract notable entities mentioned across the facts — specific named things worth remembering on " +
+          "their own (a product/gear model, a place, a brand, a person), each with a short type label and which " +
+          "fact question(s) mention it. Omit entities if none are clearly named. " +
+          'Output JSON only: {"facts":[{"question":"...","answer":"...","topic":"..."}],' +
+          '"entities":[{"name":"...","type":"...","mentionedInQuestions":["..."]}]}',
+      },
+      { role: "user", content: trimmed },
+    ],
+    { facts: [], entities: [] }
+  );
+  const created: Fact[] = [];
+  for (const f of out.facts || []) {
+    const question = (f.question || "").trim();
+    const answer = (f.answer || "").trim();
+    if (!question || !answer) continue;
+    const isLink = /^https?:\/\//i.test(answer);
+    const topic = asTopic(f.topic);
+    const scope: "account" | "post" = opts.postId && (topic === "location" || topic === "song") ? "post" : "account";
+    created.push(
+      await addFact({
+        question,
+        answer,
+        topic,
+        scope,
+        postId: scope === "post" ? opts.postId : undefined,
+        // Tags every fact from this post scan regardless of scope — rebuildBrain
+        // checks this to skip already-scanned posts, not just post-scoped facts
+        // (most extracted facts land scope:"account", which the old scope-only
+        // check missed, so a second click would re-extract and duplicate everything).
+        sourceCommentId: opts.postId,
+        link: isLink ? { url: answer, label: question } : undefined,
+      }, accountId)
+    );
+  }
+  // Entity nodes + mentions edges — piggybacks on the same LLM call, no extra
+  // round-trip. Best-effort: never blocks fact creation above.
+  try {
+    for (const e of out.entities || []) {
+      const name = (e.name || "").trim();
+      if (!name) continue;
+      const entityNodeId = await upsertEntityNode(accountId, name, e.type);
+      for (const q of e.mentionedInQuestions || []) {
+        const match = created.find((f) => f.question.trim().toLowerCase() === q.trim().toLowerCase());
+        if (match) await linkFactMentionsEntity(accountId, match.id, entityNodeId);
+      }
+    }
+  } catch { /* graph enrichment is supplementary, never fails extraction */ }
+  return created;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,6 +363,10 @@ export type BrainStatus = {
     | { themes: { label: string; count: number }[]; topCommenters: { username: string; count: number }[]; sampleSize: number }
     | null;
   gaps: string[];
+  // 3-tier persona (lib/ig/graph/persona.ts, lib/ig/graph/retrieve.ts) — brief/
+  // full are a representative preview (no specific inbound comment to rank
+  // against here, unlike the live reply path), not a stored/fixed text.
+  persona: { oneLiner: string; brief: string; full: string };
 };
 
 function audienceMapFor(s: Awaited<ReturnType<typeof readStore>>): BrainStatus["audienceMap"] {
@@ -339,6 +401,14 @@ export async function getBrainStatus(accountId: string): Promise<BrainStatus> {
   for (const t of TOPICS) byTopic[t] = 0;
   for (const f of accountFacts) byTopic[f.topic] = (byTopic[f.topic] || 0) + 1;
   const op = s.ownerProfile;
+
+  const personaCandidates = accountFacts.filter((f) => f.topic === "personal" || f.topic === "general");
+  const [oneLiner, briefPreview, full] = await Promise.all([
+    getOneLiner(accountId, s).catch(() => ""),
+    retrievePersonaContext({ queryText: "", facts: personaCandidates, maxTokens: BUDGET.brief }),
+    getFullPersona(accountId, s).catch(() => ""),
+  ]);
+
   return {
     builtAt: await getBrainBuiltAt(accountId),
     toneSummary: s.toneSummary ?? "",
@@ -348,15 +418,52 @@ export async function getBrainStatus(accountId: string): Promise<BrainStatus> {
     kbCount: accountFacts.length,
     audienceMap: audienceMapFor(s),
     gaps: TOPICS.filter((t) => byTopic[t] === 0),
+    persona: { oneLiner, brief: briefPreview.block, full },
   };
 }
 
-// Rebuild = re-embed all facts for recall, then stamp builtAt (which gates the
-// UI's "brain ready" poll). No tone/style re-derivation pipeline exists yet.
-export async function rebuildBrain(accountId: string): Promise<{ ok: true; status: string }> {
-  await backfillEmbeddings().catch(() => {});
+// Rebuild = describe any post images still missing a vision pass, extract
+// facts from EVERY post's full context (caption + notes + Q&A + image
+// description), re-embed, stamp builtAt, regenerate the one-liner. This is
+// the "use everything, including images" scan — previously rebuild only
+// re-embedded whatever facts already existed, which is why clicking it did
+// nothing visible for an account with 0 facts.
+export async function rebuildBrain(
+  accountId: string
+): Promise<{ ok: true; status: string; postsScanned: number; factsCreated: number; imagesDescribed: number }> {
+  let s = await readStore(accountId);
+
+  const { described } = await backfillVisionForAccount(accountId, s).catch(() => ({ described: 0 }));
+  if (described > 0) s = await readStore(accountId); // pick up the fresh descriptions just written
+
+  let postsScanned = 0;
+  let factsCreated = 0;
+  for (const post of Object.values(s.posts)) {
+    // Skip posts already scanned — rebuild fills gaps, it doesn't re-derive
+    // (and duplicate) facts on every click. Checks sourceCommentId, not scope:
+    // most extracted facts land scope:"account" (only location/song go
+    // scope:"post"), so a scope-only check would miss them and re-extract.
+    const alreadyExtracted = s.knowledge.some((f) => f.sourceCommentId === post.id);
+    if (alreadyExtracted) continue;
+
+    const parts = [
+      post.caption && `Caption: ${post.caption}`,
+      post.notes && `Owner notes: ${post.notes}`,
+      post.visionDescription && `Image shows: ${post.visionDescription}`,
+      ...post.qa.map((x) => `Q: ${x.q}\nA: ${x.a}`),
+    ].filter(Boolean);
+    if (!parts.length) continue;
+
+    const created = await extractFactsFromText(accountId, parts.join("\n"), { postId: post.id }).catch(() => []);
+    factsCreated += created.length;
+    postsScanned++;
+  }
+
+  await backfillEmbeddings(accountId).catch(() => {});
   await setBrainBuiltAt(accountId, Date.now());
-  return { ok: true, status: "built" };
+  const fresh = await readStore(accountId);
+  warmOneLiner(accountId, fresh); // fire-and-forget — don't make the button wait on an extra LLM call
+  return { ok: true, status: "built", postsScanned, factsCreated, imagesDescribed: described };
 }
 
 // ---------------------------------------------------------------------------

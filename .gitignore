@@ -61,3 +61,7 @@ package-lock.json
 
 # brag video QA artifacts (keep the rendered mp4 + plan, drop throwaway snapshots)
 brag-output*/composition/snapshots/
+
+# Redis snapshots
+dump.rdb
+*.rdb

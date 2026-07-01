@@ -1,11 +1,35 @@
 "use client";
 
-// Toggle, ButtonSuggestModal, SuggestButton, and MessageBody components
+// Toggle, ButtonSuggestModal, AiGeneratedNote, and MessageBody components
 
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import type { AutomationNodeData } from "@shaiz/shared";
-import { BUTTON_SUGGESTIONS, MESSAGE_TEMPLATES } from "./constants";
+import { BUTTON_SUGGESTIONS } from "./constants";
+
+// Every reply/DM-sending node has no manual text field — the message is
+// generated fresh at send time from account voice + live context.
+export function AiGeneratedNote({ color }: { color: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        background: `${color}12`,
+        border: `1px solid ${color}33`,
+        borderRadius: 8,
+        padding: "7px 9px",
+        fontSize: 10.5,
+        color,
+        lineHeight: 1.4,
+      }}
+    >
+      <span style={{ fontSize: 12, flexShrink: 0 }}>✨</span>
+      AI-generated using your account voice + live context — no manual text.
+    </div>
+  );
+}
 
 export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -221,218 +245,14 @@ export function ButtonSuggestModal({
   );
 }
 
-export function SuggestButton({
-  nodeType,
-  onSelect,
-}: {
-  nodeType: string;
-  onSelect: (t: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [hovered, setHovered] = useState<number | null>(null);
-  const templates = MESSAGE_TEMPLATES[nodeType] ?? [];
-  if (!templates.length) return null;
-  return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 3,
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: "var(--text-subtle)",
-          fontSize: 10,
-          padding: "2px 0",
-          fontWeight: 600,
-        }}
-        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")}
-        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-subtle)")}
-      >
-        ✨ Suggest
-      </button>
-      {open && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "rgba(0,0,0,0.78)",
-            backdropFilter: "blur(12px)",
-          }}
-          onMouseDown={() => setOpen(false)}
-        >
-          <div
-            style={{
-              background: "var(--bg-elev)",
-              border: "1px solid var(--bg-inset)",
-              borderRadius: 22,
-              width: 400,
-              overflow: "hidden",
-              boxShadow: "var(--shadow-card)",
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            {/* header */}
-            <div
-              style={{
-                padding: "20px 22px 16px",
-                background: "var(--bg-inset)",
-                borderBottom: "1px solid var(--border)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 10,
-                    background: "var(--border)",
-                    border: "1px solid var(--bg-inset)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 14,
-                  }}
-                >
-                  ✨
-                </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: 13.5,
-                      fontWeight: 700,
-                      color: "var(--text)",
-                      letterSpacing: "-0.01em",
-                    }}
-                  >
-                    Message Templates
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                    Select one to prefill — you can edit after
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* template cards */}
-            <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-              {templates.map((t, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    onSelect(t);
-                    setOpen(false);
-                  }}
-                  onMouseEnter={() => setHovered(i)}
-                  onMouseLeave={() => setHovered(null)}
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "13px 15px",
-                    background:
-                      hovered === i ? "var(--bg-inset)" : "var(--border)",
-                    border: `1px solid ${hovered === i ? "var(--bg-inset)" : "var(--border)"}`,
-                    borderRadius: 12,
-                    cursor: "pointer",
-                    transition: "all 0.14s ease",
-                    transform: hovered === i ? "translateY(-1px)" : "none",
-                    boxShadow: hovered === i ? "var(--shadow-card)" : "none",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                    <div
-                      style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 6,
-                        flexShrink: 0,
-                        marginTop: 1,
-                        background:
-                          hovered === i ? "var(--bg-inset)" : "var(--border)",
-                        border: "1px solid var(--border)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 10,
-                        color: "var(--text-muted)",
-                        fontWeight: 700,
-                        transition: "all 0.14s",
-                      }}
-                    >
-                      {i + 1}
-                    </div>
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 11.5,
-                          color: hovered === i ? "var(--text)" : "var(--text-muted)",
-                          lineHeight: 1.65,
-                          transition: "color 0.14s",
-                          whiteSpace: "pre-wrap",
-                        }}
-                      >
-                        {t.length > 120 ? t.slice(0, 120) + "…" : t}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* footer */}
-            <div style={{ padding: "4px 14px 16px" }}>
-              <button
-                onClick={() => setOpen(false)}
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  background: "var(--border)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  color: "var(--text-subtle)",
-                  fontSize: 11.5,
-                  fontWeight: 500,
-                  transition: "all 0.12s",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "var(--bg-inset)";
-                  (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "var(--border)";
-                  (e.currentTarget as HTMLElement).style.color = "var(--text-subtle)";
-                }}
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
 export function MessageBody({
   data,
   onUpdate,
-  accentColor: _accentColor,
-  placeholder,
-  nodeType,
+  accentColor,
 }: {
   data: AutomationNodeData;
   onUpdate: (p: Partial<AutomationNodeData>) => void;
   accentColor: string;
-  placeholder: string;
-  nodeType?: string;
 }) {
   const [btnModal, setBtnModal] = useState(false);
   return (
@@ -445,30 +265,7 @@ export function MessageBody({
           onClose={() => setBtnModal(false)}
         />
       )}
-      {nodeType && (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
-          <SuggestButton nodeType={nodeType} onSelect={(t) => onUpdate({ text: t })} />
-        </div>
-      )}
-      <textarea
-        value={data.text ?? ""}
-        onChange={(e) => onUpdate({ text: e.target.value })}
-        placeholder={placeholder}
-        rows={3}
-        style={{
-          width: "100%",
-          background: "var(--border)",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          padding: "7px 9px",
-          fontSize: 11,
-          color: "var(--text-muted)",
-          outline: "none",
-          resize: "none",
-          boxSizing: "border-box",
-          lineHeight: 1.5,
-        }}
-      />
+      <AiGeneratedNote color={accentColor} />
       <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
         {(data.buttons ?? []).map((btn, i) => (
           <div key={i} style={{ display: "flex", gap: 5, alignItems: "center" }}>

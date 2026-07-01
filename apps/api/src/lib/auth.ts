@@ -43,11 +43,12 @@ export async function userOwnsAccount(userId: string, accountId: string): Promis
 /** Every account this user can reach: orgs they admin + per-account grants. */
 export async function accessibleAccounts(userId: string): Promise<{ accountId: string; orgId: string | null }[]> {
   const rows = await query<{ ig_user_id: string; org_id: string | null }>(
-    `SELECT a.ig_user_id, a.org_id FROM accounts a
+    `SELECT a.ig_user_id, a.org_id, a.connected_at FROM accounts a
        JOIN org_members m ON m.org_id = a.org_id AND m.user_id = $1 AND m.role IN ('owner','admin')
      UNION
-     SELECT a.ig_user_id, a.org_id FROM accounts a
-       JOIN account_access g ON g.account_id = a.ig_user_id AND g.user_id = $1`,
+     SELECT a.ig_user_id, a.org_id, a.connected_at FROM accounts a
+       JOIN account_access g ON g.account_id = a.ig_user_id AND g.user_id = $1
+     ORDER BY connected_at DESC`,
     [userId]
   );
   return rows.map((r) => ({ accountId: r.ig_user_id, orgId: r.org_id }));
@@ -117,15 +118,17 @@ export async function requireUser(headers: Headers): Promise<{ ctx?: AuthCtx; st
     accountId = requested;
   } else {
     const list = await accessibleAccounts(userId);
-    if (list.length === 1) {
+    if (list.length >= 1) {
+      // No explicit choice -> default to most-recently-connected account
+      // (accessibleAccounts is ordered by connected_at DESC). The switcher
+      // (CanvasAccountSwitcher) lets the user pick a different one any time.
       accountId = list[0].accountId;
       role = await roleFor(accountId, userId);
-    } else if (list.length === 0) {
+    } else {
       // Legacy fallback: account stamped by user_id but org not backfilled yet.
       const legacy = await accountIdForUser(userId);
       if (legacy) { accountId = legacy; role = "owner"; }
     }
-    // length > 1 with no explicit choice -> accountId stays null (must pick).
   }
 
   // Resolve active org (for org-management routes). Independent of account.

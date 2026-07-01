@@ -7,6 +7,7 @@ import { reconcileAccount } from "@/lib/ig/reconcile";
 import { publishDuePosts } from "@/lib/ig/publish";
 import { syncFollowers, refreshTokenIfNeeded } from "@/lib/ig/maintenance";
 import { ingestDLQ, outboundDLQ, reconcileQueue, COMMENTS_QUEUE, DM_QUEUE } from "@/lib/ig/ingestQueue";
+import { initObservability, captureError } from "@shaiz/shared";
 
 // Long-running worker tier — the ONLY place events are processed and messages
 // are sent. Drains:
@@ -20,6 +21,7 @@ const MAINTENANCE_EVERY_MS = 30 * 60_000;
 const SCHEDULER_REFRESH_MS = 5 * 60_000;
 
 async function main() {
+  await initObservability("mira-worker");
   const commentConcurrency = Number(
     process.env.WORKER_CONCURRENCY_COMMENTS || process.env.WORKER_CONCURRENCY || 10
   );
@@ -72,6 +74,7 @@ async function main() {
   // exhausted retries → explicit DLQ (replayable after a fix)
   const onIngestFailed = async (job: Job<IngestJob> | undefined, err: Error | undefined) => {
     console.error("[worker] ingest job failed", job?.id, err?.message);
+    captureError(err ?? new Error("ingest job failed"), { lane: "ingest", jobId: job?.id });
     if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
       await ingestDLQ.add(job.name, job.data, { jobId: `dlq_${job.id}_${Date.now()}` }).catch(() => {});
     }
@@ -80,13 +83,14 @@ async function main() {
   ingestDMWorker.on("failed", onIngestFailed);
   outboundWorker.on("failed", async (job, err) => {
     console.error("[worker] outbound job failed", job?.id, err?.message);
+    captureError(err ?? new Error("outbound job failed"), { lane: "outbound", jobId: job?.id });
     if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
       await recordOutboundFailure(job.data, err?.message ?? "unknown").catch(() => {});
       await outboundDLQ.add(job.name, job.data, { jobId: `dlq_${job.id}_${Date.now()}` }).catch(() => {});
     }
   });
   for (const w of [ingestWorker, ingestDMWorker, outboundWorker, reconcileWorker]) {
-    w.on("error", (err) => console.error(`[worker] ${w.name} error`, err.message));
+    w.on("error", (err) => { console.error(`[worker] ${w.name} error`, err.message); captureError(err, { lane: w.name }); });
   }
   ingestWorker.on("ready", () => console.log(`[worker] ingest-comments ready, concurrency=${commentConcurrency}`));
   ingestDMWorker.on("ready", () => console.log(`[worker] ingest-dm ready, concurrency=${dmConcurrency}`));
@@ -127,4 +131,4 @@ async function main() {
   process.on("SIGTERM", shutdown);
 }
 
-main().catch((e) => { console.error("[worker] fatal", e); process.exit(1); });
+main().catch((e) => { console.error("[worker] fatal", e); captureError(e, { fatal: true }); process.exit(1); });

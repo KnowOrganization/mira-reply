@@ -8,7 +8,7 @@ export const patchKnowledgeIdHandler = new Elysia().use(authPlugin).patch(
   async ({ params, body, auth, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const patch = (body ?? {}) as Partial<Fact>;
-    const result = await patchKnowledge(params.id, patch);
+    const result = await patchKnowledge(auth.accountId, params.id, patch);
     if (!result) { set.status = 404; return { error: "not found" }; }
     return result;
   },

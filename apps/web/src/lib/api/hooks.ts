@@ -26,11 +26,13 @@ export const qk = {
   clarifications: ["ig", "clarifications"] as const,
   knowledge: ["ig", "knowledge"] as const,
   brain: ["ig", "brain"] as const,
+  brainGraph: ["ig", "brain-graph"] as const,
   brainStats: ["ig", "brain-stats"] as const,
   settings: ["ig", "settings"] as const,
   watcher: ["ig", "watcher"] as const,
   mentions: ["ig", "mentions"] as const,
   automations: ["ig", "automations"] as const,
+  automation: (id: string) => ["ig", "automations", id] as const,
   products: ["ig", "products"] as const,
   conversations: (folder?: string) => ["ig", "crm", "conversations", { folder: folder ?? "" }] as const,
   conversation: (id: string) => ["ig", "crm", "conversations", id] as const,
@@ -253,6 +255,18 @@ export function useBrain<T = unknown>(opts?: QOpts<T>) {
   });
 }
 
+export type BrainGraphNode = { id: string; type: string; label: string; subtype: string | null };
+export type BrainGraphLink = { source: string; target: string; type: string; weight: number };
+export type BrainGraphResp = { nodes: BrainGraphNode[]; links: BrainGraphLink[] };
+
+export function useBrainGraph(opts?: QOpts<BrainGraphResp>) {
+  return useQuery<BrainGraphResp>({
+    queryKey: qk.brainGraph,
+    queryFn: () => api.get<BrainGraphResp>("/api/ig/brain/graph"),
+    ...opts,
+  });
+}
+
 /** All brain writes go through one POST endpoint keyed by `action`. */
 export function useBrainAction<R = unknown>() {
   const qc = useQueryClient();
@@ -443,11 +457,24 @@ export function useAutomations(opts?: QOpts<AutomationsResp>) {
   });
 }
 
+/** Single automation by id — direct nav/refresh to /automations/<id> won't
+ *  have the list query cached yet, so the [sub] page needs its own fetch. */
+export function useAutomation(id: string | undefined, opts?: QOpts<{ automation: Automation }>) {
+  return useQuery<{ automation: Automation }>({
+    queryKey: qk.automation(id ?? ""),
+    queryFn: () => api.get<{ automation: Automation }>(`/api/ig/automations/${id}`),
+    enabled: !!id,
+    retry: false, // a 404 (deleted/wrong account) shouldn't retry into a long spinner
+    ...opts,
+  });
+}
+
 export function useCreateAutomation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.post<{ automation: Automation }>("/api/ig/automations", { name: "New Automation" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.automations }),
+    onSuccess: (d) => qc.setQueryData(qk.automation(d.automation.id), d),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.automations }),
   });
 }
 
@@ -456,7 +483,29 @@ export function usePatchAutomation() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Partial<Automation> }) =>
       api.patch<{ automation: Automation }>(`/api/ig/automations/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.automations }),
+    onMutate: async ({ id, patch }) => {
+      await qc.cancelQueries({ queryKey: qk.automations });
+      const prev = qc.getQueryData<AutomationsResp>(qk.automations);
+      qc.setQueryData<AutomationsResp>(qk.automations, (old) => old ? ({
+        ...old,
+        automations: (old.automations ?? []).map((a) =>
+          a.id === id ? { ...a, ...patch, updatedAt: Date.now() } : a
+        ),
+      }) : old);
+      const prevSingle = qc.getQueryData<{ automation: Automation }>(qk.automation(id));
+      qc.setQueryData<{ automation: Automation }>(qk.automation(id), (old) =>
+        old ? { automation: { ...old.automation, ...patch, updatedAt: Date.now() } } : old
+      );
+      return { prev, prevSingle, id };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(qk.automations, ctx.prev);
+      if (ctx?.prevSingle) qc.setQueryData(qk.automation(ctx.id), ctx.prevSingle);
+    },
+    onSettled: (_d, _e, { id }) => {
+      qc.invalidateQueries({ queryKey: qk.automations });
+      qc.invalidateQueries({ queryKey: qk.automation(id) });
+    },
   });
 }
 
@@ -464,7 +513,19 @@ export function useDeleteAutomation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.del(`/api/ig/automations/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.automations }),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: qk.automations });
+      const prev = qc.getQueryData<AutomationsResp>(qk.automations);
+      qc.setQueryData<AutomationsResp>(qk.automations, (old) => old ? ({
+        ...old,
+        automations: (old.automations ?? []).filter((a) => a.id !== id),
+      }) : old);
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(qk.automations, ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.automations }),
   });
 }
 
@@ -607,7 +668,7 @@ export function usePatchConversation() {
 // ── Phase 2: AI settings, KB, analytics ───────────────────────────────────────
 
 export type AiSettings = {
-  provider: "claude" | "ollama";
+  provider: "nim";
   byokKeySet: boolean;
   model: string;
   voice: { toneSummary: string; styleSampleCount: number };
@@ -740,6 +801,7 @@ export type BrainStatus = {
   kbCount: number;
   audienceMap: { themes?: { label: string; count: number }[]; topCommenters?: { username: string; count: number }[]; sampleSize?: number } | null;
   gaps: string[];
+  persona: { oneLiner: string; brief: string; full: string };
 };
 
 export function useBrainStatus() {
@@ -750,10 +812,18 @@ export function useBrainStatus() {
   });
 }
 
+export type RebuildBrainResp = {
+  ok: true;
+  status: string;
+  postsScanned: number;
+  factsCreated: number;
+  imagesDescribed: number;
+};
+
 export function useRebuildBrain() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.post<{ ok: true; status: string }>("/api/ig/brain/rebuild"),
+    mutationFn: () => api.post<RebuildBrainResp>("/api/ig/brain/rebuild"),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ig", "brain", "status"] }),
   });
 }

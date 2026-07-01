@@ -1,6 +1,7 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import { useState } from "react";
+import { Sparkles, Loader2 } from "lucide-react";
 import type { Item, PendingDraft, Clarification } from "./types";
 import { Avatar } from "./Avatar";
 import { ClarBox } from "./ClarBox";
@@ -22,8 +23,9 @@ export function ItemCard({
   onReject: (d: PendingDraft) => Promise<void>;
   onAnswer: (c: Clarification, answer: string) => Promise<void>;
   onSkip: (c: Clarification) => Promise<void>;
-  onReprocess: (commentId: string) => void;
+  onReprocess: (commentId: string) => Promise<void>;
 }) {
+  const [reprocessing, setReprocessing] = useState(false);
   const showState = item.state === "needs_you" || item.state === "draft";
 
   return (
@@ -55,11 +57,17 @@ export function ItemCard({
         )}
         {item.state === "open" && item.commentId && (
           <button
-            onClick={() => onReprocess(item.commentId!)}
+            onClick={async () => {
+              if (reprocessing) return;
+              setReprocessing(true);
+              try { await onReprocess(item.commentId!); } finally { setReprocessing(false); }
+            }}
+            disabled={reprocessing}
             className="mt-2 h-7 px-3 rounded-full text-[11px] font-semibold inline-flex items-center gap-1.5 transition hover:opacity-80"
-            style={{ background: "var(--bg-inset)", color: "var(--text-muted)" }}
+            style={{ background: "var(--bg-inset)", color: "var(--text-muted)", opacity: reprocessing ? 0.6 : 1, cursor: reprocessing ? "default" : "pointer" }}
           >
-            <Sparkles size={11} /> Reply with Mira
+            {reprocessing ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+            {reprocessing ? "Working…" : "Reply with Mira"}
           </button>
         )}
       </div>
