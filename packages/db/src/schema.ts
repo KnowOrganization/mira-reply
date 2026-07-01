@@ -67,6 +67,10 @@ export const accounts = pgTable("accounts", {
   // Brain-first onboarding progress: connect -> brain -> done.
   onboardingStep: text("onboarding_step").notNull().default("connect"),
   onboardingSkippedAt: ms("onboarding_skipped_at"),
+  // Conversational Inbox AI — structured config too shaped for the flat
+  // Settings jsonb (arrays of typed rows), same pattern as blocklist/fingerprints.
+  iceBreakers: jsonb("ice_breakers").$type<{ question: string; payload: string }[]>().notNull().default([]),
+  persistentMenu: jsonb("persistent_menu").$type<{ title: string; type: "postback" | "web_url"; payload?: string; url?: string }[]>().notNull().default([]),
   updatedAt: ms("updated_at").notNull().default(0),
 }, (t) => [
   index("idx_accounts_ig_scoped_user_id").on(t.igScopedUserId),
@@ -152,6 +156,7 @@ export const postConfigs = pgTable("post_configs", {
 // ── products (DM marketplace catalog) ────────────────────────────────────────
 // Account-scoped. Checkout is link-out only (ctaUrl) — Mira never processes money.
 // priceText is a free string ("Rs 1,499" / "DM for price"); never numeric.
+export type ProductVariant = { id: string; label: string; priceText: string | null; available: boolean };
 export const products = pgTable("products", {
   id: text("id").primaryKey(),
   accountId: text("account_id").notNull(),
@@ -160,8 +165,18 @@ export const products = pgTable("products", {
   description: text("description").notNull().default(""),
   priceText: text("price_text"),
   imageUrl: text("image_url"),
+  // Additional photos beyond imageUrl (imageUrl stays the cover/first image for
+  // back-compat with existing readers). Data-URLs for now — no object storage is
+  // wired up yet (no S3/R2/Supabase Storage creds in env), so the picker base64s
+  // straight into Postgres. ponytail: fine for a handful of compressed photos per
+  // product; swap to real URLs once a bucket exists, no schema change needed.
+  images: jsonb("images").$type<string[]>().notNull().default([]),
+  // Flat variant list (e.g. "Black / M", "32GB"), not a full option-axis matrix —
+  // covers color/size/etc without building combination-generation UI.
+  variants: jsonb("variants").$type<ProductVariant[]>().notNull().default([]),
   ctaUrl: text("cta_url"),                       // owner-set link-out — the only checkout
   available: boolean("available").notNull().default(true),
+  featured: boolean("featured").notNull().default(false),
   aliases: jsonb("aliases").$type<string[]>().notNull().default([]),
   embedding: jsonb("embedding").$type<number[]>(), // deferred-fill (v1 lookup is keyword/alias)
   slug: text("slug"),
@@ -172,6 +187,106 @@ export const products = pgTable("products", {
   index("idx_products_account").on(t.accountId, t.sortOrder),
   index("idx_products_available").on(t.accountId, t.available),
   uniqueIndex("uq_products_slug").on(t.accountId, t.slug),
+]);
+
+// ── Guard: moderation rules (auto-flag categories + keyword blocklist) ──────
+// `type` discriminates the rule shape: "keyword" rules carry `pattern` (the
+// blocklisted word/phrase); "category" rules carry `pattern` = the category
+// key (spam/scam/hate/nsfw/...) and represent an auto-flag toggle.
+export const moderationRules = pgTable("moderation_rules", {
+  id: text("id").primaryKey(),
+  accountId: text("account_id").notNull(),
+  type: text("type").notNull(), // keyword | category
+  pattern: text("pattern").notNull().default(""),
+  action: text("action").notNull().default("flag"), // flag | hide | block
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: ms("created_at").notNull().default(0),
+}, (t) => [index("idx_modrules_account").on(t.accountId)]);
+
+// ── Guard: flagged-item review queue + action log ───────────────────────────
+// One row per moderation decision: a flagged comment entering the "Flagged"
+// queue (status=pending) or the owner's Allow/Hide/Block resolution.
+export const moderationLog = pgTable("moderation_log", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  accountId: text("account_id").notNull(),
+  commentId: text("comment_id").notNull(),
+  text: text("text").notNull().default(""),
+  fromUserId: text("from_user_id").notNull().default(""),
+  fromUsername: text("from_username"),
+  ruleType: text("rule_type").notNull().default(""), // which rule/category matched
+  action: text("action").notNull().default("flag"), // flag | allow | hide | block
+  status: text("status").notNull().default("pending"), // pending | resolved
+  ts: ms("ts").notNull().default(0),
+}, (t) => [index("idx_modlog_account_ts").on(t.accountId, t.ts)]);
+
+// ── Publishing: scheduled / published Instagram posts ───────────────────────
+export const scheduledPosts = pgTable("scheduled_posts", {
+  id: text("id").primaryKey(),
+  accountId: text("account_id").notNull(),
+  caption: text("caption").notNull().default(""),
+  imageUrl: text("image_url"),
+  videoUrl: text("video_url"),
+  mediaType: text("media_type").notNull().default("IMAGE"), // IMAGE | VIDEO | REELS
+  scheduledAt: ms("scheduled_at").notNull().default(0),
+  status: text("status").notNull().default("scheduled"), // scheduled | published | failed
+  mediaId: text("media_id"), // IG media id once published
+  error: text("error"),
+  createdAt: ms("created_at").notNull().default(0),
+}, (t) => [index("idx_scheduled_posts_account").on(t.accountId, t.scheduledAt)]);
+
+// ── Funnel Studio: giveaway entries / discount codes / A-B assignments ──────
+export const funnelEntries = pgTable("funnel_entries", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  accountId: text("account_id").notNull(),
+  automationId: text("automation_id").notNull(),
+  entryNumber: integer("entry_number").notNull(),
+  fromUserId: text("from_user_id").notNull(),
+  fromUsername: text("from_username"),
+  won: boolean("won").notNull().default(false),
+  createdAt: ms("created_at").notNull().default(0),
+}, (t) => [
+  index("idx_funnel_entries_automation").on(t.accountId, t.automationId),
+  uniqueIndex("uq_funnel_entries_user").on(t.automationId, t.fromUserId),
+]);
+
+export const discountCodes = pgTable("discount_codes", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  accountId: text("account_id").notNull(),
+  automationId: text("automation_id").notNull(),
+  code: text("code").notNull(),
+  issuedTo: text("issued_to").notNull(),
+  issuedToUsername: text("issued_to_username"),
+  redeemedAt: ms("redeemed_at"),
+  createdAt: ms("created_at").notNull().default(0),
+}, (t) => [
+  index("idx_discount_codes_automation").on(t.accountId, t.automationId),
+  uniqueIndex("uq_discount_codes_code").on(t.automationId, t.code),
+]);
+
+export const abAssignments = pgTable("ab_assignments", {
+  accountId: text("account_id").notNull(),
+  automationId: text("automation_id").notNull(),
+  fromUserId: text("from_user_id").notNull(),
+  variant: integer("variant").notNull(), // 0 | 1
+  converted: boolean("converted").notNull().default(false),
+  createdAt: ms("created_at").notNull().default(0),
+}, (t) => [
+  primaryKey({ columns: [t.automationId, t.fromUserId] }),
+  index("idx_ab_assignments_automation").on(t.accountId, t.automationId),
+]);
+
+// ── Commerce: back-in-stock waitlist interest ────────────────────────────────
+export const productInterest = pgTable("product_interest", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  accountId: text("account_id").notNull(),
+  productId: text("product_id").notNull(),
+  igsid: text("igsid").notNull(),
+  username: text("username"),
+  notifiedAt: ms("notified_at"),
+  createdAt: ms("created_at").notNull().default(0),
+}, (t) => [
+  uniqueIndex("uq_product_interest").on(t.productId, t.igsid),
+  index("idx_product_interest_account").on(t.accountId, t.productId),
 ]);
 
 export const processedComments = pgTable("processed_comments", {
@@ -585,4 +700,8 @@ export type Schema = {
   commentsCache: typeof commentsCache;
   conversations: typeof conversations; messages: typeof messages;
   deviceTokens: typeof deviceTokens;
+  moderationRules: typeof moderationRules; moderationLog: typeof moderationLog;
+  scheduledPosts: typeof scheduledPosts;
+  funnelEntries: typeof funnelEntries; discountCodes: typeof discountCodes; abAssignments: typeof abAssignments;
+  productInterest: typeof productInterest;
 };

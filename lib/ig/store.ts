@@ -215,6 +215,12 @@ export type Settings = {
   storefrontAbout?: string;
   storefrontContactUrl?: string;     // https
   storefrontBuyLabel?: "Buy" | "Shop" | "Order";
+  // ── Guard crisis kill-switch (FLAT key, same shallow-merge constraint) ──
+  crisisArmed?: boolean;
+  // ── Conversational Inbox AI config (FLAT keys) ──
+  inboxAiAutoSeen?: boolean;
+  inboxAiAutoTyping?: boolean;
+  inboxAiVipFollowerThreshold?: number;
 };
 
 /** Collapse the legacy replyMode into the three-state per-channel ReplyMode. */

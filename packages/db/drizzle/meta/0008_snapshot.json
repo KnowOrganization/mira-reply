@@ -1,6 +1,6 @@
 {
-  "id": "309be58e-777e-43ec-b732-a447720bda39",
-  "prevId": "85cb2000-b064-47ca-bcb0-41544443dbea",
+  "id": "8f0a462a-ac67-4b8f-a8fa-8e3fe70553ba",
+  "prevId": "c3a59c10-145a-4511-8c76-b65957cd7711",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2567,13 +2567,6 @@
           "notNull": true,
           "default": "''"
         },
-        "full": {
-          "name": "full",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
         "graph_version": {
           "name": "graph_version",
           "type": "text",
@@ -2822,12 +2815,6 @@
         "carousel": {
           "name": "carousel",
           "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "vision_description": {
-          "name": "vision_description",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
