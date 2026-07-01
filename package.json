@@ -36,6 +36,7 @@
     "@shaiz/db": "workspace:*",
     "@shaiz/shared": "workspace:*",
     "bullmq": "^5.78.0",
+    "drizzle-orm": "^0.38.3",
     "ioredis": "^5.11.1",
     "openai": "^6.45.0",
     "uuid": "^14.0.0"

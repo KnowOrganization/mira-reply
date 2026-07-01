@@ -15,6 +15,7 @@
     "@shaiz/auth": "workspace:*",
     "@shaiz/db": "workspace:*",
     "@shaiz/shared": "workspace:*",
+    "drizzle-orm": "^0.38.3",
     "elysia": "^1.2.10",
     "elysia-rate-limit": "^4.6.2"
   }
