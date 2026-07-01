@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Loader2, Send, X } from "lucide-react";
 import type { PendingDraft } from "./types";
 
+// Read-only — the draft is AI-generated, never hand-edited before sending.
 export function DraftBox({
   draft,
   onApprove,
@@ -13,7 +14,6 @@ export function DraftBox({
   onApprove: (d: PendingDraft, text: string) => Promise<void>;
   onReject: (d: PendingDraft) => Promise<void>;
 }) {
-  const [text, setText] = useState(draft.draftText);
   const [busy, setBusy] = useState(false);
 
   return (
@@ -25,20 +25,19 @@ export function DraftBox({
         boxShadow: "var(--shadow-card)",
       }}
     >
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={2}
-        className="w-full px-3 py-2 rounded-lg border bg-transparent text-[13px] outline-none focus:border-strong resize-y"
-        style={{ borderColor: "var(--border-strong)" }}
-      />
+      <div
+        className="w-full px-3 py-2 rounded-lg border text-[13px] whitespace-pre-wrap"
+        style={{ borderColor: "var(--border-strong)", color: "var(--text-muted)" }}
+      >
+        {draft.draftText}
+      </div>
       <div className="flex items-center gap-2 mt-2">
         <button
           onClick={async () => {
             setBusy(true);
-            await onApprove(draft, text).finally(() => setBusy(false));
+            await onApprove(draft, draft.draftText).finally(() => setBusy(false));
           }}
-          disabled={busy || !text.trim()}
+          disabled={busy || !draft.draftText.trim()}
           className="h-8 px-3 rounded-md text-xs font-medium flex items-center gap-1.5 disabled:opacity-40"
           style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
         >

@@ -1,27 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import { Sparkles, Star, Check, X, CornerDownRight } from "lucide-react";
-import { useReplyToComment, useDraftAction } from "@/lib/api/hooks";
+import { useDraftAction } from "@/lib/api/hooks";
 import { fmtAgo } from "../utils";
 import type { CommentRow } from "./types";
 import { STATUS_BADGE } from "./constants";
 
 export function CommentCard({ c }: { c: CommentRow }) {
-  const [replyOpen, setReplyOpen] = useState(false);
-  const [text, setText] = useState("");
-  const reply = useReplyToComment();
   const draftAction = useDraftAction();
   const badge = STATUS_BADGE[c.status];
-
-  const doReply = async () => {
-    if (!text.trim() || reply.isPending) return;
-    try {
-      await reply.mutateAsync({ id: c.id, text: text.trim() });
-      setText("");
-      setReplyOpen(false);
-    } catch { /* surfaced below */ }
-  };
 
   return (
     <div className="card rounded-xl p-3.5">
@@ -93,51 +80,6 @@ export function CommentCard({ c }: { c: CommentRow }) {
               <X size={10} /> Reject
             </button>
           </div>
-        </div>
-      )}
-
-      {/* manual reply */}
-      {!c.isOwn && (
-        <div className="mt-2">
-          {!replyOpen ? (
-            <button
-              onClick={() => setReplyOpen(true)}
-              className="text-[10.5px] font-semibold"
-              style={{ color: "var(--accent)" }}
-            >
-              Reply…
-            </button>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {reply.isError && (
-                <div className="text-[10px]" style={{ color: "#ef4444" }}>
-                  {(reply.error as Error)?.message || "Reply failed"}
-                </div>
-              )}
-              <div className="flex gap-1.5">
-                <input
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && doReply()}
-                  autoFocus
-                  placeholder={`Reply to @${c.fromUsername || "user"}…`}
-                  className="flex-1 rounded-lg px-2.5 py-1.5 text-[12px] outline-none"
-                  style={{ background: "var(--bg-elev)", color: "var(--text)", border: "1px solid var(--border)" }}
-                />
-                <button
-                  onClick={doReply}
-                  disabled={!text.trim() || reply.isPending}
-                  className="rounded-lg px-3 text-[11px] font-semibold disabled:opacity-40"
-                  style={{ background: "var(--accent)", color: "#fff" }}
-                >
-                  {reply.isPending ? "…" : "Send"}
-                </button>
-                <button onClick={() => setReplyOpen(false)} className="text-[10.5px]" style={{ color: "var(--text-subtle)" }}>
-                  cancel
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>

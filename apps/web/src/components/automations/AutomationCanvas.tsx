@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import type { Automation, AutomationNodeData, AutomationNodeType, AutomationNode } from "@shaiz/shared";
 import { useTestAutomation } from "@/lib/api/hooks";
 import { getNodeValidation, computeWindowOpen as _computeWindowOpen } from "./helpers";
-import { NODE_DEFAULTS } from "./constants";
 import { FreeDragCanvas } from "./FreeDragCanvas";
 import { SmartGridCanvas } from "./SmartGridCanvas";
 import { AddResponsePanel } from "./AddResponsePanel";
@@ -87,7 +86,7 @@ export function AutomationCanvas({
           id: `node_comment_reply_${Date.now().toString(36)}`,
           type: "comment_reply",
           position: { x: 0, y: 0 },
-          data: { enabled: true, text: NODE_DEFAULTS.comment_reply },
+          data: { enabled: true },
         };
         ns.splice(at, 0, cr);
       }
@@ -99,7 +98,7 @@ export function AutomationCanvas({
           id: `node_opening_message_${Date.now().toString(36)}`,
           type: "opening_message",
           position: { x: 0, y: 0 },
-          data: { enabled: true, text: NODE_DEFAULTS.opening_message },
+          data: { enabled: true },
         };
         ns.splice(at, 0, om);
       }
@@ -140,9 +139,9 @@ export function AutomationCanvas({
           if (!updated.some((n) => n.type === "post_filter"))
             missing.push({ id: `node_post_filter_${Date.now().toString(36)}`, type: "post_filter", position: { x: 0, y: 0 }, data: { postIds: [] } });
           if (!updated.some((n) => n.type === "comment_reply"))
-            missing.push({ id: `node_comment_reply_${Date.now().toString(36)}`, type: "comment_reply", position: { x: 0, y: 0 }, data: { enabled: true, text: NODE_DEFAULTS.comment_reply } });
+            missing.push({ id: `node_comment_reply_${Date.now().toString(36)}`, type: "comment_reply", position: { x: 0, y: 0 }, data: { enabled: true } });
           if (!updated.some((n) => n.type === "opening_message"))
-            missing.push({ id: `node_opening_message_${Date.now().toString(36)}`, type: "opening_message", position: { x: 0, y: 0 }, data: { enabled: true, text: NODE_DEFAULTS.opening_message } });
+            missing.push({ id: `node_opening_message_${Date.now().toString(36)}`, type: "opening_message", position: { x: 0, y: 0 }, data: { enabled: true } });
           return missing.length ? [updated[0], ...missing, ...updated.slice(1)] : updated;
         }
         if (triggerType === "live_comment") {
@@ -182,12 +181,11 @@ export function AutomationCanvas({
     const last = nodes[nodes.length - 1];
     const lastPos = last?.position ?? { x: 120, y: 0 };
     const position = dropPos ?? (freeMode ? { x: lastPos.x, y: lastPos.y + 260 } : { x: 0, y: 0 });
-    const defaultText = NODE_DEFAULTS[type];
     const newNode: AutomationNode = {
       id,
       type,
       position,
-      data: { enabled: true, ...(defaultText ? { text: defaultText } : {}) },
+      data: { enabled: true },
     };
     setNodes((ns) => {
       const next = [...ns];
