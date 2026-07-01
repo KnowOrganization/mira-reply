@@ -1,18 +1,11 @@
-import { useState } from 'react';
-import {
-  View,
-  Text,
-  Image,
-  Pressable,
-  TextInput,
-  ScrollView,
-  ActivityIndicator,
-  StyleSheet,
-} from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { View, Text, Image, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ScreenHeader } from '../src/components/ScreenHeader';
 import { Card } from '../src/components/Card';
 import { Icon } from '../src/components/Icon';
+import { CalendarMonth, type DayPost } from '../src/components/CalendarMonth';
+import { ComposeSheet, type ComposeSheetHandle } from '../src/components/sheets/ComposeSheet';
 import { colors, radius, space } from '../src/theme';
 import { SkLine, SkRepeat } from '../src/components/skeleton/primitives';
 import { SkScheduledCard } from '../src/components/skeleton/units';
@@ -20,29 +13,30 @@ import {
   useScheduledPosts,
   usePublishQuota,
   useSchedulePost,
+  useUpdateScheduled,
   usePublishNow,
   useDeleteScheduled,
+  useBestTimes,
   type ScheduledPost,
 } from '../src/api/hooks';
 
-// "Schedule" screen (file/route stays /publish, title kept per explicit
-// rename decision — doc's "Publish" title is stale, see plan notes).
-// Doc structure (Mira.dc.html:678-702): inline quota line, always-visible
-// compose with +1h/+3h/+1d quick-schedule, single "QUEUE & HISTORY" list.
+// "Schedule" screen — Later.com-style visual planner workflow (calendar +
+// queue + grid preview + AI compose), replacing the old single flat-list
+// compose form. Title/route stay "Schedule"/"publish" per the earlier
+// explicit rename decision.
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const QUICK = [
-  { label: '+1h', ms: 60 * 60 * 1000 },
-  { label: '+3h', ms: 3 * 60 * 60 * 1000 },
-  { label: '+1d', ms: 24 * 60 * 60 * 1000 },
-] as const;
+const VIEWS = ['Calendar', 'Queue', 'Grid'] as const;
 
 function formatWhen(ms: number): string {
   const d = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-
+function dateKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 function statusColor(status: string): string {
   const s = status.toLowerCase();
   if (s === 'published' || s === 'done' || s === 'sent') return colors.stDone;
@@ -53,39 +47,46 @@ function statusColor(status: string): string {
 export default function Publish() {
   const scheduled = useScheduledPosts();
   const quota = usePublishQuota();
+  const bestTimes = useBestTimes();
   const schedulePost = useSchedulePost();
+  const updateScheduled = useUpdateScheduled();
   const publishNow = usePublishNow();
   const deleteScheduled = useDeleteScheduled();
+  const composeRef = useRef<ComposeSheetHandle>(null);
 
-  const [caption, setCaption] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [quickOffset, setQuickOffset] = useState<number>(QUICK[0].ms);
+  const [view, setView] = useState<(typeof VIEWS)[number]>('Calendar');
+  const today = new Date();
+  const [calYear, setCalYear] = useState(today.getFullYear());
+  const [calMonth, setCalMonth] = useState(today.getMonth());
+  const [selectedDate, setSelectedDate] = useState<string | null>(dateKey(Date.now()));
 
   const posts = scheduled.data?.posts ?? [];
-  const busy = schedulePost.isPending || publishNow.isPending;
+  const bestHour = bestTimes.data?.hours?.[0] ?? null;
 
-  function buildBody() {
-    const trimmed = imageUrl.trim();
-    return {
-      caption: caption.trim() || undefined,
-      imageUrl: trimmed || undefined,
-      mediaType: 'IMAGE' as const,
-    };
+  const postsByDay = useMemo(() => {
+    const map: Record<string, DayPost[]> = {};
+    for (const p of posts) {
+      const key = dateKey(p.scheduledAt);
+      (map[key] ??= []).push({ id: p.id, status: p.status });
+    }
+    return map;
+  }, [posts]);
+
+  const dayPosts = selectedDate ? posts.filter((p) => dateKey(p.scheduledAt) === selectedDate) : [];
+
+  const gridPosts = useMemo(
+    () => [...posts].sort((a, b) => b.scheduledAt - a.scheduledAt).filter((p) => p.status !== 'failed'),
+    [posts],
+  );
+
+  function openCompose(post?: ScheduledPost, forDate?: string) {
+    const d = forDate ? new Date(`${forDate}T12:00:00`) : undefined;
+    composeRef.current?.present(post ?? null, d);
   }
 
-  function reset() {
-    setCaption('');
-    setImageUrl('');
-  }
-
-  function onSchedule() {
-    if (busy) return;
-    schedulePost.mutate({ ...buildBody(), scheduledAt: Date.now() + quickOffset }, { onSuccess: reset });
-  }
-
-  function onPublishNow() {
-    if (busy) return;
-    publishNow.mutate(buildBody(), { onSuccess: reset });
+  function handleSave(body: Parameters<typeof schedulePost.mutate>[0], editingId: string | null) {
+    if (editingId) updateScheduled.mutate({ id: editingId, ...body });
+    else schedulePost.mutate(body);
   }
 
   return (
@@ -96,133 +97,162 @@ export default function Publish() {
         contentContainerStyle={{ padding: space.xl, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        <Card radius={radius.lg} style={styles.form}>
-          <View style={styles.formInner}>
-            {/* Inline quota line */}
-            {quota.isLoading ? (
-              <SkLine w={160} h={13} style={{ marginBottom: space.md }} />
-            ) : quota.data ? (
-              <Text style={styles.quotaLine}>
-                {quota.data.quotaUsage} of {quota.data.quotaTotal} scheduled today
-              </Text>
-            ) : null}
+        {/* Quota line */}
+        {quota.isLoading ? (
+          <SkLine w={160} h={13} style={{ marginBottom: space.md }} />
+        ) : quota.data ? (
+          <Text style={styles.quotaLine}>
+            {quota.data.quotaUsage} of {quota.data.quotaTotal} scheduled today
+          </Text>
+        ) : null}
 
-            <TextInput
-              value={imageUrl}
-              onChangeText={setImageUrl}
-              placeholder="Image URL"
-              placeholderTextColor={colors.textSubtle}
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={styles.input}
-            />
-            <TextInput
-              value={caption}
-              onChangeText={setCaption}
-              placeholder="Write a caption…"
-              placeholderTextColor={colors.textSubtle}
-              multiline
-              style={[styles.input, styles.captionInput]}
-            />
-
-            <Pressable
-              onPress={onPublishNow}
-              disabled={busy}
-              style={({ pressed }) => [styles.btnPrimary, pressed && styles.pressed]}
-            >
-              {publishNow.isPending ? (
-                <ActivityIndicator color={colors.accentFg} />
-              ) : (
-                <Text style={styles.btnPrimaryText}>Publish now</Text>
-              )}
+        {/* View toggle */}
+        <View style={styles.segment}>
+          {VIEWS.map((v) => (
+            <Pressable key={v} onPress={() => setView(v)} style={[styles.segmentBtn, view === v && styles.segmentBtnActive]}>
+              <Text style={[styles.segmentText, view === v && styles.segmentTextActive]}>{v}</Text>
             </Pressable>
+          ))}
+        </View>
 
-            {/* Quick-schedule row */}
-            <View style={styles.quickRow}>
-              {QUICK.map((q) => (
-                <Pressable
-                  key={q.label}
-                  onPress={() => setQuickOffset(q.ms)}
-                  style={[styles.quickBtn, quickOffset === q.ms && styles.quickBtnActive]}
-                >
-                  <Text style={[styles.quickBtnText, quickOffset === q.ms && styles.quickBtnTextActive]}>{q.label}</Text>
-                </Pressable>
-              ))}
-              <Pressable
-                onPress={onSchedule}
-                disabled={busy}
-                style={({ pressed }) => [styles.quickScheduleBtn, pressed && styles.pressed]}
-              >
-                {schedulePost.isPending ? (
-                  <ActivityIndicator color={colors.text} size="small" />
-                ) : (
-                  <Text style={styles.quickScheduleText}>Schedule</Text>
-                )}
+        {view === 'Calendar' && (
+          <>
+            <Card radius={radius.lg} style={styles.calCard}>
+              <CalendarMonth
+                year={calYear}
+                month={calMonth}
+                postsByDay={postsByDay}
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+                onChangeMonth={(delta) => {
+                  let m = calMonth + delta, y = calYear;
+                  if (m < 0) { m = 11; y -= 1; } else if (m > 11) { m = 0; y += 1; }
+                  setCalMonth(m); setCalYear(y);
+                }}
+              />
+            </Card>
+
+            <View style={styles.dayHeader}>
+              <Text style={styles.dayHeaderText}>
+                {selectedDate ? new Date(`${selectedDate}T12:00:00`).toDateString() : 'Pick a day'}
+              </Text>
+              <Pressable onPress={() => openCompose(undefined, selectedDate ?? undefined)} style={styles.addDayBtn}>
+                <Icon name="plus" size={14} color={colors.accentDeep} />
+                <Text style={styles.addDayText}>Add</Text>
               </Pressable>
             </View>
-            <Text style={styles.hint}>Schedules for {formatWhen(Date.now() + quickOffset)}</Text>
-          </View>
-        </Card>
 
-        {/* Combined queue + history */}
-        <Text style={styles.section}>Queue & history</Text>
-        {scheduled.isLoading ? (
-          <SkRepeat n={3}>{(i) => <SkScheduledCard key={i} />}</SkRepeat>
-        ) : posts.length === 0 ? (
-          <Card radius={radius.lg} style={styles.empty}>
-            <View style={styles.emptyInner}>
-              <Icon name="plus" size={22} color={colors.textSubtle} />
-              <Text style={styles.emptyText}>Nothing scheduled.</Text>
+            {dayPosts.length === 0 ? (
+              <Text style={styles.emptyDayText}>Nothing scheduled this day.</Text>
+            ) : (
+              dayPosts.map((p) => (
+                <Pressable key={p.id} onPress={() => openCompose(p)} style={styles.row}>
+                  {p.imageUrl ? <Image source={{ uri: p.imageUrl }} style={styles.thumb} /> : null}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.caption} numberOfLines={1}>{p.caption || 'Untitled post'}</Text>
+                    <Text style={styles.when}>{formatWhen(p.scheduledAt)}</Text>
+                  </View>
+                  <Text style={[styles.status, { color: statusColor(p.status) }]}>{p.status}</Text>
+                  {p.status === 'scheduled' && (
+                    <Pressable onPress={() => deleteScheduled.mutate(p.id)} hitSlop={8} style={styles.deleteBtn}>
+                      <Icon name="close" size={14} color={colors.textSubtle} />
+                    </Pressable>
+                  )}
+                </Pressable>
+              ))
+            )}
+          </>
+        )}
+
+        {view === 'Queue' && (
+          <>
+            <View style={styles.rowHeaderWrap}>
+              <Pressable onPress={() => openCompose()} style={styles.newPostBtn}>
+                <Icon name="plus" size={15} color={colors.accentFg} />
+                <Text style={styles.newPostText}>New post</Text>
+              </Pressable>
             </View>
-          </Card>
-        ) : (
-          posts.map((p: ScheduledPost) => {
-            const canDel = p.status === 'scheduled';
-            return (
-              <View key={p.id} style={styles.row}>
-                {p.imageUrl ? <Image source={{ uri: p.imageUrl }} style={styles.thumb} /> : null}
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.caption} numberOfLines={1}>{p.caption || 'Untitled post'}</Text>
-                  <Text style={styles.when}>{formatWhen(p.scheduledAt)}</Text>
+            {scheduled.isLoading ? (
+              <SkRepeat n={3}>{(i) => <SkScheduledCard key={i} />}</SkRepeat>
+            ) : posts.length === 0 ? (
+              <Card radius={radius.lg} style={styles.empty}>
+                <View style={styles.emptyInner}>
+                  <Icon name="plus" size={22} color={colors.textSubtle} />
+                  <Text style={styles.emptyText}>Nothing scheduled.</Text>
                 </View>
-                <Text style={[styles.status, { color: statusColor(p.status) }]}>{p.status}</Text>
-                {canDel && (
-                  <Pressable onPress={() => deleteScheduled.mutate(p.id)} hitSlop={8} style={styles.deleteBtn}>
-                    <Icon name="close" size={14} color={colors.textSubtle} />
+              </Card>
+            ) : (
+              posts.map((p: ScheduledPost) => (
+                <Pressable key={p.id} onPress={() => openCompose(p)} style={styles.row}>
+                  {p.imageUrl ? <Image source={{ uri: p.imageUrl }} style={styles.thumb} /> : null}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.caption} numberOfLines={1}>{p.caption || 'Untitled post'}</Text>
+                    <Text style={styles.when}>{formatWhen(p.scheduledAt)}</Text>
+                  </View>
+                  <Text style={[styles.status, { color: statusColor(p.status) }]}>{p.status}</Text>
+                  {p.status === 'scheduled' && (
+                    <Pressable onPress={() => deleteScheduled.mutate(p.id)} hitSlop={8} style={styles.deleteBtn}>
+                      <Icon name="close" size={14} color={colors.textSubtle} />
+                    </Pressable>
+                  )}
+                </Pressable>
+              ))
+            )}
+          </>
+        )}
+
+        {view === 'Grid' && (
+          <>
+            <Text style={styles.gridHint}>How your profile grid will look, newest first.</Text>
+            <View style={styles.grid}>
+              {gridPosts.length === 0 ? (
+                <Text style={styles.emptyDayText}>Nothing to preview yet.</Text>
+              ) : (
+                gridPosts.map((p) => (
+                  <Pressable key={p.id} onPress={() => openCompose(p)} style={styles.gridCell}>
+                    {p.imageUrl ? (
+                      <Image source={{ uri: p.imageUrl }} style={styles.gridImage} />
+                    ) : (
+                      <View style={[styles.gridImage, styles.gridPlaceholder]} />
+                    )}
+                    {p.status === 'scheduled' && (
+                      <View style={styles.gridBadge}>
+                        <Icon name="clock" size={10} color="#fff" />
+                      </View>
+                    )}
                   </Pressable>
-                )}
-              </View>
-            );
-          })
+                ))
+              )}
+            </View>
+          </>
         )}
       </ScrollView>
+
+      <ComposeSheet ref={composeRef} bestHour={bestHour} onSave={handleSave} onPublishNow={(body) => publishNow.mutate(body)} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  form: { marginBottom: space.lg },
-  formInner: { padding: space.lg, gap: space.md },
-  quotaLine: { fontSize: 13, color: colors.textMuted },
-  input: {
-    backgroundColor: colors.bgElev, borderRadius: 11, borderWidth: 1, borderColor: colors.border,
-    paddingHorizontal: space.md, paddingVertical: space.md, fontSize: 15, color: colors.text,
-  },
-  captionInput: { minHeight: 70, textAlignVertical: 'top' },
+  quotaLine: { fontSize: 13, color: colors.textMuted, marginBottom: space.md },
 
-  btnPrimary: { height: 46, borderRadius: radius.pill, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
-  btnPrimaryText: { fontSize: 15, fontWeight: '600', color: colors.accentFg },
+  segment: { flexDirection: 'row', backgroundColor: colors.bgInset, borderRadius: 11, padding: 3, marginBottom: space.lg },
+  segmentBtn: { flex: 1, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  segmentBtnActive: { backgroundColor: colors.bgElev },
+  segmentText: { fontSize: 13, fontWeight: '500', color: colors.textMuted },
+  segmentTextActive: { color: colors.text },
 
-  quickRow: { flexDirection: 'row', gap: space.sm, marginTop: space.xs },
-  quickBtn: { height: 38, paddingHorizontal: space.md, borderRadius: 10, backgroundColor: colors.bgInset, alignItems: 'center', justifyContent: 'center' },
-  quickBtnActive: { backgroundColor: colors.text },
-  quickBtnText: { fontSize: 13, fontWeight: '500', color: colors.textMuted },
-  quickBtnTextActive: { color: colors.accentFg },
-  quickScheduleBtn: { flex: 1, height: 38, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  quickScheduleText: { fontSize: 13, fontWeight: '600', color: colors.text },
-  hint: { fontSize: 11.5, color: colors.textSubtle },
+  calCard: { padding: space.lg, marginBottom: space.lg },
 
-  section: { fontSize: 11, fontWeight: '500', letterSpacing: 0.6, color: colors.textSubtle, textTransform: 'uppercase', marginBottom: space.md },
+  dayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.sm },
+  dayHeaderText: { fontSize: 13, fontWeight: '600', color: colors.text },
+  addDayBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  addDayText: { fontSize: 13, fontWeight: '500', color: colors.accent },
+  emptyDayText: { fontSize: 13, color: colors.textSubtle, paddingVertical: space.lg, textAlign: 'center' },
+
+  rowHeaderWrap: { marginBottom: space.md },
+  newPostBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: radius.pill, backgroundColor: colors.accent },
+  newPostText: { fontSize: 14, fontWeight: '600', color: colors.accentFg },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   thumb: { width: 38, height: 38, borderRadius: radius.sm, backgroundColor: colors.bgInset },
@@ -235,5 +265,10 @@ const styles = StyleSheet.create({
   emptyInner: { alignItems: 'center', gap: space.sm, paddingVertical: space.xxl },
   emptyText: { fontSize: 15, fontWeight: '500', color: colors.textMuted },
 
-  pressed: { opacity: 0.8, transform: [{ scale: 0.97 }] },
+  gridHint: { fontSize: 12.5, color: colors.textSubtle, marginBottom: space.md },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 2 },
+  gridCell: { width: '32.6%', aspectRatio: 1 },
+  gridImage: { width: '100%', height: '100%', backgroundColor: colors.bgInset },
+  gridPlaceholder: { backgroundColor: colors.accentSoft },
+  gridBadge: { position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
 });

@@ -1,0 +1,1 @@
+ALTER TABLE "scheduled_posts" ADD COLUMN "images" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -8,7 +8,8 @@ export type IconName =
   | 'plus' | 'chevronRight' | 'chevronLeft' | 'bell' | 'sparkle'
   | 'send' | 'clock' | 'instagram' | 'settings' | 'check' | 'close' | 'message'
   | 'chat' | 'tag' | 'link' | 'shield'
-  | 'pipeline' | 'automations' | 'orders' | 'trendUp' | 'target' | 'megaphone';
+  | 'pipeline' | 'automations' | 'orders' | 'trendUp' | 'target' | 'megaphone'
+  | 'camera' | 'image';
 
 const PATHS: Record<IconName, (c: string) => React.ReactNode> = {
   send: (c) => <Path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" stroke={c} />,
@@ -100,6 +101,19 @@ const PATHS: Record<IconName, (c: string) => React.ReactNode> = {
     <>
       <Path d="M3 11l18-5v12L3 14v-3Z" stroke={c} />
       <Path d="M11.6 16.8A3 3 0 0 1 6 16" stroke={c} />
+    </>
+  ),
+  camera: (c) => (
+    <>
+      <Path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.3l1.2-2h8l1.2 2h2.3A1.5 1.5 0 0 1 21 8.5v10A1.5 1.5 0 0 1 19.5 20h-15A1.5 1.5 0 0 1 3 18.5Z" stroke={c} />
+      <Circle cx={12} cy={13} r={3.5} stroke={c} />
+    </>
+  ),
+  image: (c) => (
+    <>
+      <Rect x={3} y={3} width={18} height={18} rx={2.5} stroke={c} />
+      <Circle cx={8.5} cy={8.5} r={1.6} stroke={c} />
+      <Path d="M21 15l-5.5-5.5a2 2 0 0 0-2.8 0L4 18" stroke={c} />
     </>
   ),
 };

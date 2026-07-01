@@ -251,6 +251,31 @@ export async function publishMediaContainer(igUserId: string, creationId: string
   return res as { id: string };
 }
 
+/** One child item of a carousel — image only (IG carousels don't mix video
+ *  the same way single posts do; video carousel items are a separate,
+ *  narrower case not needed here). No caption on item containers — the
+ *  caption lives on the parent carousel container. */
+export async function createCarouselItemContainer(igUserId: string, token: string, imageUrl: string): Promise<{ id: string }> {
+  const res = await call(`/${igUserId}/media`, token, {
+    method: "POST",
+    body: JSON.stringify({ image_url: imageUrl, is_carousel_item: true }),
+  });
+  return res as { id: string };
+}
+
+/** Parent carousel container — `children` is the item-container ids created
+ *  via createCarouselItemContainer, in display order. */
+export async function createCarouselContainer(
+  igUserId: string,
+  token: string,
+  input: { caption?: string; childrenIds: string[] }
+): Promise<{ id: string }> {
+  const body: Record<string, string> = { media_type: "CAROUSEL_ALBUM", children: input.childrenIds.join(",") };
+  if (input.caption) body.caption = input.caption;
+  const res = await call(`/${igUserId}/media`, token, { method: "POST", body: JSON.stringify(body) });
+  return res as { id: string };
+}
+
 /** IG account profile — username, name, avatar, bio, follower/following counts. */
 export async function getAccountProfile(token: string) {
   return call(

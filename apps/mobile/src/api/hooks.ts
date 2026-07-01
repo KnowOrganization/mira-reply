@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, openStream } from "./client";
+import { API_BASE } from "../auth";
 import type { Automation } from "@shaiz/shared";
 
 // ── query keys ─────────────────────────────────────────────────────────────
@@ -945,8 +946,8 @@ export function useNotifyRestock() {
 }
 
 // ── Publishing & Content OS (Phase F) — /api/ig/publishing/* ──
-export type ScheduledPost = { id: string; caption: string; imageUrl: string | null; videoUrl: string | null; mediaType: string; scheduledAt: number; status: string; mediaId: string | null; error: string | null; createdAt: number };
-export type PublishBody = { caption?: string; imageUrl?: string; videoUrl?: string; mediaType?: "IMAGE" | "VIDEO" | "REELS"; scheduledAt?: number };
+export type ScheduledPost = { id: string; caption: string; imageUrl: string | null; images: string[]; videoUrl: string | null; mediaType: string; scheduledAt: number; status: string; mediaId: string | null; error: string | null; createdAt: number };
+export type PublishBody = { caption?: string; imageUrl?: string; images?: string[]; videoUrl?: string; mediaType?: "IMAGE" | "VIDEO" | "REELS" | "CAROUSEL"; scheduledAt?: number };
 
 export function useScheduledPosts() {
   return useQuery<{ posts: ScheduledPost[] }>({ queryKey: ["ig", "publishing", "scheduled"], queryFn: () => api.get<{ posts: ScheduledPost[] }>("/api/ig/publishing/scheduled"), refetchInterval: 20_000 });
@@ -973,6 +974,33 @@ export function useDeleteScheduled() {
   return useMutation({
     mutationFn: (id: string) => api.del<{ ok: true }>(`/api/ig/publishing/scheduled/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ig", "publishing", "scheduled"] }),
+  });
+}
+export function useUpdateScheduled() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...patch }: PublishBody & { id: string }) =>
+      api.patch<{ post: ScheduledPost }>(`/api/ig/publishing/scheduled/${id}`, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ig", "publishing", "scheduled"] }),
+  });
+}
+export function useBestTimes() {
+  return useQuery<{ hours: number[] }>({ queryKey: ["ig", "publishing", "best-times"], queryFn: () => api.get<{ hours: number[] }>("/api/ig/publishing/best-times") });
+}
+export function useGenerateCaption() {
+  return useMutation({
+    mutationFn: (description: string) => api.post<{ caption: string }>("/api/ig/publishing/caption", { description }),
+  });
+}
+// Uploads a device photo (base64) to our own API so it has a real public
+// HTTPS URL — IG's Graph API needs to fetch image_url itself, a data: URI
+// won't work. Returns the full absolute URL (API_BASE + returned path).
+export function useUploadImage() {
+  return useMutation({
+    mutationFn: async ({ base64, ext }: { base64: string; ext?: string }) => {
+      const { path } = await api.post<{ path: string }>("/api/ig/publishing/upload", { base64, ext });
+      return `${API_BASE}${path}`;
+    },
   });
 }
 
