@@ -36,6 +36,20 @@
       "when": 1782683130056,
       "tag": "0004_serious_ulik",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782852906224,
+      "tag": "0005_lowly_red_wolf",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782862438864,
+      "tag": "0006_peaceful_sleepwalker",
+      "breakpoints": true
     }
   ]
 }

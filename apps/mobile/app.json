@@ -5,7 +5,11 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "scheme": "miraapp",
     "userInterfaceStyle": "light",
+    "extra": {
+      "apiBase": "https://unveiled-walrus-blade.ngrok-free.dev"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.dslabs.mira"
@@ -21,6 +25,18 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Mira needs photo access to add product photos to your catalog.",
+          "cameraPermission": "Mira needs camera access to take product photos."
+        }
+      ]
+    ]
   }
 }

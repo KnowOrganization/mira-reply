@@ -218,6 +218,39 @@ export async function deleteComment(commentId: string, token: string) {
   return call(`/${commentId}`, token, { method: "DELETE" });
 }
 
+/**
+ * IG Content Publishing API — two-step: create a media container from a
+ * hosted image/video URL, then publish it. `igUserId` is the IG-scoped user
+ * id (not the page id). REELS containers need `media_type: REELS`.
+ */
+export async function createMediaContainer(
+  igUserId: string,
+  token: string,
+  input: { caption?: string; imageUrl?: string; videoUrl?: string; mediaType?: "IMAGE" | "VIDEO" | "REELS" }
+): Promise<{ id: string }> {
+  const body: Record<string, string> = {};
+  if (input.caption) body.caption = input.caption;
+  if (input.mediaType === "REELS") {
+    body.media_type = "REELS";
+    if (input.videoUrl) body.video_url = input.videoUrl;
+  } else if (input.mediaType === "VIDEO" || input.videoUrl) {
+    body.media_type = "VIDEO";
+    if (input.videoUrl) body.video_url = input.videoUrl;
+  } else if (input.imageUrl) {
+    body.image_url = input.imageUrl;
+  }
+  const res = await call(`/${igUserId}/media`, token, { method: "POST", body: JSON.stringify(body) });
+  return res as { id: string };
+}
+
+export async function publishMediaContainer(igUserId: string, creationId: string, token: string): Promise<{ id: string }> {
+  const res = await call(`/${igUserId}/media_publish`, token, {
+    method: "POST",
+    body: JSON.stringify({ creation_id: creationId }),
+  });
+  return res as { id: string };
+}
+
 /** IG account profile — username, name, avatar, bio, follower/following counts. */
 export async function getAccountProfile(token: string) {
   return call(

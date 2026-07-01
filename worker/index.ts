@@ -4,6 +4,7 @@ import { query } from "@shaiz/db";
 import { processIngestJob, type IngestJob } from "@/lib/ig/ingest";
 import { processOutboundJob, recordOutboundFailure, RateLimitedError, type OutboundJob } from "@/lib/ig/outbound";
 import { reconcileAccount } from "@/lib/ig/reconcile";
+import { publishDuePosts } from "@/lib/ig/publish";
 import { syncFollowers, refreshTokenIfNeeded } from "@/lib/ig/maintenance";
 import { ingestDLQ, outboundDLQ, reconcileQueue, COMMENTS_QUEUE, DM_QUEUE } from "@/lib/ig/ingestQueue";
 
@@ -61,7 +62,7 @@ async function main() {
     "reconcile",
     async (job) => {
       const { accountId, task } = job.data;
-      if (task === "sweep") await reconcileAccount(accountId);
+      if (task === "sweep") { await reconcileAccount(accountId); await publishDuePosts(accountId).catch(() => {}); }
       else if (task === "followers") await syncFollowers(accountId);
       else if (task === "token") await refreshTokenIfNeeded(accountId);
     },
