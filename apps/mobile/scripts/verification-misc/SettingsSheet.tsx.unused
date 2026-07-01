@@ -8,8 +8,16 @@ import { useStatus } from '../../api/hooks';
 import { loadSession, signOut, type SessionUser } from '../../auth';
 
 // Settings sheet (doc: Mira.dc.html:1237-1260) — account header, Preferences
-// toggles, Disconnect. Opened from Home's avatar + Profile's Reply-mode row.
+// toggles, Disconnect. Opened from Profile's Reply-mode row.
 export type SettingsSheetHandle = { present: () => void; dismiss: () => void };
+
+// Module-level, not inline — @gorhom/bottom-sheet needs a stable snapPoints
+// reference; a fresh array literal on every render can make the modal behave
+// unpredictably (including auto-presenting), and this sheet's parent screen
+// re-renders right after mount (loadSession/useStatus resolving), which was
+// exactly the trigger window for the "Settings pops open when you land on
+// Profile" bug.
+const SNAP_POINTS = ['55%'];
 
 export const SettingsSheet = forwardRef<SettingsSheetHandle>((_props, ref) => {
   // BottomSheetModal's ref type is a generic React-19 ref-as-prop that
@@ -39,7 +47,7 @@ export const SettingsSheet = forwardRef<SettingsSheetHandle>((_props, ref) => {
   return (
     <BottomSheetModal
       ref={sheetRef}
-      snapPoints={['55%']}
+      snapPoints={SNAP_POINTS}
       backdropComponent={(p) => <BottomSheetBackdrop {...p} appearsOnIndex={0} disappearsOnIndex={-1} />}
       backgroundStyle={styles.sheetBg}
       handleIndicatorStyle={styles.handle}

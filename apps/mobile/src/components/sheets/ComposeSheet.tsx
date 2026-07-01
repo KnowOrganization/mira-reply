@@ -25,6 +25,9 @@ export type ComposeSheetHandle = { present: (post?: ScheduledPost | null, date?:
 
 const MAX_IMAGES = 10;
 const MEDIA_TYPES = ['IMAGE', 'CAROUSEL', 'VIDEO', 'REELS'] as const;
+// Module-level, not inline — see SettingsSheet.tsx for why a fresh array
+// literal per render is unsafe with @gorhom/bottom-sheet's snapPoints.
+const SNAP_POINTS = ['90%'];
 
 type Props = {
   bestHour: number | null;
@@ -179,7 +182,7 @@ export const ComposeSheet = forwardRef<ComposeSheetHandle, Props>(({ bestHour, o
   return (
     <BottomSheetModal
       ref={sheetRef}
-      snapPoints={['90%']}
+      snapPoints={SNAP_POINTS}
       backdropComponent={(p) => <BottomSheetBackdrop {...p} appearsOnIndex={0} disappearsOnIndex={-1} />}
       backgroundStyle={styles.sheetBg}
       handleIndicatorStyle={styles.handle}
