@@ -13,6 +13,9 @@ export type CustomizeSheetHandle = { present: () => void; dismiss: () => void };
 
 const SWATCHES = ['#5A5FE0', '#D14343', '#1F9D6B', '#B8791C', '#4346C0', '#18181B'];
 const BUY_LABELS: NonNullable<StorefrontSettingsInput['storefrontBuyLabel']>[] = ['Buy', 'Shop', 'Order'];
+// Module-level, not inline — see SettingsSheet.tsx for why a fresh array
+// literal per render is unsafe with @gorhom/bottom-sheet's snapPoints.
+const SNAP_POINTS = ['85%'];
 
 type Props = {
   initial: StorefrontSettingsInput;
@@ -63,7 +66,7 @@ export const CustomizeSheet = forwardRef<CustomizeSheetHandle, Props>(({ initial
   return (
     <BottomSheetModal
       ref={sheetRef}
-      snapPoints={['85%']}
+      snapPoints={SNAP_POINTS}
       backdropComponent={(p) => <BottomSheetBackdrop {...p} appearsOnIndex={0} disappearsOnIndex={-1} />}
       backgroundStyle={styles.sheetBg}
       handleIndicatorStyle={styles.handle}

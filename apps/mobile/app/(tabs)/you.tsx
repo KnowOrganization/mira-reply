@@ -1,15 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, View, Text, Image, StyleSheet, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Card } from '../../src/components/Card';
-import { SectionLabel, Stat } from '../../src/components/primitives';
-import { Icon } from '../../src/components/Icon';
-import { SettingsSheet, type SettingsSheetHandle } from '../../src/components/sheets/SettingsSheet';
+import { SectionLabel, Stat, Toggle } from '../../src/components/primitives';
 import { colors, space } from '../../src/theme';
 import { loadSession, signOut, type SessionUser } from '../../src/auth';
-import { useStatus } from '../../src/api/hooks';
+import { useStatus, useDisconnect } from '../../src/api/hooks';
 import { SkProfileHeader } from '../../src/components/skeleton/units';
 
 function cap(s: string): string {
@@ -25,9 +23,16 @@ function count(v: unknown): string {
 export default function You() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const settingsSheetRef = useRef<SettingsSheetHandle>(null);
   const { data: status } = useStatus();
+  const disconnect = useDisconnect();
   const [user, setUser] = useState<SessionUser | null>(null);
+
+  // ponytail: local-only toggles for now — no backend field for AI
+  // disclosure/autonomous-mode/push yet; wire to settings + push
+  // registration when those land.
+  const [aiDisclosure, setAiDisclosure] = useState(true);
+  const [autonomous, setAutonomous] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -128,16 +133,13 @@ export default function You() {
         {/* Mira */}
         <SectionLabel>Mira</SectionLabel>
         <Card radius={15} style={styles.listCard}>
-          <Pressable style={styles.row} onPress={() => settingsSheetRef.current?.present()}>
+          <View style={styles.row}>
             <View style={styles.rowText}>
               <Text style={styles.rowLabel}>Reply mode</Text>
               <Text style={styles.rowValue}>Comments &amp; DMs</Text>
             </View>
-            <View style={styles.rowRight}>
-              <Text style={styles.rowLink}>{cap(commentMode)}</Text>
-              <Icon name="chevronRight" size={16} color={colors.textSubtle} />
-            </View>
-          </Pressable>
+            <Text style={styles.rowValueRight}>{cap(commentMode)}</Text>
+          </View>
           <View style={[styles.row, styles.rowLast]}>
             <View style={styles.rowText}>
               <Text style={styles.rowLabel}>Brain</Text>
@@ -150,15 +152,40 @@ export default function You() {
           </View>
         </Card>
 
+        {/* Preferences — inline on this page, not a sheet */}
+        <SectionLabel>Preferences</SectionLabel>
+        <Card radius={15} style={styles.listCard}>
+          <ToggleRow label="AI disclosure" sub="Tell people they're talking to Mira" value={aiDisclosure} onChange={setAiDisclosure} />
+          <ToggleRow label="Autonomous mode" sub="Send replies without approval" value={autonomous} onChange={setAutonomous} />
+          <ToggleRow label="Push notifications" sub="New drafts and opportunities" value={pushEnabled} onChange={setPushEnabled} last />
+        </Card>
+
         {/* Actions */}
-        <Pressable style={styles.btn} onPress={() => {}}>
-          <Text style={styles.btnText}>Disconnect Instagram</Text>
+        <Pressable
+          style={styles.btn}
+          disabled={disconnect.isPending}
+          onPress={() => disconnect.mutate(undefined, { onSuccess: () => router.replace('/connect') })}
+        >
+          <Text style={styles.btnText}>{disconnect.isPending ? 'Disconnecting…' : 'Disconnect Instagram'}</Text>
         </Pressable>
         <Pressable style={[styles.btn, styles.btnSignOut]} onPress={handleSignOut}>
           <Text style={[styles.btnText, styles.btnSignOutText]}>Sign out</Text>
         </Pressable>
       </ScrollView>
-      <SettingsSheet ref={settingsSheetRef} />
+    </View>
+  );
+}
+
+function ToggleRow({ label, sub, value, onChange, last }: {
+  label: string; sub: string; value: boolean; onChange: (v: boolean) => void; last?: boolean;
+}) {
+  return (
+    <View style={[styles.row, last && styles.rowLast]}>
+      <View style={styles.rowText}>
+        <Text style={styles.rowValue}>{label}</Text>
+        <Text style={styles.rowLabel}>{sub}</Text>
+      </View>
+      <Toggle value={value} onValueChange={onChange} />
     </View>
   );
 }

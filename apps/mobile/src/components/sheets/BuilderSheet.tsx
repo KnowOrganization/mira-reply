@@ -19,6 +19,10 @@ export type BuilderSheetHandle = {
   dismiss: () => void;
 };
 
+// Module-level, not inline — see SettingsSheet.tsx for why a fresh array
+// literal per render is unsafe with @gorhom/bottom-sheet's snapPoints.
+const SNAP_POINTS = ['70%'];
+
 const NODE_GROUPS: { label: string; items: { type: AutomationNodeType; label: string; desc: string }[] }[] = [
   {
     label: 'Messaging',
@@ -77,7 +81,7 @@ export const BuilderSheet = forwardRef<BuilderSheetHandle>((_props, ref) => {
   return (
     <BottomSheetModal
       ref={sheetRef}
-      snapPoints={['70%']}
+      snapPoints={SNAP_POINTS}
       backdropComponent={(p) => <BottomSheetBackdrop {...p} appearsOnIndex={0} disappearsOnIndex={-1} />}
       backgroundStyle={styles.sheetBg}
       handleIndicatorStyle={styles.handle}
