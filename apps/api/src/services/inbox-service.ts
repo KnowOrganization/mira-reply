@@ -26,13 +26,13 @@ export const TOPICS: FactTopic[] = ["gear", "location", "song", "personal", "sho
 
 // ── knowledge ────────────────────────────────────────────────────────────────
 
-export async function getKnowledge() {
-  await backfillEmbeddings().catch(() => {});
-  const facts = await listFacts();
+export async function getKnowledge(accountId: string) {
+  await backfillEmbeddings(accountId).catch(() => {});
+  const facts = await listFacts(accountId);
   return { facts };
 }
 
-export async function createKnowledge(b: {
+export async function createKnowledge(accountId: string, b: {
   question?: string;
   answer?: string;
   topic?: FactTopic;
@@ -54,11 +54,12 @@ export async function createKnowledge(b: {
     postId: b.scope === "post" ? b.postId : undefined,
     durable: b.durable !== false,
     link: isLink ? { url: answer, label: question } : undefined,
-  });
+  }, accountId);
   return { fact };
 }
 
 export async function patchKnowledge(
+  accountId: string,
   id: string,
   patch: Partial<Fact>
 ): Promise<{ fact: Fact } | null> {
@@ -66,13 +67,13 @@ export async function patchKnowledge(
   delete patch.id;
   delete patch.embedding;
   delete patch.createdAt;
-  const fact = await updateFact(id, patch);
+  const fact = await updateFact(id, patch, accountId);
   if (!fact) return null;
   return { fact };
 }
 
-export async function removeKnowledge(id: string): Promise<void> {
-  await deleteFact(id);
+export async function removeKnowledge(accountId: string, id: string): Promise<void> {
+  await deleteFact(id, accountId);
 }
 
 // ── kb (tag-centric view over the knowledge table) ────────────────────────────
@@ -88,13 +89,13 @@ const toKbEntry = (f: Fact): KbEntry => ({
   tags: f.aliases ?? [],
 });
 
-export async function getKb(): Promise<{ entries: KbEntry[] }> {
-  await backfillEmbeddings().catch(() => {});
-  const facts = await listFacts();
+export async function getKb(accountId: string): Promise<{ entries: KbEntry[] }> {
+  await backfillEmbeddings(accountId).catch(() => {});
+  const facts = await listFacts(accountId);
   return { entries: facts.filter((f) => f.scope === "account").map(toKbEntry) };
 }
 
-export async function addKb(b: {
+export async function addKb(accountId: string, b: {
   question?: string;
   answer?: string;
   tags?: string[];
@@ -112,12 +113,12 @@ export async function addKb(b: {
     scope: "account",
     aliases: tags,
     durable: true,
-  });
+  }, accountId);
   return { entry: toKbEntry(fact) };
 }
 
-export async function removeKb(id: string): Promise<void> {
-  await deleteFact(id);
+export async function removeKb(accountId: string, id: string): Promise<void> {
+  await deleteFact(id, accountId);
 }
 
 // ── drafts ───────────────────────────────────────────────────────────────────
@@ -254,7 +255,7 @@ export async function actOnClarification(
     } else {
       // context → promote into the knowledge base for cross-post recall,
       // then serve the comment + everyone queued behind it
-      await promoteClarification(c, answer).catch(() => {});
+      await promoteClarification(c, answer, accountId).catch(() => {});
       await reprocessClarification(accountId, c).catch(() => {});
     }
 

@@ -16,6 +16,8 @@ import { chat } from "./llm";
 import { sanitizeReply } from "./variation";
 import { RULEBOOK_PROMPT } from "./rulebook";
 import { recallFact } from "./knowledge";
+import { retrievePersonaContext, BUDGET } from "./graph/retrieve";
+import { getOneLiner } from "./graph/persona";
 import { catalogIntent, lookupProducts, catalogBlock } from "./catalog";
 import { sendCatalog } from "./storeDM";
 import { quickPercept } from "./perception";
@@ -47,14 +49,16 @@ export type DmInput = {
   text: string;
 };
 
-/** Account-scope persona facts rendered for the prompt. Includes `shop` facts
- *  (shipping/returns/policy) so store-related questions are grounded too. */
-function personaBlock(s: IgStore): string {
-  return s.knowledge
-    .filter((f) => f.scope === "account" && (f.topic === "personal" || f.topic === "general" || f.topic === "shop"))
-    .slice(0, 12)
-    .map((f) => `- ${f.question} — ${f.answer}`)
-    .join("\n");
+/** Account-scope persona facts, ranked/budgeted for this specific inbound DM.
+ *  Includes `shop` facts (shipping/returns/policy) so store-related questions
+ *  are grounded too. */
+async function personaBlock(s: IgStore, queryText: string): Promise<string> {
+  const candidates = s.knowledge.filter(
+    (f) => f.scope === "account" && (f.topic === "personal" || f.topic === "general" || f.topic === "shop")
+  );
+  const { block } = await retrievePersonaContext({ queryText, facts: candidates, maxTokens: BUDGET.brief });
+  if (block) return block;
+  return s.account ? await getOneLiner(s.account.igUserId, s).catch(() => "") : "";
 }
 
 function brainReady(s: IgStore): boolean {
@@ -140,7 +144,7 @@ export async function processDM(input: DmInput): Promise<void> {
 
   // ── Build context: thread history + brain ─────────────────────────────────
   const turns = await recentTurns(conv.id, 12);
-  const persona = personaBlock(store);
+  const persona = await personaBlock(store, input.text);
   const recalled = await recallFact(input.text, undefined, store.knowledge).catch(() => null);
   // DM marketplace: ground the reply in the real catalog so "do you have X?" is
   // answered truthfully (never invents stock). Pure in-memory over the loaded

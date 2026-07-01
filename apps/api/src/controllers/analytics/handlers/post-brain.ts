@@ -8,7 +8,7 @@ export const postBrainHandler = new Elysia().use(authPlugin).post(
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
     const b = (body ?? {}) as BrainBody;
     try {
-      return await postBrain(b);
+      return await postBrain(auth.accountId, b);
     } catch (e) {
       const err = e as { status?: number; error?: string };
       if (err.status) { set.status = err.status; return { error: err.error }; }

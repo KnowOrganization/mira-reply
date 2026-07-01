@@ -3,7 +3,11 @@
 import { readStore, updateStoreFor, type FactTopic } from "@/lib/ig/store";
 import { addFact, deleteFact, backfillEmbeddings } from "@/lib/ig/knowledge";
 import { chatJSON } from "@/lib/ig/llm";
-import { getBrainBuiltAt, setBrainBuiltAt } from "@shaiz/db";
+import { upsertEntityNode } from "@/lib/ig/graph/nodes";
+import { linkFactMentionsEntity } from "@/lib/ig/graph/edges";
+import { warmOneLiner } from "@/lib/ig/graph/persona";
+import { getBrainBuiltAt, setBrainBuiltAt, db, graphNodes, graphEdges } from "@shaiz/db";
+import { eq } from "drizzle-orm";
 import { isConfigured } from "@/lib/ig/config";
 import { getRecentLogs } from "@/lib/ig/db";
 import { brain } from "@/lib/ig/mcp/client";
@@ -208,6 +212,20 @@ export async function getBrain(accountId: string) {
   };
 }
 
+/** Real graph read — nodes/edges shaped for a force-directed graph view
+ *  (react-force-graph-2d's {nodes, links} contract). Pure read of graph_nodes/
+ *  graph_edges (lib/ig/graph/), populated by Phase 3's backfill + live writes. */
+export async function getBrainGraph(accountId: string) {
+  const [nodes, edges] = await Promise.all([
+    db.select().from(graphNodes).where(eq(graphNodes.accountId, accountId)),
+    db.select().from(graphEdges).where(eq(graphEdges.accountId, accountId)),
+  ]);
+  return {
+    nodes: nodes.map((n) => ({ id: n.id, type: n.type, label: n.label, subtype: n.subtype })),
+    links: edges.map((e) => ({ source: e.srcNodeId, target: e.dstNodeId, type: e.type, weight: e.weight })),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // postBrain
 // ---------------------------------------------------------------------------
@@ -223,10 +241,10 @@ export type BrainBody = {
 };
 
 /** Returns the response payload or throws an object { status, error } for HTTP errors. */
-export async function postBrain(b: BrainBody): Promise<unknown> {
+export async function postBrain(accountId: string, b: BrainBody): Promise<unknown> {
   if (b.action === "delete") {
     if (!b.id) throw { status: 400, error: "id required" };
-    await deleteFact(b.id);
+    await deleteFact(b.id, accountId);
     return { ok: true };
   }
 
@@ -241,7 +259,7 @@ export async function postBrain(b: BrainBody): Promise<unknown> {
       topic: asTopic(b.topic),
       scope: "account",
       link: isLink ? { url: answer, label: question } : undefined,
-    });
+    }, accountId);
     return { ok: true, created: [fact] };
   }
 
@@ -253,6 +271,7 @@ export async function postBrain(b: BrainBody): Promise<unknown> {
       : "";
     const out = await chatJSON<{
       facts: { question: string; answer: string; topic: string }[];
+      entities: { name: string; type: string; mentionedInQuestions: string[] }[];
     }>(
       [
         {
@@ -262,11 +281,15 @@ export async function postBrain(b: BrainBody): Promise<unknown> {
             hint +
             "Extract every distinct fact. Each fact: a natural question a follower might ask, the answer, and a topic " +
             "(gear, location, song, personal, shop, general). Keep answers concise and factual. " +
-            'Output JSON only: {"facts":[{"question":"...","answer":"...","topic":"..."}]}',
+            "Also extract notable entities mentioned across the facts — specific named things worth remembering on " +
+            "their own (a product/gear model, a place, a brand, a person), each with a short type label and which " +
+            "fact question(s) mention it. Omit entities if none are clearly named. " +
+            'Output JSON only: {"facts":[{"question":"...","answer":"...","topic":"..."}],' +
+            '"entities":[{"name":"...","type":"...","mentionedInQuestions":["..."]}]}',
         },
         { role: "user", content: text },
       ],
-      { facts: [] }
+      { facts: [], entities: [] }
     );
     const created = [];
     for (const f of out.facts || []) {
@@ -281,9 +304,22 @@ export async function postBrain(b: BrainBody): Promise<unknown> {
           topic: asTopic(f.topic),
           scope: "account",
           link: isLink ? { url: answer, label: question } : undefined,
-        })
+        }, accountId)
       );
     }
+    // Entity nodes + mentions edges — piggybacks on the same LLM call, no
+    // extra round-trip. Best-effort: never blocks fact creation above.
+    try {
+      for (const e of out.entities || []) {
+        const name = (e.name || "").trim();
+        if (!name) continue;
+        const entityNodeId = await upsertEntityNode(accountId, name, e.type);
+        for (const q of e.mentionedInQuestions || []) {
+          const match = created.find((f) => f.question.trim().toLowerCase() === q.trim().toLowerCase());
+          if (match) await linkFactMentionsEntity(accountId, match.id, entityNodeId);
+        }
+      }
+    } catch { /* graph enrichment is supplementary, never fails the extract action */ }
     return { ok: true, created };
   }
 
@@ -354,8 +390,11 @@ export async function getBrainStatus(accountId: string): Promise<BrainStatus> {
 // Rebuild = re-embed all facts for recall, then stamp builtAt (which gates the
 // UI's "brain ready" poll). No tone/style re-derivation pipeline exists yet.
 export async function rebuildBrain(accountId: string): Promise<{ ok: true; status: string }> {
-  await backfillEmbeddings().catch(() => {});
+  await backfillEmbeddings(accountId).catch(() => {});
   await setBrainBuiltAt(accountId, Date.now());
+  // Fire-and-forget: warm the one-liner now so the first reply after a
+  // rebuild doesn't pay the regen latency.
+  readStore(accountId).then((s) => warmOneLiner(accountId, s)).catch(() => {});
   return { ok: true, status: "built" };
 }
 

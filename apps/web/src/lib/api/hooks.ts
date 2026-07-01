@@ -26,6 +26,7 @@ export const qk = {
   clarifications: ["ig", "clarifications"] as const,
   knowledge: ["ig", "knowledge"] as const,
   brain: ["ig", "brain"] as const,
+  brainGraph: ["ig", "brain-graph"] as const,
   brainStats: ["ig", "brain-stats"] as const,
   settings: ["ig", "settings"] as const,
   watcher: ["ig", "watcher"] as const,
@@ -249,6 +250,18 @@ export function useBrain<T = unknown>(opts?: QOpts<T>) {
   return useQuery<T>({
     queryKey: qk.brain,
     queryFn: () => api.get<T>("/api/ig/brain"),
+    ...opts,
+  });
+}
+
+export type BrainGraphNode = { id: string; type: string; label: string; subtype: string | null };
+export type BrainGraphLink = { source: string; target: string; type: string; weight: number };
+export type BrainGraphResp = { nodes: BrainGraphNode[]; links: BrainGraphLink[] };
+
+export function useBrainGraph(opts?: QOpts<BrainGraphResp>) {
+  return useQuery<BrainGraphResp>({
+    queryKey: qk.brainGraph,
+    queryFn: () => api.get<BrainGraphResp>("/api/ig/brain/graph"),
     ...opts,
   });
 }

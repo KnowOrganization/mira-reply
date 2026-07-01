@@ -252,6 +252,7 @@ export async function syncPosts(
       permalink?: string;
       thumbnail_url?: string;
       media_url?: string;
+      children?: { data: { media_type: string; media_url: string; thumbnail_url?: string }[] };
     }>;
   };
   try {
@@ -276,6 +277,9 @@ export async function syncPosts(
       qa: existing?.qa || [],
       links: existing?.links || [],
       insights: existing?.insights,
+      carousel: m.children?.data?.length
+        ? m.children.data.map((c) => ({ mediaUrl: c.media_url, mediaType: c.media_type }))
+        : undefined,
       updatedAt: existing?.updatedAt || Date.now(),
     } satisfies Post;
   }
@@ -516,7 +520,7 @@ export async function extractPost(
         role: "system",
         content:
           "Extract structured info from a paragraph about an Instagram post. Return JSON: " +
-          '{"notes":"<concise summary>","links":[{"label":"Munnar location","url":"https://...","type":"location"}],"qa":[{"q":"What bike?","a":"KTM Duke 390"}]}. ' +
+          '{"notes":"<concise summary>","links":[{"label":"<place name>","url":"https://...","type":"location"}],"qa":[{"q":"<question owner answered>","a":"<their answer>"}]}. ' +
           "Types: location, song, gear, shop, other. Only include URL if explicit. Keep notes under 200 chars. qa is optional Q/A pairs the owner stated.",
       },
       { role: "user", content: paragraph },

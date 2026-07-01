@@ -60,6 +60,8 @@ export async function assembleStore(accountId: string): Promise<IgStore> {
     permalink: (p.permalink as string) ?? undefined, thumbnailUrl: (p.thumbnail_url as string) ?? undefined,
     timestamp: String(p.timestamp ?? ""), notes: String(p.notes ?? ""),
     qa: (p.qa as never) ?? [], links: (p.links as never) ?? [], insights: (p.insights as never) ?? undefined,
+    carousel: (p.carousel as never) ?? undefined,
+    visionDescription: (p.vision_description as string) ?? undefined,
     updatedAt: Number(p.updated_at ?? 0),
   }]));
 
@@ -221,7 +223,9 @@ export async function persistDelta(accountId: string, prev: IgStore, next: IgSto
     await syncList(q, "posts", "id", accountId, Object.values(prev.posts), Object.values(next.posts),
       (p) => p.id, (p) => ({ id: p.id, account_id: accountId, caption: p.caption, media_type: p.mediaType,
         permalink: p.permalink ?? null, thumbnail_url: p.thumbnailUrl ?? null, timestamp: p.timestamp, notes: p.notes,
-        qa: J(p.qa), links: J(p.links), insights: p.insights ? J(p.insights) : null, updated_at: p.updatedAt }));
+        qa: J(p.qa), links: J(p.links), insights: p.insights ? J(p.insights) : null,
+        carousel: p.carousel ? J(p.carousel) : null, vision_description: p.visionDescription ?? null,
+        updated_at: p.updatedAt }));
 
     await syncList(q, "knowledge", "id", accountId, prev.knowledge, next.knowledge, (f) => f.id, (f) => ({
       id: f.id, account_id: accountId, question: f.question, answer: f.answer, topic: f.topic, scope: f.scope,

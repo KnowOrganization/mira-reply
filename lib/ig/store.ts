@@ -52,6 +52,8 @@ export type Post = {
   qa: { q: string; a: string; ts: number }[];
   links: PostLink[];
   insights?: PostInsights;
+  carousel?: { mediaUrl: string; mediaType: string }[];
+  visionDescription?: string;
   updatedAt: number;
 };
 

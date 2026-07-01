@@ -1,6 +1,12 @@
 import OpenAI from "openai";
 
-export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+export type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+export type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string | ChatContentPart[];
+};
 export type ChatOpts = { json?: boolean; temperature?: number };
 
 const BASE_URL = process.env.NIM_BASE_URL || "https://integrate.api.nvidia.com/v1";
@@ -42,6 +48,21 @@ function models(): readonly string[] {
   return env ? env.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_MODELS;
 }
 
+// Isolated from DEFAULT_MODELS on purpose — most models in the general
+// cascade don't accept image content at all (would 400 or silently ignore
+// the image), so a vision call must never fall through into the text-only
+// fallback chain. Both verified live against a real IG image; maverick is
+// also DEFAULT_MODELS[0] (natively multimodal), 90b-vision as backup.
+const VISION_MODELS: readonly string[] = [
+  "meta/llama-4-maverick-17b-128e-instruct",
+  "meta/llama-3.2-90b-vision-instruct",
+];
+
+function visionModels(): readonly string[] {
+  const env = process.env.NIM_VISION_MODELS;
+  return env ? env.split(",").map((s) => s.trim()).filter(Boolean) : VISION_MODELS;
+}
+
 let _client: OpenAI | null = null;
 function client(): OpenAI {
   return (_client ??= new OpenAI({
@@ -57,7 +78,7 @@ export async function nimChat(messages: ChatMessage[], opts: ChatOpts = {}): Pro
     try {
       const res = await client().chat.completions.create({
         model,
-        messages,
+        messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
         temperature: opts.temperature ?? 0.7,
         ...(opts.json ? { response_format: { type: "json_object" as const } } : {}),
       });
@@ -75,12 +96,40 @@ export async function nimChat(messages: ChatMessage[], opts: ChatOpts = {}): Pro
   );
 }
 
+/** Vision variant — same rotate-on-failure shape as nimChat, but over the
+ *  small isolated VISION_MODELS list (see above for why). */
+export async function nimChatVision(messages: ChatMessage[], opts: ChatOpts = {}): Promise<string> {
+  let lastErr: unknown;
+  for (const model of visionModels()) {
+    try {
+      const res = await client().chat.completions.create({
+        model,
+        messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
+        temperature: opts.temperature ?? 0.4,
+        ...(opts.json ? { response_format: { type: "json_object" as const } } : {}),
+      });
+      const text = res.choices[0]?.message?.content?.trim();
+      if (!text) { lastErr = new Error(`nim: ${model} returned empty response`); continue; }
+      return text;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[nim vision] ${model} failed: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  throw new Error(
+    `nim vision: all ${visionModels().length} models exhausted. Last error: ${lastErr instanceof Error ? lastErr.message : lastErr}`
+  );
+}
+
 export async function* nimChatStream(messages: ChatMessage[]): AsyncGenerator<string> {
   let lastErr: unknown;
   for (const model of models()) {
     let yielded = false;
     try {
-      const stream = client().chat.completions.stream({ model, messages });
+      const stream = client().chat.completions.stream({
+        model,
+        messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
+      });
       for await (const chunk of stream) {
         const delta = chunk.choices[0]?.delta?.content;
         if (delta) { yielded = true; yield delta; }

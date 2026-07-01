@@ -1,12 +1,12 @@
 import { Elysia } from "elysia";
 import { authPlugin } from "../../../plugins/auth";
-import { getKnowledge } from "../../../services/inbox-service";
+import { getBrainGraph } from "../../../services/analytics-service";
 
-export const getKnowledgeHandler = new Elysia().use(authPlugin).get(
-  "/api/ig/knowledge",
+export const getBrainGraphHandler = new Elysia().use(authPlugin).get(
+  "/api/ig/brain/graph",
   async ({ auth, set }) => {
     if (!auth.accountId) { set.status = 404; return { error: "no account" }; }
-    return await getKnowledge(auth.accountId);
+    return await getBrainGraph(auth.accountId);
   },
   { auth: true }
 );

@@ -64,8 +64,14 @@ export async function getRecentMedia(token: string, limit = 10) {
   );
 }
 
+// `location` deliberately omitted — spiked live against graph.instagram.com
+// (v23.0) and it's inconclusive: this endpoint silently drops BOTH real-but-
+// empty and entirely bogus field names identically (verified with a
+// `totally_bogus_field_xyz` control), so an always-empty response can't be
+// told apart from "not a supported field." `children` is confirmed working
+// (real carousel child media returned in the same spike).
 const MEDIA_FIELDS =
-  "id,caption,media_type,timestamp,permalink,thumbnail_url,media_url";
+  "id,caption,media_type,timestamp,permalink,thumbnail_url,media_url,children{media_type,media_url,thumbnail_url}";
 
 /**
  * Fetch the account's ENTIRE media catalogue, following Instagram's
