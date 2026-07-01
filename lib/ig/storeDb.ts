@@ -36,6 +36,7 @@ export async function assembleStore(accountId: string): Promise<IgStore> {
       igUserId: String(a.ig_user_id), username: String(a.username ?? ""),
       accessToken: String(a.access_token ?? ""), tokenExpiresAt: Number(a.token_expires_at ?? 0),
       connectedAt: Number(a.connected_at ?? 0),
+      igScopedUserId: a.ig_scoped_user_id != null ? String(a.ig_scoped_user_id) : undefined,
     };
     s.lastToken = (a.last_token as string) || undefined;
     s.settings = { ...s.settings, ...((a.settings as object) ?? {}) };

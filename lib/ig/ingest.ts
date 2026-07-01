@@ -108,7 +108,9 @@ async function processComment(job: Extract<IngestJob, { kind: "comment" }>) {
   const store = await readStore(accountId);
   const token = store.account?.accessToken;
   if (!store.account || !token) return;
-  const ownId = store.account.igUserId;
+  // Webhook from.id is IG-scoped, not app-scoped — compare against the right ID
+  // space or this never matches and the bot replies to its own replies forever.
+  const ownId = store.account.igScopedUserId ?? store.account.igUserId;
 
   let text = data.text;
   let fromId = data.fromId;

@@ -8,31 +8,31 @@ const TIMEOUT  = Number(process.env.NIM_TIMEOUT_MS || 30_000);
 
 // Priority-ordered. Largest/most-capable first; smaller models near the end
 // as last resort. Override with NIM_MODELS=a,b,c (comma-separated).
+// Verified live against GET {NIM_BASE_URL}/models — the prior list had 13/26
+// dead or misnamed slots (incl. the first two, wasting 2 failed round-trips
+// on every call before reaching a real model).
 const DEFAULT_MODELS: readonly string[] = [
-  "meta/llama-3.1-405b-instruct",
-  "nvidia/llama-3.1-nemotron-70b-instruct-hf",
+  "meta/llama-4-maverick-17b-128e-instruct",
+  "nvidia/llama-3.1-nemotron-70b-instruct",
   "meta/llama-3.3-70b-instruct",
   "meta/llama-3.1-70b-instruct",
-  "mistralai/mixtral-8x22b-instruct-v0.1",
   "mistralai/mistral-large-2-instruct",
-  "nvidia/llama-3.3-nemotron-super-49b-v1",
-  "qwen/qwen2.5-72b-instruct",
-  "deepseek-ai/deepseek-r1-distill-llama-70b",
-  "deepseek-ai/deepseek-r1-distill-qwen-32b",
+  "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+  "qwen/qwen3-next-80b-a3b-instruct",
+  "deepseek-ai/deepseek-v4-flash",
+  "openai/gpt-oss-20b",
   "microsoft/phi-3.5-moe-instruct",
-  "google/gemma-2-27b-it",
+  "google/gemma-4-31b-it",
   "mistralai/mixtral-8x7b-instruct-v0.1",
-  "mistralai/mistral-nemo-12b-instruct",
+  "mistralai/mistral-nemotron",
   "nv-mistralai/mistral-nemo-12b-instruct",
-  "microsoft/phi-3-medium-128k-instruct",
-  "google/gemma-2-9b-it",
+  "microsoft/phi-4-mini-instruct",
+  "google/gemma-3-12b-it",
   "meta/llama-3.1-8b-instruct",
   "meta/llama-3.2-3b-instruct",
   "mistralai/mistral-7b-instruct-v0.3",
-  "qwen/qwen2.5-7b-instruct",
-  "microsoft/phi-3-mini-128k-instruct",
   "ibm/granite-3.0-8b-instruct",
-  "ai21labs/jamba-1.5-mini-instruct",
+  "ai21labs/jamba-1.5-large-instruct",
   "google/gemma-2-2b-it",
   "meta/llama-3.2-1b-instruct",
 ];

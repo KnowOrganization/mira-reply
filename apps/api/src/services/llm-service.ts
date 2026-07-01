@@ -290,56 +290,56 @@ export async function injectEvent(opts: {
   }
 
   if (kind === "comment") {
-    // ── 1. SQLite post_configs automation (ManyChat-style) — mirrors webhook ──
-    let handledByPostConfig = false;
-    if (postId) {
-      try {
-        const config = await getPostConfigByPostId(accountId, postId);
-        const store = await readStore(accountId);
-        const ownId = store.account?.igUserId;
-        if (config && fromUserId !== ownId && !await isCommentProcessed(accountId, fakeId)) {
-          const kws: string[] = config.keywords;
-          const matches = kws.length === 0 || kws.some((k) => text.toLowerCase().includes(k.toLowerCase()));
-          if (matches) {
-            handledByPostConfig = true;
-            await markCommentProcessed(accountId, fakeId, fromUserId, config.id);
-            await upsertUserState(accountId, { igsid: fromUserId, post_id: config.id, comment_id: fakeId, state: "awaiting_tap", payload: null });
-            await insertLog(accountId, { direction: "in", event_type: "comment", igsid: fromUserId, post_id: config.id, payload: JSON.stringify({ commentId: fakeId, text }), status: "matched", error: null });
-            publish({ type: "log", level: "info", msg: `inject: post_config matched — @${fromUsername} → awaiting_tap (config: ${config.id})`, ts: Date.now() });
-            publish({ type: "log", level: "info", msg: `inject: would send button DM: "${config.welcome_msg}" | btn: "${config.button_label}"`, ts: Date.now() });
-          } else {
-            publish({ type: "log", level: "info", msg: `inject: post_config found but keywords not matched (kws=${JSON.stringify(kws)})`, ts: Date.now() });
-          }
-        } else if (config && await isCommentProcessed(accountId, fakeId)) {
-          publish({ type: "log", level: "warn", msg: `inject: post_config — comment already processed (dedup)`, ts: Date.now() });
-        } else if (!config) {
-          publish({ type: "log", level: "info", msg: `inject: no post_config for postId=${postId}`, ts: Date.now() });
-        }
-      } catch (e) {
-        publish({ type: "log", level: "error", msg: `inject post_config: ${String(e)}`, ts: Date.now() });
+    // ── 1. Visual node automation (highest priority) — mirrors ingest.ts order ──
+    const freshStore = await readStore(accountId);
+    const evt: AutomationEvent = {
+      type: "comment_post",
+      commentId: fakeId,
+      fromUserId,
+      fromUsername: fromUsername ?? "",
+      text,
+      postId,
+    };
+    const matched = matchAutomations(freshStore, evt);
+    if (matched.length > 0) {
+      publish({ type: "log", level: "info", msg: `inject: ${matched.length} visual automation(s) matched`, ts: Date.now() });
+      for (const auto of matched) {
+        await executeAutomation(auto, evt, { accountId }).catch((e) =>
+          publish({ type: "log", level: "error", msg: `inject automation [${auto.id}]: ${String(e)}`, ts: Date.now() })
+        );
       }
-    }
-
-    if (!handledByPostConfig) {
-      // ── 2. Visual node automation (legacy) ──────────────────────────────
-      const freshStore = await readStore(accountId);
-      const evt: AutomationEvent = {
-        type: "comment_post",
-        commentId: fakeId,
-        fromUserId,
-        fromUsername: fromUsername ?? "",
-        text,
-        postId,
-      };
-      const matched = matchAutomations(freshStore, evt);
-      if (matched.length > 0) {
-        publish({ type: "log", level: "info", msg: `inject: ${matched.length} visual automation(s) matched`, ts: Date.now() });
-        for (const auto of matched) {
-          await executeAutomation(auto, evt, { accountId }).catch((e) =>
-            publish({ type: "log", level: "error", msg: `inject automation [${auto.id}]: ${String(e)}`, ts: Date.now() })
-          );
+    } else {
+      // ── 2. SQLite post_configs automation (ManyChat-style) — fallback when no node-graph automation matched ──
+      let handledByPostConfig = false;
+      if (postId) {
+        try {
+          const config = await getPostConfigByPostId(accountId, postId);
+          // IG-scoped, not app-scoped — see lib/ig/ingest.ts for why this matters.
+          const ownId = freshStore.account?.igScopedUserId ?? freshStore.account?.igUserId;
+          if (config && fromUserId !== ownId && !await isCommentProcessed(accountId, fakeId)) {
+            const kws: string[] = config.keywords;
+            const matches = kws.length === 0 || kws.some((k) => text.toLowerCase().includes(k.toLowerCase()));
+            if (matches) {
+              handledByPostConfig = true;
+              await markCommentProcessed(accountId, fakeId, fromUserId, config.id);
+              await upsertUserState(accountId, { igsid: fromUserId, post_id: config.id, comment_id: fakeId, state: "awaiting_tap", payload: null });
+              await insertLog(accountId, { direction: "in", event_type: "comment", igsid: fromUserId, post_id: config.id, payload: JSON.stringify({ commentId: fakeId, text }), status: "matched", error: null });
+              publish({ type: "log", level: "info", msg: `inject: post_config matched — @${fromUsername} → awaiting_tap (config: ${config.id})`, ts: Date.now() });
+              publish({ type: "log", level: "info", msg: `inject: would send button DM: "${config.welcome_msg}" | btn: "${config.button_label}"`, ts: Date.now() });
+            } else {
+              publish({ type: "log", level: "info", msg: `inject: post_config found but keywords not matched (kws=${JSON.stringify(kws)})`, ts: Date.now() });
+            }
+          } else if (config && await isCommentProcessed(accountId, fakeId)) {
+            publish({ type: "log", level: "warn", msg: `inject: post_config — comment already processed (dedup)`, ts: Date.now() });
+          } else if (!config) {
+            publish({ type: "log", level: "info", msg: `inject: no post_config for postId=${postId}`, ts: Date.now() });
+          }
+        } catch (e) {
+          publish({ type: "log", level: "error", msg: `inject post_config: ${String(e)}`, ts: Date.now() });
         }
-      } else {
+      }
+
+      if (!handledByPostConfig) {
         // ── 3. Mira AI pipeline ────────────────────────────────────────────
         publish({ type: "log", level: "info", msg: `inject: no automation matched — sending to pipeline`, ts: Date.now() });
         processInbound({
