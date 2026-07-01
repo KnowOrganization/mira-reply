@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, RefreshCw, Plus, Trash2, LogOut, X, Check, User, Users, MessageSquare, BrainCircuit, Bot, BookOpen } from "lucide-react";
-import { useStatus, useSetChannelMode, useSyncPosts, useDisconnect, useKb, useAddKb, useDeleteKb, useAiSettings, usePatchAiSettings, useBrainStatus, useRebuildBrain, type IgStatus } from "@/lib/api/hooks";
-import { useMe, useAccounts } from "@/lib/api/teamHooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { qk, useStatus, useSetChannelMode, useSyncPosts, useDisconnect, useKb, useAddKb, useDeleteKb, useAiSettings, usePatchAiSettings, useBrainStatus, useRebuildBrain, type IgStatus } from "@/lib/api/hooks";
+import { useMe, useAccounts, tk } from "@/lib/api/teamHooks";
 import { getActiveAccount, setActiveAccount } from "@/lib/api/activeAccount";
+import { useConnectAccount } from "@/lib/api/connectAccount";
 import { Modal } from "./ui/Modal";
 import { Avatar } from "./ui/Avatar";
 import { TeamView } from "./workspace/TeamView";
@@ -81,6 +83,12 @@ function AccountTab({ canManage, accountRole, onAccountChange, onClose }: { canM
   const accounts = acctData?.accounts ?? [];
   const activeAccount = getActiveAccount();
 
+  const queryClient = useQueryClient();
+  const { state: connectState, connect } = useConnectAccount(() => {
+    queryClient.invalidateQueries({ queryKey: tk.accounts });
+    queryClient.invalidateQueries({ queryKey: qk.status });
+  });
+
   async function disconnect() {
     await disconnectMut.mutateAsync();
     onAccountChange();
@@ -123,11 +131,22 @@ function AccountTab({ canManage, accountRole, onAccountChange, onClose }: { canM
               );
             })}
           </div>
-          <button onClick={() => { window.location.href = "/api/ig/connect"; }}
-            className="flex items-center gap-2 mt-2 px-3 py-2 text-[12.5px] rounded-xl"
+          <button onClick={() => connect()} disabled={connectState.status === "busy"}
+            className="flex items-center gap-2 mt-2 px-3 py-2 text-[12.5px] rounded-xl disabled:opacity-50"
             style={{ color: "var(--accent)" }}>
-            <Plus size={13} /> Connect new account
+            <Plus size={13} /> {connectState.status === "busy" ? "Waiting for Instagram…" : "Connect new account"}
           </button>
+          {connectState.status === "error" && (
+            <p className="text-[11px] mt-1.5" style={{ color: "#9a3525" }}>{connectState.reason}</p>
+          )}
+          {connectState.status === "conflict" && (
+            <p className="text-[11px] mt-1.5 leading-4" style={{ color: "#9a3525" }}>
+              @{connectState.username || connectState.accountId} is managed in another workspace.{" "}
+              <button onClick={() => connect({ transfer: true })} className="font-bold hover:underline">
+                Transfer it here →
+              </button>
+            </p>
+          )}
         </div>
       )}
 

@@ -11,10 +11,12 @@ export default function OAuthComplete() {
     const p = new URLSearchParams(window.location.search);
     const status = p.get("ig") || "connected";
     const reason = p.get("reason") || "";
+    const accountId = p.get("account") || "";
+    const user = p.get("user") || "";
     try {
       if (window.opener && !window.opener.closed) {
         window.opener.postMessage(
-          { source: "mira-oauth", status, reason },
+          { source: "mira-oauth", status, reason, accountId, user },
           window.location.origin
         );
         window.close();
@@ -23,8 +25,12 @@ export default function OAuthComplete() {
     } catch {
       /* cross-origin opener — fall through to a normal redirect */
     }
+    // No opener (popup blocked / direct nav) — carry status through to "/" so
+    // ConnectGate can still show an error or conflict instead of going silent.
     const q =
-      status === "error" ? `?ig=error&reason=${encodeURIComponent(reason)}` : "";
+      status === "error" ? `?ig=error&reason=${encodeURIComponent(reason)}`
+      : status === "conflict" ? `?ig=conflict&account=${encodeURIComponent(accountId)}&user=${encodeURIComponent(user)}`
+      : "";
     window.location.replace("/" + q);
   }, []);
 

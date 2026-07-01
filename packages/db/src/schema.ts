@@ -25,6 +25,11 @@ const ms = (name: string) => bigint(name, { mode: "number" });
 //    account-scoped singletons + small collections into jsonb columns) ────────
 export const accounts = pgTable("accounts", {
   igUserId: text("ig_user_id").primaryKey(),
+  // Instagram-scoped user ID (graph.instagram.com/me's "user_id" field) — this
+  // is what Meta puts in webhook entry.id, and it differs from ig_user_id (the
+  // "id" field / app-scoped ID we OAuth with). Two separate ID spaces for the
+  // same account; webhook resolution must match on THIS column, not the PK.
+  igScopedUserId: text("ig_scoped_user_id"),
   // "Connected by" user id (audit / token-refresh). Demoted from tenant owner —
   // authorization now resolves through organizations + org_members + account_access.
   userId: text("user_id"),
@@ -63,7 +68,9 @@ export const accounts = pgTable("accounts", {
   onboardingStep: text("onboarding_step").notNull().default("connect"),
   onboardingSkippedAt: ms("onboarding_skipped_at"),
   updatedAt: ms("updated_at").notNull().default(0),
-});
+}, (t) => [
+  index("idx_accounts_ig_scoped_user_id").on(t.igScopedUserId),
+]);
 
 // ── raw webhook event log (append-only, replayable) ─────────────────────────
 // Every Meta webhook event lands here BEFORE any processing. The receiver

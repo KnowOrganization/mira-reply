@@ -5,6 +5,12 @@ import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 
+// localStorage key backing the persisted query cache below. Account/org
+// query keys aren't scoped by id, so switching the active account (which
+// reloads the page) must wipe this first — see activeAccount.ts — or the
+// reload would rehydrate the *previous* account's cached data.
+export const QUERY_CACHE_KEY = "mira.qcache";
+
 // App-wide TanStack Query provider with a PERSISTED cache. On reload the cache
 // rehydrates from localStorage synchronously and queries revalidate in the
 // background — the dashboard paints instantly instead of waiting on a cold
@@ -32,7 +38,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [persister] = useState(() =>
     createSyncStoragePersister({
       storage: typeof window !== "undefined" ? window.localStorage : undefined,
-      key: "mira.qcache",
+      key: QUERY_CACHE_KEY,
       throttleTime: 1000,
     })
   );

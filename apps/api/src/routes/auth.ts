@@ -32,12 +32,15 @@ const DEFAULT_SETTINGS: Settings = {
   selectiveReplyRate: 0, uniquenessThreshold: 0.55,
 };
 
-async function validateToken(t: string): Promise<{ id: string; username: string } | null> {
+async function validateToken(t: string): Promise<{ id: string; username: string; scopedUserId: string | null } | null> {
   for (const attempt of ["bearer", "query"] as const) {
-    const url = `https://graph.instagram.com/v23.0/me?fields=id,username${attempt === "query" ? `&access_token=${encodeURIComponent(t)}` : ""}`;
+    // "id" = app-scoped ID (differs per app, what we OAuth/key rows with).
+    // "user_id" = Instagram-scoped ID — the one Meta puts in webhook entry.id.
+    // These are two different ID spaces for the same account; both are needed.
+    const url = `https://graph.instagram.com/v23.0/me?fields=id,user_id,username${attempt === "query" ? `&access_token=${encodeURIComponent(t)}` : ""}`;
     const res = await fetch(url, attempt === "bearer" ? { headers: { Authorization: `Bearer ${t}` } } : {});
-    const me = (await res.json()) as { id?: string; username?: string };
-    if (me.id) return { id: String(me.id), username: me.username || "" };
+    const me = (await res.json()) as { id?: string; user_id?: string | number; username?: string };
+    if (me.id) return { id: String(me.id), username: me.username || "", scopedUserId: me.user_id != null ? String(me.user_id) : null };
   }
   return null;
 }
@@ -71,11 +74,12 @@ async function refreshTokenOnly(id: string, accessToken: string, expiresIn: numb
 
 // Persist the IG account; bind connector (no clobber) + owning org (COALESCE so
 // an existing owner is never silently replaced — transfer is explicit below).
-async function persistAccount(userId: string, orgId: string, id: string, username: string, accessToken: string, expiresIn: number) {
+async function persistAccount(userId: string, orgId: string, id: string, username: string, accessToken: string, expiresIn: number, scopedUserId: string | null) {
   const existing = await getAccount(id);
   const acct: StoredAccount = {
     igUserId: id, username, accessToken,
     tokenExpiresAt: Date.now() + expiresIn * 1000, connectedAt: Date.now(),
+    igScopedUserId: scopedUserId ?? existing?.igScopedUserId,
     settings: (existing?.settings ?? DEFAULT_SETTINGS) as unknown as Record<string, unknown>,
   };
   await upsertAccount(acct);
@@ -142,7 +146,7 @@ export const authRoute = new Elysia()
       return { conflict: true, accountId: me.id, owningOrgId: existingOrg,
         error: "this Instagram is managed in another workspace — ask them to invite you, or transfer ownership" };
     }
-    await persistAccount(a.ctx.userId, callerOrg, me.id, me.username, ext.token, ext.expiresIn);
+    await persistAccount(a.ctx.userId, callerOrg, me.id, me.username, ext.token, ext.expiresIn, me.scopedUserId);
     if (crossOrg && transfer) await transferAccount(me.id, callerOrg);
     return { ok: true, username: me.username, transferred: crossOrg && transfer };
   })
@@ -182,7 +186,7 @@ export const authRoute = new Elysia()
       await refreshTokenOnly(me.id, ext.token, ext.expiresIn);
       return to(`/oauth/complete?ig=conflict&account=${encodeURIComponent(me.id)}&user=${encodeURIComponent(me.username)}`);
     }
-    await persistAccount(userId, callerOrg, me.id, me.username, ext.token, ext.expiresIn);
+    await persistAccount(userId, callerOrg, me.id, me.username, ext.token, ext.expiresIn, me.scopedUserId);
     if (crossOrg && transfer) await transferAccount(me.id, callerOrg);
     return to(`/oauth/complete?ig=success&user=${encodeURIComponent(me.username)}${crossOrg && transfer ? "&transferred=1" : ""}`);
   });

@@ -1,48 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Home, Zap, MessageSquare, Users, Bot, BarChart2, Radio,
   CreditCard, Settings, ChevronDown, LogOut, Headphones,
-  Crown, Images, MessagesSquare, AtSign, Tag, UserCheck,
+  Crown, MessagesSquare, AtSign, Tag, UserCheck,
   BookOpen, Sparkles, Mic2, TrendingUp, Heart,
   MessageCircle, Send, Camera, BrainCircuit, Gem, ShoppingBag,
 } from "lucide-react";
 import dynamic from "next/dynamic";
-import { motion } from "framer-motion";
 import { MiraLogo } from "./MiraLogo";
-import { PostCanvas } from "./PostCanvas";
-import { MiraFeed } from "./MiraFeed";
 import { CanvasAccountSwitcher } from "./workspace/CanvasAccountSwitcher";
 import type { SettingsTab } from "./SettingsPanel";
 import { useStatus, type IgStatus } from "@/lib/api/hooks";
 
-// Heavy, non-default views — split out of the dashboard bundle so the first
-// paint never parses the automations node-graph or the settings panel. They
-// load on demand: automations only when its view is selected, settings only
-// when opened.
-const AutomationsView = dynamic(() => import("./AutomationsView").then((m) => m.AutomationsView), {
-  ssr: false,
-  loading: () => <PanelBoot />,
-});
 const SettingsPanel = dynamic(() => import("./SettingsPanel").then((m) => m.SettingsPanel), {
   ssr: false,
-});
-const NeuralBrainCanvas = dynamic(() => import("./NeuralBrainCanvas").then((m) => m.NeuralBrainCanvas), {
-  ssr: false,
-  loading: () => <PanelBoot />,
-});
-const InboxView = dynamic(() => import("./InboxView").then((m) => m.InboxView), {
-  ssr: false,
-  loading: () => <PanelBoot />,
-});
-const OpportunitiesView = dynamic(() => import("./OpportunitiesView").then((m) => m.OpportunitiesView), {
-  ssr: false,
-  loading: () => <PanelBoot />,
-});
-const ProductsView = dynamic(() => import("./products/ProductsView").then((m) => m.ProductsView), {
-  ssr: false,
-  loading: () => <PanelBoot />,
 });
 
 type TopView =
@@ -134,21 +108,27 @@ const BOTTOM_NAV: NavGroup[] = [
   { id: "settings", icon: <Settings size={15} />, label: "Settings" },
 ];
 
-export function CanvasLayout() {
+export function CanvasLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const view = (pathname.split("/")[1] || "dashboard") as TopView;
+  const subView = pathname.split("/")[2] || "all";
+
   const [account, setAccount] = useState<string>("");
   const [settingsOpen, setSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("account");
-  const [view, setView] = useState<TopView>(() => {
-    if (typeof window === "undefined") return "dashboard";
-    return (localStorage.getItem("mira_view") as TopView) ?? "dashboard";
-  });
-  const [subView, setSubView] = useState<SubView>("all");
   const [expanded, setExpanded] = useState<TopView | null>(() => {
-    if (typeof window === "undefined") return null;
-    const v = (localStorage.getItem("mira_view") as TopView) ?? "dashboard";
+    const v = (pathname.split("/")[1] || "dashboard") as TopView;
     const group = NAV.find((n) => n.id === v);
     return group?.sub ? v : null;
   });
+
+  // Sync accordion expansion when URL changes (browser back/forward)
+  useEffect(() => {
+    const v = (pathname.split("/")[1] || "dashboard") as TopView;
+    const group = NAV.find((n) => n.id === v);
+    if (group?.sub) setExpanded(v);
+  }, [pathname]);
 
   const { data: status } = useStatus<IgStatus>();
   useEffect(() => {
@@ -159,35 +139,22 @@ export function CanvasLayout() {
     if (id === "settings") { setSettingsTab("account"); setSettings(true); return; }
     const group = NAV.find((n) => n.id === id) ?? BOTTOM_NAV.find((n) => n.id === id);
     if (group?.soon) return;
-    setView(id);
-    localStorage.setItem("mira_view", id);
-    if (sub) setSubView(sub);
-    if (group?.sub) {
-      if (sub) {
-        setExpanded(id);
-      } else {
-        setExpanded((prev) => (prev === id ? null : id));
-      }
-    } else {
-      setExpanded(null);
-    }
+    router.push(sub ? `/${id}/${sub}` : `/${id}`);
+    if (group?.sub) setExpanded(id);
+    else setExpanded(null);
   }
 
   function toggleExpand(id: TopView) {
     const group = NAV.find((n) => n.id === id);
     if (!group?.sub || group.soon) return;
     setExpanded((prev) => (prev === id ? null : id));
-    if (view !== id) {
-      setView(id);
-      localStorage.setItem("mira_view", id);
-      setSubView("all");
-    }
+    if (view !== id) router.push(`/${id}`);
   }
 
   return (
     <div className="h-screen w-screen flex overflow-hidden" style={{ background: "var(--bg-frame)" }}>
 
-      {/* ── sidebar — hidden in automations (it has its own left panel) ── */}
+      {/* ── sidebar ── */}
       <aside style={{
         width: 220,
         flexShrink: 0,
@@ -291,7 +258,6 @@ export function CanvasLayout() {
           <div style={{ margin: "10px 4px", borderTop: "1px solid var(--border)" }} />
 
           {BOTTOM_NAV.map((item) => {
-            const active = view === item.id;
             return (
               <button
                 key={item.id}
@@ -307,7 +273,7 @@ export function CanvasLayout() {
                   background: "transparent",
                   border: "none",
                   cursor: item.soon ? "default" : "pointer",
-                  color: item.soon ? "var(--text-subtle)" : "var(--text-subtle)",
+                  color: "var(--text-subtle)",
                   fontSize: 12.5,
                   fontWeight: 500,
                   textAlign: "left",
@@ -315,7 +281,7 @@ export function CanvasLayout() {
                   marginBottom: 1,
                 }}
                 onMouseEnter={(e) => { if (!item.soon) { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.05)"; } }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = item.soon ? "var(--text-subtle)" : "var(--text-subtle)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-subtle)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
               >
                 <span style={{ flexShrink: 0, opacity: item.soon ? 0.3 : 1 }}>{item.icon}</span>
                 <span style={{ flex: 1 }}>{item.label}</span>
@@ -327,7 +293,6 @@ export function CanvasLayout() {
 
         {/* bottom section */}
         <div style={{ padding: "10px 10px 14px", borderTop: "1px solid var(--border)" }}>
-          {/* pro plan button */}
           <button style={{
             width: "100%", padding: "9px 0", borderRadius: 10,
             background: "var(--bg-inset)",
@@ -338,7 +303,6 @@ export function CanvasLayout() {
             <Crown size={12} /> Pro Plan
           </button>
 
-          {/* logout + support row */}
           <div style={{ display: "flex", gap: 6 }}>
             <button style={{
               flex: 1, padding: "7px 0", borderRadius: 8,
@@ -363,87 +327,18 @@ export function CanvasLayout() {
         </div>
       </aside>
 
-      {/* ── main content ── */}
+      {/* ── main content — rendered by the active route page ── */}
       <div className="flex-1 min-w-0 flex flex-col relative">
-        {view === "dashboard" && (
-          <div className="flex-1 flex min-h-0">
-            <div className="flex-1 min-w-0 flex flex-col relative canvas-bg">
-              <div className="px-6 pt-5 pb-2 shrink-0">
-                <span className="text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: "var(--text-subtle)" }}>Posts</span>
-              </div>
-              <PostCanvas />
-            </div>
-            <div className="w-[280px] shrink-0 flex flex-col px-5 py-5" style={{ borderLeft: "1px solid var(--border)", background: "var(--bg-elev)" }}>
-              <MiraFeed />
-            </div>
-          </div>
-        )}
-
-        {view === "brain" && (
-          <div className="flex-1 min-h-0">
-            <NeuralBrainCanvas />
-          </div>
-        )}
-
-        {view === "automations" && (
-          <div className="flex-1 min-h-0">
-            <AutomationsView
-              subView={subView}
-              onBack={() => { setView("dashboard"); localStorage.setItem("mira_view", "dashboard"); setExpanded(null); }}
-            />
-          </div>
-        )}
-
-        {view === "inbox" && (
-          <div className="flex-1 min-h-0">
-            <InboxView />
-          </div>
-        )}
-
-        {view === "opportunities" && (
-          <div className="flex-1 min-h-0">
-            <OpportunitiesView />
-          </div>
-        )}
-
-        {view === "store" && (
-          <div className="flex-1 min-h-0">
-            <ProductsView />
-          </div>
-        )}
-
-        {(view === "contacts" || view === "ai-studio" || view === "analytics" || view === "channels" || view === "billing") && (
-          <div className="flex-1 flex items-center justify-center flex-col gap-3" style={{ color: "var(--text-subtle)" }}>
-            <Sparkles size={28} style={{ opacity: 0.3 }} />
-            <span style={{ fontSize: 13, fontWeight: 600 }}>Coming soon</span>
-          </div>
-        )}
+        {children}
       </div>
 
       <SettingsPanel open={settingsOpen} onClose={() => setSettings(false)} onAccountChange={() => setAccount("")} initialTab={settingsTab} />
 
       <style>{`
-        .canvas-bg {
-          background-color: var(--bg);
-          background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
-          background-size: 28px 28px;
-        }
         .scrollbar-thin::-webkit-scrollbar { width: 3px; }
         .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
         .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
       `}</style>
-    </div>
-  );
-}
-
-// Loader shown in the main area while a lazily-loaded view chunk arrives. Uses
-// the app theme tokens so it renders correctly in light mode.
-function PanelBoot() {
-  return (
-    <div className="flex-1 h-full flex items-center justify-center" style={{ background: "var(--bg-frame)" }}>
-      <motion.div animate={{ opacity: [0.25, 0.7, 0.25] }} transition={{ duration: 1.6, repeat: Infinity }}>
-        <MiraLogo size={30} color="var(--text-subtle)" />
-      </motion.div>
     </div>
   );
 }

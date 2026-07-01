@@ -4,15 +4,23 @@
 // card: click → dropdown to switch the active IG account (grouped by org),
 // switch org (multi-org users), connect a new account, or open Team & access.
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronsUpDown, Plus, Users, Check, Building2 } from "lucide-react";
-import { useAccounts, useOrgs, type AccountRef } from "@/lib/api/teamHooks";
+import { useAccounts, useOrgs, tk, type AccountRef } from "@/lib/api/teamHooks";
 import { getActiveAccount, getActiveOrg, setActiveAccount, setActiveOrg } from "@/lib/api/activeAccount";
+import { useConnectAccount } from "@/lib/api/connectAccount";
+import { qk } from "@/lib/api/hooks";
 import { Avatar } from "@/components/ui/Avatar";
 
 export function CanvasAccountSwitcher({ account, onOpenTeam }: { account: string; onOpenTeam: () => void }) {
   const [open, setOpen] = useState(false);
   const { data: acctData } = useAccounts();
   const { data: orgData } = useOrgs();
+  const queryClient = useQueryClient();
+  const { state: connectState, connect } = useConnectAccount(() => {
+    queryClient.invalidateQueries({ queryKey: tk.accounts });
+    queryClient.invalidateQueries({ queryKey: qk.status });
+  });
   const accounts = acctData?.accounts ?? [];
   const orgs = orgData?.orgs ?? [];
   const activeAccount = getActiveAccount();
@@ -116,7 +124,23 @@ export function CanvasAccountSwitcher({ account, onOpenTeam }: { account: string
             {accounts.length === 0 && <div style={{ padding: "7px 10px", fontSize: 11.5, color: "var(--text-subtle)" }}>No accounts yet</div>}
 
             <div style={{ margin: "5px 6px", borderTop: "1px solid var(--border)" }} />
-            {item(<span style={{ display: "flex", alignItems: "center", gap: 7 }}><Plus size={13} /> Connect new account</span>, () => { window.location.href = "/api/ig/connect"; })}
+            {item(
+              <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <Plus size={13} /> {connectState.status === "busy" ? "Waiting for Instagram…" : "Connect new account"}
+              </span>,
+              () => connect(),
+            )}
+            {connectState.status === "error" && (
+              <div style={{ padding: "2px 10px 6px", fontSize: 10.5, color: "#9a3525", lineHeight: 1.4 }}>{connectState.reason}</div>
+            )}
+            {connectState.status === "conflict" && (
+              <div style={{ padding: "2px 10px 6px", fontSize: 10.5, color: "#9a3525", lineHeight: 1.4 }}>
+                @{connectState.username || connectState.accountId} is managed in another workspace.{" "}
+                <button onClick={() => connect({ transfer: true })} style={{ fontWeight: 700, textDecoration: "underline" }}>
+                  Transfer here
+                </button>
+              </div>
+            )}
             {item(<span style={{ display: "flex", alignItems: "center", gap: 7 }}><Users size={13} /> Team & access</span>, () => { setOpen(false); onOpenTeam(); })}
           </div>
         </>

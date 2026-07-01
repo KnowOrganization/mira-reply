@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Plug, MessageCircle, Sparkles, Link2, ArrowRight, ShieldCheck } from "lucide-react";
 import { MiraLogo } from "./MiraLogo";
+import { useConnectAccount } from "@/lib/api/connectAccount";
 
 const FEATURES = [
   { icon: <MessageCircle size={15} />, text: "Auto-reply to comments in your voice" },
@@ -14,15 +15,21 @@ const FEATURES = [
 /** Full-screen gate shown until an Instagram account is connected. */
 export function ConnectGate() {
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [conflict, setConflict] = useState<{ accountId: string; username: string } | null>(null);
   const [tokenMode, setTokenMode] = useState(false);
   const [token, setToken] = useState("");
   const [canReconnect, setCanReconnect] = useState(false);
+  const [tokenBusy, setTokenBusy] = useState(false);
+
+  const { state: connectState, connect: doConnect } = useConnectAccount(() => window.location.reload());
+  const busy = connectState.status === "busy" || tokenBusy;
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     if (p.get("ig") === "error") {
       setError(decodeURIComponent(p.get("reason") || "Connection failed"));
+    } else if (p.get("ig") === "conflict") {
+      setConflict({ accountId: p.get("account") || "", username: p.get("user") || "" });
     }
     fetch("/api/ig/status")
       .then((r) => r.json())
@@ -30,10 +37,24 @@ export function ConnectGate() {
       .catch(() => {});
   }, []);
 
+  // Banners come from either the URL (popup-blocked fallback redirect, above)
+  // or the live connect attempt — no need to mirror one into the other.
+  const displayError = connectState.status === "error" ? connectState.reason : error;
+  const displayConflict = connectState.status === "conflict"
+    ? { accountId: connectState.accountId, username: connectState.username }
+    : conflict;
+
+  function connect(forceSwitch = false) {
+    setError(null);
+    setConflict(null);
+    doConnect({ forceSwitch });
+  }
+
   async function reconnect() {
     if (busy) return;
     setError(null);
-    setBusy(true);
+    setConflict(null);
+    setTokenBusy(true);
     try {
       const r = await fetch("/api/ig/token-connect", {
         method: "POST",
@@ -44,70 +65,20 @@ export function ConnectGate() {
       if (j.ok) window.location.reload();
       else {
         setError(j.error || "Reconnect failed");
-        setBusy(false);
+        setTokenBusy(false);
       }
     } catch {
       setError("Reconnect failed");
-      setBusy(false);
+      setTokenBusy(false);
     }
-  }
-
-  function connect(forceSwitch = false) {
-    setError(null);
-    const w = 600;
-    const h = 760;
-    const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
-    const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
-    // Same-origin navigation → the BetterAuth session cookie is sent automatically,
-    // so the backend reads the user from it (no token in the URL).
-    const connectUrl = forceSwitch ? "/api/ig/connect?switch=1" : "/api/ig/connect";
-    const popup = window.open(
-      connectUrl,
-      "mira_ig_oauth",
-      `width=${w},height=${h},left=${left},top=${top}`
-    );
-    // popup blocked → fall back to a full-page redirect
-    if (!popup) {
-      window.location.href = connectUrl;
-      return;
-    }
-    setBusy(true);
-
-    let poll: ReturnType<typeof setInterval>;
-    const onMessage = (e: MessageEvent) => {
-      if (e.origin !== window.location.origin) return;
-      if (e.data?.source !== "mira-oauth") return;
-      done(e.data.status !== "error", e.data.reason);
-    };
-    const done = (ok: boolean, reason?: string) => {
-      window.removeEventListener("message", onMessage);
-      clearInterval(poll);
-      if (ok) {
-        window.location.reload(); // connected → gate re-checks → app
-      } else {
-        setBusy(false);
-        if (reason) setError(String(reason));
-      }
-    };
-    window.addEventListener("message", onMessage);
-    // fallback — popup closed without signalling: re-check the connection
-    poll = setInterval(() => {
-      if (popup.closed) {
-        fetch("/api/ig/status")
-          .then((r) => r.json())
-          .then((d) =>
-            done(!!d.connected, d.connected ? undefined : "Connection cancelled")
-          )
-          .catch(() => done(false));
-      }
-    }, 700);
   }
 
   async function connectWithToken() {
     const t = token.trim();
     if (!t || busy) return;
     setError(null);
-    setBusy(true);
+    setConflict(null);
+    setTokenBusy(true);
     try {
       const r = await fetch("/api/ig/token-connect", {
         method: "POST",
@@ -119,11 +90,11 @@ export function ConnectGate() {
         window.location.reload();
       } else {
         setError(j.error || "Token rejected");
-        setBusy(false);
+        setTokenBusy(false);
       }
     } catch {
       setError("Connection failed");
-      setBusy(false);
+      setTokenBusy(false);
     }
   }
 
@@ -237,7 +208,7 @@ export function ConnectGate() {
             ))}
           </div>
 
-          {error && (
+          {displayError && (
             <motion.div
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
@@ -247,7 +218,26 @@ export function ConnectGate() {
                 color: "#9a3525",
               }}
             >
-              {error.slice(0, 200)}
+              {displayError.slice(0, 200)}
+            </motion.div>
+          )}
+
+          {displayConflict && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl px-3.5 py-2.5 mb-3 text-[12px] leading-5"
+              style={{ background: "color-mix(in srgb, #b3402e 12%, transparent)", color: "#9a3525" }}
+            >
+              @{displayConflict.username || displayConflict.accountId} is already managed in another
+              workspace. Ask them to invite you, or transfer it here.
+              <button
+                onClick={() => doConnect({ transfer: true })}
+                disabled={busy}
+                className="block mt-1.5 font-bold hover:underline disabled:opacity-50"
+              >
+                Transfer to my workspace →
+              </button>
             </motion.div>
           )}
 
