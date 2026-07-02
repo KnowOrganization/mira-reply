@@ -40,7 +40,7 @@ function LuxeCard({ p, href, config, slug }: { p: SfProduct; href: string; confi
         {p.subtitle && <div style={{ ...sans, fontSize: 10.5, color: "#9a8f84", marginTop: 4, letterSpacing: "0.04em" }}>{p.subtitle}</div>}
         {p.priceText && <div style={{ ...sans, fontSize: 13, marginTop: 6, color: "#5a5248", fontVariantNumeric: "tabular-nums" }}>{p.priceText}</div>}
         <div style={{ marginTop: 10 }}>
-          <AddToCart product={p} config={config} slug={slug} compact luxe />
+          <AddToCart product={p} config={config} slug={slug} variant="compact" />
         </div>
       </div>
     </div>

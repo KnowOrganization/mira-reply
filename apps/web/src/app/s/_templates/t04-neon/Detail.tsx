@@ -37,7 +37,7 @@ export default function Detail({ config, product, more, slug }: DetailProps) {
           )}
           <div style={{ height: 1, background: "rgba(255,255,255,0.08)" }} />
           {product.description && <p style={{ fontSize: 14.5, lineHeight: 1.7, color: "#8892a4", whiteSpace: "pre-line", margin: 0 }}>{product.description}</p>}
-          <AddToCart product={product} config={config} slug={slug} neon />
+          <AddToCart product={product} config={config} slug={slug} />
         </div>
       </main>
 

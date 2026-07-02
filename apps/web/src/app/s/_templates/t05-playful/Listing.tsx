@@ -35,7 +35,7 @@ function PlayCard({ p, href, i, config, slug }: { p: SfProduct; href: string; i:
         {p.subtitle && <div style={{ fontSize: 12, color: "#888" }}>{p.subtitle}</div>}
         {p.priceText && <div style={{ fontSize: 14, fontWeight: 800, color: "var(--sf-accent)" }}>{p.priceText}</div>}
         <div style={{ marginTop: 6 }}>
-          <AddToCart product={p} config={config} slug={slug} compact playful />
+          <AddToCart product={p} config={config} slug={slug} variant="compact" />
         </div>
       </div>
     </div>

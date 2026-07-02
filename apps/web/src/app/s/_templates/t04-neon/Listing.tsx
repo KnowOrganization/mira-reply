@@ -43,7 +43,7 @@ function NeonCard({ p, href, config, slug }: { p: SfProduct; href: string; confi
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sf-accent)", fontVariantNumeric: "tabular-nums" }}>{p.priceText}</div>
         )}
         <div style={{ marginTop: 4 }}>
-          <AddToCart product={p} config={config} slug={slug} compact neon />
+          <AddToCart product={p} config={config} slug={slug} variant="compact" />
         </div>
       </div>
     </div>

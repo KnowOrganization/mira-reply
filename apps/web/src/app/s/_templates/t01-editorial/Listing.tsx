@@ -50,7 +50,7 @@ function ProductCard({ p, href, eager, config, slug }: { p: SfProduct; href?: st
           {p.priceText && <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{p.priceText}</span>}
         </div>
         {p.subtitle && <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{p.subtitle}</span>}
-        <AddToCart product={p} config={config} slug={slug} compact />
+        <AddToCart product={p} config={config} slug={slug} variant="compact" />
       </div>
     </>
   );

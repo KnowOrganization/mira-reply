@@ -36,7 +36,7 @@ function BoutiqueCard({ p, href, config, slug }: { p: SfProduct; href: string; c
         {p.subtitle && <div style={{ ...sans, fontSize: 12.5, color: "#888", marginBottom: 6 }}>{p.subtitle}</div>}
         {p.priceText && <div style={{ ...sans, fontSize: 14, color: "#555", fontVariantNumeric: "tabular-nums" }}>{p.priceText}</div>}
         <div style={{ marginTop: 12 }}>
-          <AddToCart product={p} config={config} slug={slug} compact boutique />
+          <AddToCart product={p} config={config} slug={slug} variant="compact" />
         </div>
       </div>
     </div>

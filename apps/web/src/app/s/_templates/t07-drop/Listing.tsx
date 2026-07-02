@@ -55,7 +55,7 @@ export default function Listing({ config, products, slug }: ListingProps) {
             </Link>
             <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
               {hero.priceText && <span style={{ fontSize: 18, fontWeight: 700, color: "var(--sf-accent)" }}>{hero.priceText}</span>}
-              <AddToCart product={hero} config={config} slug={slug} drop />
+              <AddToCart product={hero} config={config} slug={slug} />
             </div>
           </div>
         </section>

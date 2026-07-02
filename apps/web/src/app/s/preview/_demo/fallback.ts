@@ -21,10 +21,10 @@ export const DEMO_SETTINGS: StorefrontSettingsInput = {
   storefrontAbout:
     "We handpick beautiful everyday objects — from ceramics to cozy textiles. Every piece ships from our studio in Bangalore.",
   storefrontBuyLabel: "Buy",
-  // checkoutEnabled: false ensures AddToCart renders the link-out branch.
-  // ctaUrl: null on every product → AddToCart returns null (no button rendered).
-  // useCart() is still satisfied by the wrapping <CartProvider slug="preview">.
-  storefrontCheckoutEnabled: false,
+  // checkoutEnabled: true so previews show real buy buttons — AddToCart's
+  // preview mode (slug starts with "preview") plays the fx without ever
+  // touching the cart, so no cart/checkout route is reachable from a preview.
+  storefrontCheckoutEnabled: true,
   storefrontCurrency: "INR",
 };
 

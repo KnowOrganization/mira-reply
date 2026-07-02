@@ -72,7 +72,7 @@ export default function Listing({ config, products, slug }: ListingProps) {
                 )}
               </Link>
               <div style={{ padding: "0 28px 16px" }}>
-                <AddToCart product={p} config={config} slug={slug} compact />
+                <AddToCart product={p} config={config} slug={slug} variant="compact" />
               </div>
             </div>
           ))

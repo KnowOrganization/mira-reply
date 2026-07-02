@@ -33,7 +33,7 @@ function BrutalCard({ p, href, config, slug }: { p: SfProduct; href: string; con
           <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4, color: "var(--sf-accent)" }}>{p.priceText}</div>
         )}
         <div style={{ marginTop: 8 }}>
-          <AddToCart product={p} config={config} slug={slug} compact brutal />
+          <AddToCart product={p} config={config} slug={slug} variant="compact" />
         </div>
       </div>
     </div>

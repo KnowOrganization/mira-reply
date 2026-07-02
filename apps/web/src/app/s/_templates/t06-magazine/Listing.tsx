@@ -94,7 +94,7 @@ export default function Listing({ config, products, slug }: ListingProps) {
                   </Link>
                 ))}
                 <div style={{ marginTop: 16 }}>
-                  <AddToCart product={hero} config={config} slug={slug} compact />
+                  <AddToCart product={hero} config={config} slug={slug} variant="compact" />
                 </div>
               </aside>
             </div>
@@ -126,7 +126,7 @@ export default function Listing({ config, products, slug }: ListingProps) {
                   {p.priceText && <div style={{ fontFamily: sans, fontSize: 13, fontWeight: 700, marginTop: 6, color: "var(--sf-accent)" }}>{p.priceText}</div>}
                 </Link>
                 <div style={{ marginTop: 10 }}>
-                  <AddToCart product={p} config={config} slug={slug} compact />
+                  <AddToCart product={p} config={config} slug={slug} variant="compact" />
                 </div>
               </div>
             ))}

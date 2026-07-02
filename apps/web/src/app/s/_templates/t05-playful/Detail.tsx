@@ -35,7 +35,7 @@ export default function Detail({ config, product, more, slug }: DetailProps) {
           {product.priceText && <div style={{ fontSize: 26, fontWeight: 900, color: "var(--sf-accent)" }}>{product.priceText}</div>}
           <div style={{ height: 2, background: "var(--sf-accent-soft)", borderRadius: 999 }} />
           {product.description && <p style={{ fontSize: 14.5, lineHeight: 1.7, color: "#666", margin: 0 }}>{product.description}</p>}
-          <AddToCart product={product} config={config} slug={slug} playful />
+          <AddToCart product={product} config={config} slug={slug} />
         </div>
       </main>
 

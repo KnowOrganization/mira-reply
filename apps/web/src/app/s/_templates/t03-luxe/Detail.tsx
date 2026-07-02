@@ -38,7 +38,7 @@ export default function Detail({ config, product, more, slug }: DetailProps) {
           <div style={divider} />
           {product.description && <p style={{ fontSize: 14.5, lineHeight: 1.8, color: "#7a7068", marginTop: 20, whiteSpace: "pre-line" }}>{product.description}</p>}
           <div style={{ marginTop: 28 }}>
-            <AddToCart product={product} config={config} slug={slug} luxe />
+            <AddToCart product={product} config={config} slug={slug} />
           </div>
         </div>
       </main>

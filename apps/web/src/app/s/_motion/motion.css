@@ -1,0 +1,40 @@
+/* Storefront motion utilities — imported once by s/layout.tsx. */
+
+/* ── marquee: two duplicated tracks, GPU transform only, no JS ticks ── */
+.sf-marquee {
+  display: flex;
+  overflow: hidden;
+  user-select: none;
+  gap: var(--sf-marquee-gap, 2rem);
+}
+.sf-marquee-track {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--sf-marquee-gap, 2rem);
+  min-width: 100%;
+  justify-content: space-around;
+  animation: sf-marquee-scroll var(--sf-marquee-speed, 28s) linear infinite;
+  will-change: transform;
+}
+.sf-marquee[data-reverse="true"] .sf-marquee-track {
+  animation-direction: reverse;
+}
+.sf-marquee[data-pause-hover="true"]:hover .sf-marquee-track {
+  animation-play-state: paused;
+}
+@keyframes sf-marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-100% - var(--sf-marquee-gap, 2rem))); }
+}
+
+/* ── reduced motion: stop everything decorative ── */
+@media (prefers-reduced-motion: reduce) {
+  .sf-marquee-track {
+    animation: none;
+  }
+  .sf-anim {
+    animation: none !important;
+    transition: none !important;
+  }
+}
