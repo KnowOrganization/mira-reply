@@ -6,6 +6,7 @@ import Link from "next/link";
 import { StoreImage } from "../../_components/StoreImage";
 import AddToCart from "../../_components/AddToCart";
 import { Reveal, SplitText, Magnetic } from "../../_motion";
+import Hero3D from "./Hero3D";
 import { TEMPLATE_FONTS } from "../_shared/fonts";
 import { Price } from "../_shared/Price";
 import type { ListingProps, SfProduct, StorefrontConfig } from "../_shared/types";
@@ -261,7 +262,7 @@ export default function Listing({ config, products, slug }: ListingProps) {
 
       {/* 2 · HERO — pure-CSS light-bloom poster; type rises out of the dark */}
       <div className="t03-hero" style={{ position: "relative", display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden" }}>
-        {/* 3D scene mounts over this poster in a later phase */}
+        {/* CSS poster — SSR/LCP layer; the WebGL gem (Hero3D) mounts over it */}
         <div className="t03-hero-poster" aria-hidden style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
           {config.heroImageUrl && (
             <div className="t03-hero-photo" style={{ position: "absolute", inset: 0 }}>
@@ -284,6 +285,9 @@ export default function Listing({ config, products, slug }: ListingProps) {
           />
           <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "24%", background: `linear-gradient(to bottom, transparent, ${BG})` }} />
         </div>
+
+        {/* WebGL gem — layers over the poster, under the zIndex:1 type */}
+        <Hero3D accent={config.accent} />
 
         <div style={{ position: "relative", zIndex: 1, textAlign: "center", padding: "104px 20px 90px", maxWidth: 1080, margin: "0 auto", width: "100%" }}>
           <Reveal delay={1.35} duration={1.2} y={8}>
