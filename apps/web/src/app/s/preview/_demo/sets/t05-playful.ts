@@ -13,7 +13,7 @@ const set: DemoSet = {
     storefrontHeroTagline:
       "Small-batch candy and bakes, made loud. Packed same-day at the counter, gone by teatime.",
     storefrontHeroLayout: "split",
-    storefrontHeroImageUrl: `https://images.unsplash.com/photo-1505253758473-96b7015fcd40${IMG}`,
+    storefrontHeroImageUrl: `https://images.unsplash.com/photo-1516919549054-e08258825f80${IMG}`,
     storefrontFeaturedIds: ["d51", "d54", "d55"],
     storefrontShowFeatured: true,
     storefrontShowDiscover: true,
@@ -36,11 +36,11 @@ const set: DemoSet = {
       priceText: "₹1,450",
       priceMinor: 145000,
       currency: "INR",
-      imageUrl: `https://images.unsplash.com/photo-1606890658317-7d14490b76fd${IMG}`,
+      imageUrl: `https://images.unsplash.com/photo-1606313564200-e75d5e30476c${IMG}`,
       images: [
-        `https://images.unsplash.com/photo-1606890658317-7d14490b76fd${IMG}`,
+        `https://images.unsplash.com/photo-1606313564200-e75d5e30476c${IMG}`,
         `https://images.unsplash.com/photo-1612203985729-70726954388c${IMG}`,
-        `https://images.unsplash.com/photo-1613919113640-25732ec5e61f${IMG}`,
+        `https://images.unsplash.com/photo-1578985545062-69928b1d9587${IMG}`,
       ],
       available: true,
       ctaUrl: null,

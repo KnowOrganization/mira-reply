@@ -33,6 +33,8 @@ export default function Detail({ config, product, more, slug }: DetailProps) {
       : [];
   const chips = chipsOf(product.subtitle);
   const hasPrice = product.priceMinor != null || !!product.priceText;
+  // link-out stores (no checkout) keep the owner's buyLabel; checkout gets the voice
+  const canCheckout = config.checkoutEnabled && product.priceMinor != null && product.available;
 
   return (
     <div
@@ -187,7 +189,7 @@ export default function Detail({ config, product, more, slug }: DetailProps) {
             config={config}
             slug={slug}
             fx="burst"
-            label="Grab it!"
+            label={canCheckout ? "Grab it!" : undefined}
             addedLabel="Yum! Added ✓"
             style={{
               borderRadius: 999,
