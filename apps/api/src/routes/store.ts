@@ -12,12 +12,15 @@ type StoreProduct = ReturnType<typeof toStoreProduct>;
 function toStoreProduct(p: {
   id: string; title: string; subtitle: string; description: string;
   priceText: string | null; priceMinor: number | null; currency: string;
-  imageUrl: string | null; ctaUrl: string | null; slug: string | null;
+  imageUrl: string | null; images?: string[] | null; ctaUrl: string | null; slug: string | null;
 }) {
   return {
     id: p.id, title: p.title, subtitle: p.subtitle, description: p.description,
     priceText: p.priceText, priceMinor: p.priceMinor, currency: p.currency,
-    imageUrl: p.imageUrl, ctaUrl: p.ctaUrl, slug: p.slug,
+    imageUrl: p.imageUrl,
+    // gallery: https-only (DB may hold base64 data-URLs — megabytes in public JSON), capped
+    images: (p.images ?? []).filter((u) => /^https:\/\//i.test(u)).slice(0, 8),
+    ctaUrl: p.ctaUrl, slug: p.slug,
   };
 }
 

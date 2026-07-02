@@ -37,6 +37,7 @@ export function StoreImage({
       src={src!}
       alt={alt}
       loading={eager ? "eager" : "lazy"}
+      fetchPriority={eager ? "high" : undefined}
       onError={() => setBroken(true)}
       className={className}
       style={{ objectFit: "cover", ...style }}

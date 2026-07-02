@@ -1,7 +1,12 @@
-// Demo data for /s/preview/[template] — PUBLIC, no auth, no DB.
-// All 10 template previews share identical data so they are visually comparable.
+// Shared fallback demo data for /s/preview/[template] — PUBLIC, no auth, no DB.
+// Per-template curated catalogs live in ./sets/*; unknown ids fall back here.
 import type { StorefrontSettingsInput } from "@shaiz/shared";
-import type { SfProduct } from "../_templates/_shared/types";
+import type { SfProduct } from "../../_templates/_shared/types";
+
+export type DemoSet = {
+  settings: StorefrontSettingsInput;
+  products: SfProduct[];
+};
 
 export const DEMO_SETTINGS: StorefrontSettingsInput = {
   storefrontTitle: "Aurora Goods",
@@ -16,10 +21,10 @@ export const DEMO_SETTINGS: StorefrontSettingsInput = {
   storefrontAbout:
     "We handpick beautiful everyday objects — from ceramics to cozy textiles. Every piece ships from our studio in Bangalore.",
   storefrontBuyLabel: "Buy",
-  // checkoutEnabled: false ensures AddToCart renders the link-out branch.
-  // ctaUrl: null on every product → AddToCart returns null (no button rendered).
-  // useCart() is still satisfied by the wrapping <CartProvider slug="preview">.
-  storefrontCheckoutEnabled: false,
+  // checkoutEnabled: true so previews show real buy buttons — AddToCart's
+  // preview mode (slug starts with "preview") plays the fx without ever
+  // touching the cart, so no cart/checkout route is reachable from a preview.
+  storefrontCheckoutEnabled: true,
   storefrontCurrency: "INR",
 };
 
@@ -109,3 +114,8 @@ export const DEMO_PRODUCTS: SfProduct[] = [
     ctaUrl: null,
   },
 ];
+
+export const FALLBACK_SET: DemoSet = {
+  settings: DEMO_SETTINGS,
+  products: DEMO_PRODUCTS,
+};

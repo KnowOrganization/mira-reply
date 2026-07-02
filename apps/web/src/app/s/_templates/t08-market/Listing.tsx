@@ -40,7 +40,7 @@ function MarketCard({ p, href, config, slug }: { p: SfProduct; href: string; con
         </div>
       </Link>
       <div style={{ padding: "4px 10px 10px" }}>
-        <AddToCart product={p} config={config} slug={slug} compact market />
+        <AddToCart product={p} config={config} slug={slug} variant="compact" />
       </div>
     </div>
   );

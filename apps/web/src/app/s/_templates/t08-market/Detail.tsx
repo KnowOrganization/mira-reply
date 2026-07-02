@@ -62,7 +62,7 @@ export default function Detail({ config, product, more, slug }: DetailProps) {
             )}
             {product.description && <p style={{ fontSize: 13.5, lineHeight: 1.65, color: "#333", margin: 0 }}>{product.description}</p>}
             <div style={{ height: 1, background: "#e8e8e8" }} />
-            <AddToCart product={product} config={config} slug={slug} market />
+            <AddToCart product={product} config={config} slug={slug} />
           </div>
         </div>
 
