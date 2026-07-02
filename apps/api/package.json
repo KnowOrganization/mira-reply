@@ -15,8 +15,10 @@
     "@shaiz/auth": "workspace:*",
     "@shaiz/db": "workspace:*",
     "@shaiz/shared": "workspace:*",
+    "@sinclair/typebox": "^0.34.0",
     "drizzle-orm": "^0.38.3",
     "elysia": "^1.2.10",
-    "elysia-rate-limit": "^4.6.2"
+    "elysia-rate-limit": "^4.6.2",
+    "razorpay": "^2.9.6"
   }
 }

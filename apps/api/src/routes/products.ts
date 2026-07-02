@@ -1,5 +1,6 @@
 // CRUD /api/ig/products[/:id] — DM marketplace catalog, scoped to the logged-in
-// account. Checkout is link-out only (ctaUrl); Mira never processes payment.
+// account. Supports both link-out (ctaUrl) and embedded Razorpay card checkout
+// (priceMinor+currency when storefrontCheckoutEnabled).
 import { Elysia } from "elysia";
 import {
   listProducts, getProduct, createProduct, updateProduct, deleteProduct,

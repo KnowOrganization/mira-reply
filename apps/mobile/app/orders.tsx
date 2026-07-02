@@ -1,29 +1,40 @@
-import { ScrollView, View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ScreenHeader } from '../src/components/ScreenHeader';
 import { Card } from '../src/components/Card';
 import { Icon } from '../src/components/Icon';
 import { Chip, Stat } from '../src/components/primitives';
 import { colors, space } from '../src/theme';
-import { useProducts, type Product } from '../src/api/hooks';
+import { useOrders, type OrderApi } from '../src/api/hooks';
 
-// Orders — doc spec (Mira.dc.html ~1070-1092): 3-stat row (New/Orders/Revenue)
-// + per-order cards with avatar, customer/product, amount, status chip + advance
-// CTA. There is no real orders/payments backend — the storefront is link-out
-// only (ctaUrl), Mira never processes money (packages/db/src/schema.ts products
-// comment), and the closest real signal (discount-code redemptions) is scoped
-// per-automation with no global "all redemptions" endpoint. So this screen is a
-// thin, HONEST proxy: it borrows the doc's layout over useProducts() (already
-// global) with placeholder/zeroed monetary fields, clearly flagged as
-// illustrative rather than fabricating fake revenue.
-function monogram(title: string): string {
-  const t = title.trim();
-  return t ? t[0].toUpperCase() : '?';
+// Orders — real data from GET /api/ig/orders (Workstream A).
+// Stats row: new / total orders / revenue. Per-order cards: status chip,
+// amount (minor units / 100 = rupees), email, date.
+
+function fmtRupees(minor: number): string {
+  return `₹${(minor / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+}
+
+function fmtDate(ts: number): string {
+  return new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+}
+
+type StatusTone = 'done' | 'warm' | 'blocked' | 'grey';
+function statusTone(status: string): StatusTone {
+  if (status === 'paid') return 'done';
+  if (status === 'pending') return 'warm';
+  if (status === 'failed') return 'blocked';
+  return 'grey';
+}
+
+function statusLabel(status: string): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
 export default function Orders() {
-  const { data, isLoading } = useProducts();
-  const products = data?.products?.filter((p) => p.available || p.featured) ?? [];
+  const { data, isLoading, isError, refetch } = useOrders();
+  const orders = data?.orders ?? [];
+  const stats = data?.stats ?? { count: 0, revenueCents: 0, newCount: 0 };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -33,93 +44,95 @@ export default function Orders() {
         contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: 30 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Honesty note — there's no real orders/payments pipeline yet. */}
-        <Card style={styles.noteCard}>
-          <View style={styles.noteRow}>
-            <View style={styles.noteIcon}>
-              <Icon name="bell" size={15} color={colors.accentDeep} />
-            </View>
-            <Text style={styles.noteText}>
-              Mira doesn't process payments — this view is illustrative until a real orders pipeline exists.
-            </Text>
-          </View>
-        </Card>
-
-        {/* Summary row */}
+        {/* Stats row */}
         <View style={styles.statRow}>
           <Card style={styles.statCard}>
-            <Stat value={0} label="New" size={21} color={colors.accent} />
+            <Stat value={stats.newCount} label="New" size={21} color={colors.accent} />
           </Card>
           <Card style={styles.statCard}>
-            <Stat value={products.length} label="Orders" size={21} />
+            <Stat value={stats.count} label="Orders" size={21} />
           </Card>
           <Card style={styles.statCard}>
-            <Stat value="—" label="Revenue" size={21} color={colors.stDone} />
+            <Stat value={fmtRupees(stats.revenueCents)} label="Revenue" size={21} color={colors.stDone} />
           </Card>
         </View>
 
-        {isLoading ? null : products.length === 0 ? (
-          <Card style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No products to illustrate orders with yet.</Text>
+        {/* Error state */}
+        {isError && (
+          <Card style={styles.errorCard}>
+            <View style={styles.errorRow}>
+              <Icon name="bell" size={15} color={colors.stBlocked} />
+              <Text style={styles.errorText}>Failed to load orders.</Text>
+              <Text style={styles.retryText} onPress={() => refetch()}>Retry</Text>
+            </View>
           </Card>
-        ) : (
-          products.map((product: Product) => (
-            <Card key={product.id} style={styles.orderCard}>
-              <View style={styles.orderRow}>
-                {product.imageUrl ? (
-                  <Image source={{ uri: product.imageUrl }} style={styles.avatar} />
-                ) : (
-                  <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                    <Text style={styles.avatarMonogram}>{monogram(product.title)}</Text>
-                  </View>
-                )}
-                <View style={styles.orderBody}>
-                  <Text style={styles.orderTitle} numberOfLines={1}>{product.title}</Text>
-                  <Text style={styles.orderSubtitle} numberOfLines={1}>{product.subtitle || product.title}</Text>
-                </View>
-                <View style={styles.orderAmount}>
-                  <Text style={styles.amountText}>$0</Text>
-                </View>
-              </View>
-              <View style={styles.orderFooter}>
-                <Chip label="Pending" tone="grey" />
-              </View>
-            </Card>
-          ))
         )}
 
-        <Text style={styles.caption}>
-          Real order tracking needs a connected checkout — for now Mira links customers out via each product's CTA.
-        </Text>
+        {/* Loading skeletons */}
+        {isLoading && orders.length === 0 && (
+          <>
+            {[0, 1, 2].map((i) => (
+              <Card key={i} style={[styles.orderCard, styles.skeleton]} />
+            ))}
+          </>
+        )}
+
+        {/* Empty state */}
+        {!isLoading && !isError && orders.length === 0 && (
+          <Card style={styles.emptyCard}>
+            <Text style={styles.emptyText}>No orders yet. Share your store link to get started.</Text>
+          </Card>
+        )}
+
+        {/* Order cards */}
+        {orders.map((order: OrderApi) => (
+          <Card key={order.id} style={styles.orderCard}>
+            <View style={styles.orderRow}>
+              <View style={styles.orderBody}>
+                <View style={styles.orderMeta}>
+                  <Text style={styles.orderId}>#{order.id.slice(-6).toUpperCase()}</Text>
+                  <Chip label={statusLabel(order.status)} tone={statusTone(order.status)} small />
+                </View>
+                <Text style={styles.orderCustomer} numberOfLines={1}>
+                  {order.email || order.customerName || '—'}
+                </Text>
+              </View>
+              <View style={styles.orderRight}>
+                <Text style={styles.orderAmount}>{fmtRupees(order.amountTotal)}</Text>
+                <Text style={styles.orderDate}>{fmtDate(order.createdAt)}</Text>
+              </View>
+            </View>
+          </Card>
+        ))}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  noteCard: { padding: 13, marginTop: space.md, backgroundColor: colors.accentSoft, borderColor: colors.accentSoft },
-  noteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
-  noteIcon: { width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  noteText: { flex: 1, fontSize: 12.5, lineHeight: 18, color: colors.accentDeep, fontWeight: '500' },
-
   statRow: { flexDirection: 'row', gap: space.sm, marginTop: space.lg },
   statCard: { flex: 1, padding: 12 },
+
+  errorCard: { padding: 13, marginTop: space.md, backgroundColor: colors.accentSoft },
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  errorText: { flex: 1, fontSize: 12.5, color: colors.stBlocked, fontWeight: '500' },
+  retryText: { fontSize: 12.5, fontWeight: '700', color: colors.accent },
+
+  skeleton: { height: 72, marginTop: space.md, opacity: 0.4 },
 
   emptyCard: { padding: space.xl, alignItems: 'center', marginTop: space.lg },
   emptyText: { fontSize: 14, color: colors.textMuted, textAlign: 'center' },
 
   orderCard: { padding: 14, marginTop: space.md },
   orderRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.bgInset },
-  avatarPlaceholder: { backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  avatarMonogram: { fontSize: 14, fontWeight: '500', color: colors.accentDeep },
-  orderBody: { flex: 1, minWidth: 0, gap: 1 },
-  orderTitle: { fontSize: 14.5, fontWeight: '500', color: colors.text },
-  orderSubtitle: { fontSize: 12, color: colors.textSubtle },
-  orderAmount: { alignItems: 'flex-end', flexShrink: 0 },
-  amountText: { fontSize: 15, fontWeight: '500', letterSpacing: -0.3, color: colors.textSubtle },
-
-  orderFooter: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
-
-  caption: { fontSize: 12, color: colors.textSubtle, textAlign: 'center', marginTop: space.lg, lineHeight: 17 },
+  orderBody: { flex: 1, minWidth: 0, gap: 3 },
+  orderMeta: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  orderId: { fontSize: 12, fontWeight: '500', color: colors.textSubtle, letterSpacing: 0.2 },
+  orderCustomer: { fontSize: 13.5, color: colors.textMuted },
+  orderRight: { alignItems: 'flex-end', flexShrink: 0 },
+  orderAmount: {
+    fontSize: 15, fontWeight: '600', color: colors.text,
+    letterSpacing: -0.3,
+  },
+  orderDate: { fontSize: 11.5, color: colors.textSubtle, marginTop: 2 },
 });

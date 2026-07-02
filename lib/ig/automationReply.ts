@@ -70,7 +70,8 @@ export async function generateAutomationMessage(
         { role: "system", content: sys },
         { role: "user", content: user },
       ],
-      { temperature: 0.85 }
+      // accountId → llm.ts resolves the account's BYOK key (env key fallback)
+      { temperature: 0.85, accountId: ctx.account?.igUserId }
     )
   );
 }

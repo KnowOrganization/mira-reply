@@ -5,7 +5,7 @@ import {
   Clock, Send, AlertTriangle, User, Tag, StickyNote, Sparkles, Megaphone, RefreshCw,
 } from "lucide-react";
 import {
-  useConversations, useConversation, useSendReply, usePatchConversation, useCrmAnalytics,
+  useConversations, useConversation, useSendReply, usePatchConversation, useCrmAnalytics, useGenerateDraft,
   useSyncDms, useInboxStream, type CrmConversationListItem,
 } from "@/lib/api/hooks";
 import { SkThreadRow, SkMessageBubble, SkRepeat } from "@/components/skeleton";
@@ -42,6 +42,7 @@ export function DmsTab() {
   const analytics = useCrmAnalytics();
   const detail = useConversation(selected);
   const send = useSendReply();
+  const generate = useGenerateDraft();
   const patch = usePatchConversation();
   const syncDms = useSyncDms();
   // real-time: webhook → Redis → SSE → here. New DMs/drafts/sent replies push in
@@ -241,6 +242,14 @@ export function DmsTab() {
                       </span>
                     )}
                   </span>
+                  <button
+                    onClick={() => generate.mutate(selected!)}
+                    disabled={generate.isPending}
+                    className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                    style={{ color: "var(--accent)", border: "1px solid var(--border)", background: "var(--bg-elev)", opacity: generate.isPending ? 0.6 : 1 }}
+                  >
+                    {generate.isPending ? "Regenerating…" : "Regenerate"}
+                  </button>
                 </div>
                 <div className="text-[12px] leading-[1.45]" style={{ color: "var(--text)" }}>{conv.ai_draft}</div>
                 {conv.ai_reason && (
@@ -257,10 +266,20 @@ export function DmsTab() {
                   {(send.error as Error)?.message || "Send failed"}
                 </div>
               )}
-              {!conv.ai_draft ? (
-                <div className="text-[11.5px] text-center py-2" style={{ color: "var(--text-subtle)" }}>
-                  Waiting for Mira's draft…
+              {generate.isError && (
+                <div className="text-[11px] mb-2 px-1" style={{ color: "#ef4444" }}>
+                  {(generate.error as Error)?.message || "Draft generation failed"}
                 </div>
+              )}
+              {!conv.ai_draft ? (
+                <button
+                  onClick={() => generate.mutate(selected!)}
+                  disabled={generate.isPending}
+                  className="w-full rounded-lg px-4 py-2.5 flex items-center justify-center gap-1.5 text-[12.5px] font-semibold"
+                  style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--border)", opacity: generate.isPending ? 0.6 : 1 }}
+                >
+                  <Sparkles size={13} /> {generate.isPending ? "Mira is drafting…" : "Generate reply with Mira"}
+                </button>
               ) : (
                 <button
                   onClick={doSend}

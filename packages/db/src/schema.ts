@@ -154,8 +154,11 @@ export const postConfigs = pgTable("post_configs", {
 }, (t) => [uniqueIndex("uq_post_configs_post").on(t.accountId, t.igPostId)]);
 
 // ── products (DM marketplace catalog) ────────────────────────────────────────
-// Account-scoped. Checkout is link-out only (ctaUrl) — Mira never processes money.
-// priceText is a free string ("Rs 1,499" / "DM for price"); never numeric.
+// Account-scoped. Checkout supports both link-out (ctaUrl) and embedded Razorpay
+// card payment (priceMinor+currency when storefrontCheckoutEnabled).
+// priceText is a free-form display string ("Rs 1,499"); priceMinor is the
+// machine-readable amount in minor units (paise for INR) — null means link-out
+// only for that product. int4 ceiling for priceMinor: ₹21.4L per unit (fine).
 export type ProductVariant = { id: string; label: string; priceText: string | null; available: boolean };
 export const products = pgTable("products", {
   id: text("id").primaryKey(),
@@ -164,6 +167,11 @@ export const products = pgTable("products", {
   subtitle: text("subtitle").notNull().default(""),
   description: text("description").notNull().default(""),
   priceText: text("price_text"),
+  // Numeric minor units for embedded Razorpay checkout; null = link-out only.
+  // CRITICAL: int4 max ~2.1B — amounts in paise are fine (₹21.4L ceiling per product).
+  // NEVER store Date.now()/ms timestamps in int4 (22003 overflow — use bigint/ms()).
+  priceMinor: integer("price_minor"),
+  currency: text("currency").notNull().default("INR"),
   imageUrl: text("image_url"),
   // Additional photos beyond imageUrl (imageUrl stays the cover/first image for
   // back-compat with existing readers). Data-URLs for now — no object storage is
@@ -174,7 +182,7 @@ export const products = pgTable("products", {
   // Flat variant list (e.g. "Black / M", "32GB"), not a full option-axis matrix —
   // covers color/size/etc without building combination-generation UI.
   variants: jsonb("variants").$type<ProductVariant[]>().notNull().default([]),
-  ctaUrl: text("cta_url"),                       // owner-set link-out — the only checkout
+  ctaUrl: text("cta_url"),                       // owner-set link-out (fallback when priceMinor null or checkoutEnabled false)
   available: boolean("available").notNull().default(true),
   featured: boolean("featured").notNull().default(false),
   aliases: jsonb("aliases").$type<string[]>().notNull().default([]),
@@ -187,6 +195,49 @@ export const products = pgTable("products", {
   index("idx_products_account").on(t.accountId, t.sortOrder),
   index("idx_products_available").on(t.accountId, t.available),
   uniqueIndex("uq_products_slug").on(t.accountId, t.slug),
+]);
+
+// ── Orders (Razorpay checkout) ───────────────────────────────────────────────
+// Account-scoped. amountTotal is int4 (minor units — paise for INR, ceiling ₹21.4L
+// per order — note: fine for single-item orders; split large carts at UI layer).
+// NEVER store Date.now()/ms timestamps in int4 — use ms() (bigint) for all timestamps.
+export type ShippingAddress = {
+  name?: string; line1?: string; line2?: string;
+  city?: string; state?: string; postalCode?: string; country?: string;
+};
+export const orders = pgTable("orders", {
+  id: text("id").primaryKey(),                   // crypto.randomUUID()
+  accountId: text("account_id").notNull(),
+  status: text("status").notNull().default("pending"), // pending|paid|failed|refunded
+  currency: text("currency").notNull().default("INR"),
+  amountTotal: integer("amount_total").notNull(), // minor units; int4 fine (see ceiling note above)
+  email: text("email"),
+  customerName: text("customer_name"),
+  shipping: jsonb("shipping").$type<ShippingAddress>(),
+  razorpayOrderId: text("razorpay_order_id"),
+  razorpayPaymentId: text("razorpay_payment_id"),
+  createdAt: ms("created_at").notNull().default(0),
+  updatedAt: ms("updated_at").notNull().default(0),
+  paidAt: ms("paid_at"),
+}, (t) => [
+  index("idx_orders_account_created").on(t.accountId, t.createdAt),
+  // Unique on razorpayOrderId so duplicate webhook deliveries hit ON CONFLICT.
+  // NULL values are distinct in Postgres — safe for rows before attachRazorpayOrder.
+  uniqueIndex("uq_orders_rzp").on(t.razorpayOrderId),
+]);
+
+export const orderItems = pgTable("order_items", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  orderId: text("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  accountId: text("account_id").notNull(),
+  productId: text("product_id").notNull(),
+  titleSnapshot: text("title_snapshot").notNull().default(""),
+  priceMinor: integer("price_minor").notNull(), // locked at order creation — server truth
+  qty: integer("qty").notNull().default(1),
+  variantId: text("variant_id"),
+  variantLabel: text("variant_label"),
+}, (t) => [
+  index("idx_order_items_order").on(t.orderId),
 ]);
 
 // ── Guard: moderation rules (auto-flag categories + keyword blocklist) ──────
@@ -704,4 +755,5 @@ export type Schema = {
   scheduledPosts: typeof scheduledPosts;
   funnelEntries: typeof funnelEntries; discountCodes: typeof discountCodes; abAssignments: typeof abAssignments;
   productInterest: typeof productInterest;
+  orders: typeof orders; orderItems: typeof orderItems;
 };

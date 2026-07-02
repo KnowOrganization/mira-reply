@@ -22,7 +22,8 @@ import { checkFollowStatus } from "./followCheck";
 import { parkPending, claimPending, claimDueRetries, bumpAutomationStats } from "./pending";
 import { getAutomation, currentAccountId } from "./accountsRepo";
 import { claimOnce, isClaimed, k } from "./redis";
-import { query } from "@shaiz/db";
+import { query, recordFunnelEntry, issueDiscountCode, listDiscountCodes, assignVariant } from "@shaiz/db";
+import { lookupProducts } from "./catalog";
 import { assembleContext } from "./ctx";
 import { generateAutomationMessage, type AutomationPurpose } from "./automationReply";
 
@@ -248,6 +249,17 @@ export async function executeAutomation(
   let rateLimited = false; // set true when a send hits an Instagram 613/429
   // Records whether any send in a node hit a rate-limit so we can park-and-retry.
   const track = (r: SendResult): SendResult => { if (r.rateLimited) rateLimited = true; return r; };
+
+  // Literal-text private-reply-with-DM-fallback, content-hash dedup'd — the
+  // lead_form idiom, shared by the funnel nodes whose copy is data-driven
+  // (codes, quiz replies, variants) and must NOT be LLM-rewritten.
+  const sendLiteral = async (msg: string): Promise<void> => {
+    if (await textAlreadySent(accountId, event.fromUserId, `pr:${msg}`)) { sentCount++; return; }
+    const pr = track(await tryPrivateReply(event.commentId, event.fromUserId, msg));
+    if (pr.ok) { sentCount++; await markTextSent(accountId, event.fromUserId, `pr:${msg}`); return; }
+    const dm = track(await tryDM(event.fromUserId, msg));
+    if (dm.ok) { sentCount++; await markTextSent(accountId, event.fromUserId, `pr:${msg}`); } else failCount++;
+  };
 
   while (bfsQueue.length) {
     const nodeId = bfsQueue.shift()!;
@@ -497,6 +509,122 @@ export async function executeAutomation(
           }, delayMs);
           sentCount++;
         }
+        break;
+      }
+
+      // ── Funnel Studio executors ─────────────────────────────────────────────
+      // Literal data-driven sends via sendLiteral (lead_form idiom). Every case
+      // pushes its DryRunStep unconditionally; DB writes and sends are guarded by
+      // !dryRun so Test previews never record entries, burn codes, or assign
+      // variants. Known limitation: the resumeAutomationAfterButtonClick /
+      // resumeAutomationAfterFollow walkers have their own smaller switches, so
+      // funnel nodes placed AFTER a button/follow gate are skipped on resume.
+
+      case "giveaway": {
+        const base = d.text?.trim() || "You're in! 🎉 Entry confirmed.";
+        if (dryRun) {
+          const msg = d.showEntryNumber ? `${base}\nYou're entry #1` : base;
+          steps.push({ nodeType: "giveaway", action: "record_entry + private_reply", text: msg });
+          break;
+        }
+        // Idempotent: uq(automationId, fromUserId) → repeat commenter gets their
+        // original entry number back, never a second entry.
+        const entry = await recordFunnelEntry(accountId, automation.id, {
+          fromUserId: event.fromUserId, fromUsername: event.fromUsername,
+        });
+        const msg = d.showEntryNumber ? `${base}\nYou're entry #${entry.entryNumber}` : base;
+        steps.push({ nodeType: "giveaway", action: "record_entry + private_reply", text: msg });
+        await sendLiteral(msg);
+        break;
+      }
+
+      case "discount_code": {
+        const pool = (d.codePool ?? []).map((c) => c.trim()).filter(Boolean);
+        const outMsg = d.outOfCodesText?.trim() || "We're out of codes for now — check back soon!";
+        if (dryRun) {
+          const code = pool[0];
+          const msg = code ? `Here's your code: ${code} 🎁` : outMsg;
+          steps.push({ nodeType: "discount_code", action: code ? "issue_code + private_reply" : "out_of_codes", text: msg });
+          break;
+        }
+        const issued = await listDiscountCodes(accountId, automation.id);
+        // Same user already holds a code → resend theirs instead of burning another.
+        const mine = issued.find((c) => c.issuedTo === event.fromUserId);
+        const usedCodes = new Set(issued.map((c) => c.code));
+        const code = mine?.code ?? pool.find((c) => !usedCodes.has(c));
+        if (!code) {
+          steps.push({ nodeType: "discount_code", action: "out_of_codes", text: outMsg });
+          await sendLiteral(outMsg);
+          break;
+        }
+        if (!mine) {
+          await issueDiscountCode(accountId, automation.id, {
+            code, issuedTo: event.fromUserId, issuedToUsername: event.fromUsername,
+          });
+        }
+        const msg = `Here's your code: ${code} 🎁`;
+        steps.push({ nodeType: "discount_code", action: "issue_code + private_reply", text: msg });
+        await sendLiteral(msg);
+        break;
+      }
+
+      case "quiz": {
+        // Single-pass: match the CURRENT event text against answers — the trigger
+        // keyword usually IS the quiz answer ("comment A, B or C"). A two-turn
+        // "prompt, then await reply" quiz would need a new PendingKind ("quiz")
+        // in pending.ts plus a DM-pipeline resume hook — deliberate non-goal here.
+        const answers = d.answers ?? [];
+        const hit = answers.find((a) => a.match && keywordMatches(event.text, a.match));
+        const msg = hit?.reply?.trim() || d.text?.trim() || null;
+        if (!msg) break;
+        steps.push({ nodeType: "quiz", action: hit ? `answer_matched:${hit.match}` : "no_match_prompt", text: msg });
+        if (!dryRun) await sendLiteral(msg);
+        break;
+      }
+
+      case "tag_reward": {
+        const min = d.minTags ?? 1;
+        const mentions = (event.text.match(/@[a-zA-Z0-9._]+/g) ?? []).length;
+        if (mentions < min) {
+          // Gate semantics like follow_gate but with no park — a fresh comment
+          // with enough tags simply re-triggers the automation.
+          steps.push({ nodeType: "tag_reward", action: `blocked_needs_${min}_tags_got_${mentions}`, text: "" });
+          gated = true;
+          break;
+        }
+        const msg = d.text?.trim() || "Thanks for tagging your friends! 🎁";
+        steps.push({ nodeType: "tag_reward", action: "reward_sent", text: msg });
+        if (!dryRun) await sendLiteral(msg);
+        break;
+      }
+
+      case "ab_split": {
+        const variants = (d.variants ?? []).filter((v) => v.text?.trim());
+        if (!variants.length) break;
+        // assignVariant is sticky per user (0|1) and feeds abResults; dry run
+        // previews variant 0 without writing an assignment. markVariantConverted
+        // stays unused — no conversion signal is defined yet.
+        let idx = dryRun ? 0 : await assignVariant(accountId, automation.id, event.fromUserId);
+        if (idx >= variants.length) idx = idx % variants.length;
+        const v = variants[idx];
+        steps.push({ nodeType: "ab_split", action: `variant_${idx}${v.label ? `:${v.label}` : ""}`, text: v.text.trim() });
+        if (!dryRun) await sendLiteral(v.text.trim());
+        break;
+      }
+
+      case "price_reply": {
+        const { match } = lookupProducts(store.products ?? [], event.text);
+        let msg: string;
+        if (match) {
+          const price = match.priceText?.trim() || "price on request";
+          const link = match.ctaUrl ? `\n${match.ctaUrl}` : "";
+          msg = `${match.title} — ${price}${link}`;
+        } else {
+          msg = d.text?.trim() || "";
+        }
+        if (!msg) break;
+        steps.push({ nodeType: "price_reply", action: match ? `product:${match.title}` : "fallback", text: msg });
+        if (!dryRun) await sendLiteral(msg);
         break;
       }
     }

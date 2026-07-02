@@ -40,6 +40,20 @@ export const automationsRoute = new Elysia()
     const allowed = ["name", "enabled", "trigger", "nodes", "edges", "stats"];
     const patch: Record<string, unknown> = {};
     for (const k of allowed) if ((body as any)?.[k] !== undefined) patch[k] = (body as any)[k];
+    // The engine traverses edges only. If a client saves nodes without edges
+    // (mobile's linear builder, template seeding), derive the linear chain from
+    // array order so the automation stays executable. Web's canvas always sends
+    // both together, so this never fires for it.
+    if (patch.nodes !== undefined && patch.edges === undefined) {
+      const nodes = patch.nodes as { id: string; type: string }[];
+      const trig = nodes.find((n) => n.type === "trigger");
+      const ordered = trig ? [trig, ...nodes.filter((n) => n !== trig)] : nodes;
+      patch.edges = ordered.slice(0, -1).map((n, i) => ({
+        id: `e_${n.id}_${ordered[i + 1].id}`,
+        source: n.id,
+        target: ordered[i + 1].id,
+      }));
+    }
     const automation = await patchAutomation(auth.accountId, params.id, patch as any);
     if (!automation) { set.status = 404; return { error: "not found" }; }
     return { automation };

@@ -8,7 +8,7 @@
     "scheme": "miraapp",
     "userInterfaceStyle": "light",
     "extra": {
-      "apiBase": "https://unveiled-walrus-blade.ngrok-free.dev"
+      "apiBase": "http://localhost:4000"
     },
     "ios": {
       "supportsTablet": true,

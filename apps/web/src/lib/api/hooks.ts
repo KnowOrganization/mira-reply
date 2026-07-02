@@ -34,6 +34,7 @@ export const qk = {
   automations: ["ig", "automations"] as const,
   automation: (id: string) => ["ig", "automations", id] as const,
   products: ["ig", "products"] as const,
+  orders: ["ig", "orders"] as const,
   conversations: (folder?: string) => ["ig", "crm", "conversations", { folder: folder ?? "" }] as const,
   conversation: (id: string) => ["ig", "crm", "conversations", id] as const,
 };
@@ -167,6 +168,8 @@ export type Product = {
   subtitle: string;
   description: string;
   priceText: string | null;
+  priceMinor: number | null;   // minor units (paise for INR); null = link-out only
+  currency: string;             // ISO 4217, e.g. "INR"
   imageUrl: string | null;
   ctaUrl: string | null;
   available: boolean;
@@ -175,6 +178,26 @@ export type Product = {
   sortOrder: number;
   createdAt: number;
   updatedAt: number;
+};
+
+// ── orders ─────────────────────────────────────────────────────────────────
+export type OrderApi = {
+  id: string;
+  status: string;           // "pending" | "paid" | "failed"
+  currency: string;
+  amountTotal: number;      // minor units (paise)
+  email: string | null;
+  customerName: string | null;
+  razorpayOrderId: string | null;
+  razorpayPaymentId: string | null;
+  createdAt: number;
+  updatedAt: number;
+  paidAt: number | null;
+};
+
+export type OrdersResp = {
+  orders: OrderApi[];
+  stats: { count: number; revenueCents: number; newCount: number };
 };
 
 export function useProducts(opts?: QOpts<{ products: Product[] }>) {
@@ -206,6 +229,14 @@ export function useDeleteProduct() {
   return useMutation({
     mutationFn: (id: string) => api.del(`/api/ig/products/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.products }),
+  });
+}
+
+export function useOrders(opts?: QOpts<OrdersResp>) {
+  return useQuery<OrdersResp>({
+    queryKey: qk.orders,
+    queryFn: () => api.get<OrdersResp>("/api/ig/orders"),
+    ...opts,
   });
 }
 
@@ -662,6 +693,30 @@ export function usePatchConversation() {
       qc.invalidateQueries({ queryKey: qk.conversation(vars.id) });
       qc.invalidateQueries({ queryKey: ["ig", "crm", "conversations"] });
     },
+  });
+}
+
+/** Ask Mira to (re)generate the reply draft for a conversation — writes
+ *  ai_draft server-side + publishes an SSE draft event. 503 until an AI key
+ *  is configured (NVIDIA_API_KEY env or BYOK via ai-settings). */
+export function useGenerateDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<{ draft: string }>(`/api/ig/crm/conversations/${id}/draft/generate`),
+    onSuccess: (_d, id) => {
+      qc.invalidateQueries({ queryKey: qk.conversation(id) });
+      qc.invalidateQueries({ queryKey: ["ig", "crm", "conversations"] });
+    },
+  });
+}
+
+/** Generate a suggested public reply for a comment (request/response — the
+ *  client reviews then sends via POST /api/ig/comments/:id/reply). */
+export function useGenerateCommentReply() {
+  return useMutation({
+    mutationFn: (commentId: string) =>
+      api.post<{ reply: string }>(`/api/ig/comments/${commentId}/generate`),
   });
 }
 

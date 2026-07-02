@@ -7,7 +7,7 @@ export type IconName =
   | 'home' | 'inbox' | 'flows' | 'opps' | 'user'
   | 'plus' | 'chevronRight' | 'chevronLeft' | 'bell' | 'sparkle'
   | 'send' | 'clock' | 'instagram' | 'settings' | 'check' | 'close' | 'message'
-  | 'chat' | 'tag' | 'link' | 'shield'
+  | 'chat' | 'tag' | 'link' | 'shield' | 'trash'
   | 'pipeline' | 'automations' | 'orders' | 'trendUp' | 'target' | 'megaphone';
 
 const PATHS: Record<IconName, (c: string) => React.ReactNode> = {
@@ -74,6 +74,7 @@ const PATHS: Record<IconName, (c: string) => React.ReactNode> = {
     </>
   ),
   shield: (c) => <Path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5l-8-3Z" stroke={c} />,
+  trash: (c) => <Path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" stroke={c} />,
   pipeline: (c) => <Path d="M4 6h16M7 12h10M10 18h4" stroke={c} />,
   automations: (c) => (
     <>

@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Pressable,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,10 +13,15 @@ import { Card } from '../../src/components/Card';
 import { Chip, Toggle, type ChipTone } from '../../src/components/primitives';
 import { Icon } from '../../src/components/Icon';
 import { colors, radius, space } from '../../src/theme';
-import { useAutomations, usePatchAutomation } from '../../src/api/hooks';
+import { useAutomations, usePatchAutomation, useDeleteAutomation } from '../../src/api/hooks';
 import { SkRepeat } from '../../src/components/skeleton/primitives';
 import { SkFlowCard } from '../../src/components/skeleton/units';
 import type { Automation, AutomationTriggerType, AutomationNodeType } from '@shaiz/shared';
+
+const FUNNEL_TYPES: AutomationNodeType[] = ['giveaway', 'discount_code', 'ab_split'];
+
+// v1: quick-action tiles (Inbox AI setup / Funnel results) hidden per product call.
+const SHOW_QUICK_ACTIONS = false;
 
 // Live Automations screen: lists IgStore automations, lets you enable/disable each
 // (usePatchAutomation), and taps through to /flow/:id.
@@ -50,10 +56,38 @@ export default function Flows() {
   const router = useRouter();
   const { data, isLoading } = useAutomations();
   const patch = usePatchAutomation();
+  const deleteAutomation = useDeleteAutomation();
 
   const automations: Automation[] = data?.automations ?? [];
   const activeCount = automations.filter((a) => a.enabled).length;
   const totalCount = automations.length;
+
+  function openCreate() {
+    router.push('/templates');
+  }
+
+  function confirmDelete(a: Automation) {
+    Alert.alert('Delete automation', `Delete "${a.name}"? This can't be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteAutomation.mutate(a.id) },
+    ]);
+  }
+
+  function openFunnelResults() {
+    const funnelAutomations = automations.filter((a) => a.nodes.some((n) => FUNNEL_TYPES.includes(n.type)));
+    if (funnelAutomations.length === 0) {
+      Alert.alert('No funnel data yet', 'Add a Giveaway, Discount code, or A/B split step to an automation first.');
+      return;
+    }
+    if (funnelAutomations.length === 1) {
+      router.push(`/funnelresults/${funnelAutomations[0].id}`);
+      return;
+    }
+    Alert.alert('Choose a flow', 'Pick which automation to view funnel results for.', [
+      ...funnelAutomations.map((a) => ({ text: a.name, onPress: () => router.push(`/funnelresults/${a.id}`) })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  }
 
   return (
     <View style={styles.root}>
@@ -71,43 +105,38 @@ export default function Flows() {
           <Text style={styles.sublineStrong}>{activeCount}</Text> active · {totalCount} flows built
         </Text>
 
-        {/* Quick-action row */}
-        <View style={styles.quickRow}>
-          <Pressable
-            style={({ pressed }) => [styles.quickTileWrap, pressed && styles.pressed]}
-            onPress={() => {
-              // TODO inbox AI setup
-            }}
-          >
-            <Card radius={14} style={styles.quickTile}>
-              <View style={styles.quickTileIcon}>
-                <Icon name="sparkle" size={17} color={colors.accentDeep} />
-              </View>
-              <Text style={styles.quickTileLabel}>Inbox AI setup</Text>
-            </Card>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.quickTileWrap, pressed && styles.pressed]}
-            onPress={() => {
-              // TODO funnel results
-            }}
-          >
-            <Card radius={14} style={styles.quickTile}>
-              <View style={styles.quickTileIcon}>
-                <Icon name="opps" size={17} color={colors.accentDeep} />
-              </View>
-              <Text style={styles.quickTileLabel}>Funnel results</Text>
-            </Card>
-          </Pressable>
-        </View>
+        {/* Quick-action row — hidden for v1 (Inbox AI setup + Funnel results
+            tiles); wiring kept below (openFunnelResults, /inboxai route) for
+            when they come back. */}
+        {SHOW_QUICK_ACTIONS && (
+          <View style={styles.quickRow}>
+            <Pressable
+              style={({ pressed }) => [styles.quickTileWrap, pressed && styles.pressed]}
+              onPress={() => router.push('/inboxai')}
+            >
+              <Card radius={14} style={styles.quickTile}>
+                <View style={styles.quickTileIcon}>
+                  <Icon name="sparkle" size={17} color={colors.accentDeep} />
+                </View>
+                <Text style={styles.quickTileLabel}>Inbox AI setup</Text>
+              </Card>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.quickTileWrap, pressed && styles.pressed]}
+              onPress={openFunnelResults}
+            >
+              <Card radius={14} style={styles.quickTile}>
+                <View style={styles.quickTileIcon}>
+                  <Icon name="opps" size={17} color={colors.accentDeep} />
+                </View>
+                <Text style={styles.quickTileLabel}>Funnel results</Text>
+              </Card>
+            </Pressable>
+          </View>
+        )}
 
         {/* Big dashed Create automation */}
-        <Pressable
-          style={({ pressed }) => pressed && styles.pressed}
-          onPress={() => {
-            // TODO create
-          }}
-        >
+        <Pressable style={({ pressed }) => pressed && styles.pressed} onPress={openCreate}>
           <View style={styles.createBlock}>
             <View style={styles.createIcon}>
               <Icon name="plus" size={30} strokeWidth={2.2} color="#fff" />
@@ -132,6 +161,7 @@ export default function Flows() {
                 automation={a}
                 onToggle={() => patch.mutate({ id: a.id, patch: { enabled: !a.enabled } })}
                 onPress={() => router.push(`/flow/${a.id}`)}
+                onLongPress={() => confirmDelete(a)}
               />
             ))}
           </View>
@@ -139,12 +169,7 @@ export default function Flows() {
 
         {/* Bottom dashed New automation bar */}
         {automations.length > 0 ? (
-          <Pressable
-            style={({ pressed }) => pressed && styles.pressed}
-            onPress={() => {
-              // TODO new automation
-            }}
-          >
+          <Pressable style={({ pressed }) => pressed && styles.pressed} onPress={openCreate}>
             <View style={styles.newBar}>
               <Icon name="plus" size={17} color={colors.textMuted} />
               <Text style={styles.newBarLabel}>New automation</Text>
@@ -160,10 +185,12 @@ function FlowCard({
   automation,
   onToggle,
   onPress,
+  onLongPress,
 }: {
   automation: Automation;
   onToggle: () => void;
   onPress: () => void;
+  onLongPress?: () => void;
 }) {
   const { enabled, name, trigger, nodes, stats } = automation;
   const triggerLabel = TRIGGER_LABELS[trigger.type] ?? trigger.type;
@@ -182,7 +209,7 @@ function FlowCard({
   if (overflow > 0) chipItems.push({ label: `+${overflow}`, tone: 'grey' });
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => pressed && styles.pressed}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => pressed && styles.pressed}>
       <Card radius={radius.lg} style={styles.card}>
         {/* Head row */}
         <View style={styles.headRow}>

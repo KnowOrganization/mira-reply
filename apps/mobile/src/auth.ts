@@ -3,11 +3,30 @@ import { expoClient } from '@better-auth/expo/client';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 
-// API base = the Next/Elysia backend over the ngrok tunnel. OAuth runs
-// server-side against the web Google client — no native Google client needed.
+// API base = the Next/Elysia backend. OAuth runs server-side against the web
+// Google client — no native Google client needed.
+// Resolution order: EXPO_PUBLIC_API_BASE (inlined by Metro at bundle time —
+// switchable without a native rebuild, unlike expoConfig.extra which is baked
+// into the binary by `expo run:ios`) → app.json extra → ngrok fallback.
 export const API_BASE: string =
+  process.env.EXPO_PUBLIC_API_BASE ||
   (Constants.expoConfig?.extra as { apiBase?: string } | undefined)?.apiBase ||
   'https://unveiled-walrus-blade.ngrok-free.dev';
+
+// WEB_BASE = the Next web origin that serves the storefront pages (/s/*).
+// Differs from API_BASE: local apiBase is :4000 (Elysia, API only) while Next
+// dev is :3000; a tunnel/remote host fronts Next (serves /s/* AND proxies /api)
+// so it's used as-is. Derive rule covers both; override with EXPO_PUBLIC_WEB_BASE
+// or app.json extra.webBase.
+function deriveWebBase(api: string): string {
+  return api
+    .replace('://localhost:4000', '://localhost:3000')
+    .replace('://127.0.0.1:4000', '://127.0.0.1:3000');
+}
+export const WEB_BASE: string =
+  process.env.EXPO_PUBLIC_WEB_BASE ||
+  (Constants.expoConfig?.extra as { webBase?: string } | undefined)?.webBase ||
+  deriveWebBase(API_BASE);
 
 export const TOKEN_KEY = 'mira_token';
 export const INTRO_SEEN_KEY = 'mira_intro_seen';

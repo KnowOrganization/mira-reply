@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef, useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import BottomSheetModal, { BottomSheetView, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
+import { BottomSheetModal, BottomSheetView, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
 import { useRouter } from 'expo-router';
 import { Toggle } from '../primitives';
 import { colors, radius, space } from '../../theme';
@@ -9,6 +9,8 @@ import { loadSession, signOut, type SessionUser } from '../../auth';
 
 // Settings sheet (doc: Mira.dc.html:1237-1260) — account header, Preferences
 // toggles, Disconnect. Opened from Home's avatar + Profile's Reply-mode row.
+const SNAP_POINTS = ['55%'];
+
 export type SettingsSheetHandle = { present: () => void; dismiss: () => void };
 
 export const SettingsSheet = forwardRef<SettingsSheetHandle>((_props, ref) => {
@@ -39,7 +41,7 @@ export const SettingsSheet = forwardRef<SettingsSheetHandle>((_props, ref) => {
   return (
     <BottomSheetModal
       ref={sheetRef}
-      snapPoints={['55%']}
+      snapPoints={SNAP_POINTS}
       backdropComponent={(p) => <BottomSheetBackdrop {...p} appearsOnIndex={0} disappearsOnIndex={-1} />}
       backgroundStyle={styles.sheetBg}
       handleIndicatorStyle={styles.handle}
