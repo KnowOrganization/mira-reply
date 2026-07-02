@@ -7,7 +7,19 @@ export type ChatMessage = {
   role: "system" | "user" | "assistant";
   content: string | ChatContentPart[];
 };
-export type ChatOpts = { json?: boolean; temperature?: number };
+export type ChatOpts = {
+  json?: boolean;
+  temperature?: number;
+  /** Per-call key override (account BYOK) — falls back to NVIDIA_API_KEY. */
+  apiKey?: string;
+};
+
+export class AiKeyMissingError extends Error {
+  constructor() {
+    super("AI key not configured — set NVIDIA_API_KEY or save a key in AI settings");
+    this.name = "AiKeyMissingError";
+  }
+}
 
 const BASE_URL = process.env.NIM_BASE_URL || "https://integrate.api.nvidia.com/v1";
 const TIMEOUT  = Number(process.env.NIM_TIMEOUT_MS || 30_000);
@@ -63,20 +75,30 @@ function visionModels(): readonly string[] {
   return env ? env.split(",").map((s) => s.trim()).filter(Boolean) : VISION_MODELS;
 }
 
+// Cached default client (env key); BYOK calls get a per-key client so one
+// account's key never leaks into another's requests.
 let _client: OpenAI | null = null;
-function client(): OpenAI {
-  return (_client ??= new OpenAI({
-    baseURL: BASE_URL,
-    apiKey: process.env.NVIDIA_API_KEY || "",
-    timeout: TIMEOUT,
-  }));
+const _byokClients = new Map<string, OpenAI>();
+function client(apiKey?: string): OpenAI {
+  const key = apiKey?.trim() || process.env.NVIDIA_API_KEY || "";
+  if (!key) throw new AiKeyMissingError(); // fail clear + early, not after a 23-model cascade
+  if (!apiKey?.trim()) {
+    return (_client ??= new OpenAI({ baseURL: BASE_URL, apiKey: key, timeout: TIMEOUT }));
+  }
+  let c = _byokClients.get(key);
+  if (!c) {
+    c = new OpenAI({ baseURL: BASE_URL, apiKey: key, timeout: TIMEOUT });
+    _byokClients.set(key, c);
+  }
+  return c;
 }
 
 export async function nimChat(messages: ChatMessage[], opts: ChatOpts = {}): Promise<string> {
+  const c = client(opts.apiKey); // throws AiKeyMissingError before the cascade
   let lastErr: unknown;
   for (const model of models()) {
     try {
-      const res = await client().chat.completions.create({
+      const res = await c.chat.completions.create({
         model,
         messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
         temperature: opts.temperature ?? 0.7,
@@ -99,10 +121,11 @@ export async function nimChat(messages: ChatMessage[], opts: ChatOpts = {}): Pro
 /** Vision variant — same rotate-on-failure shape as nimChat, but over the
  *  small isolated VISION_MODELS list (see above for why). */
 export async function nimChatVision(messages: ChatMessage[], opts: ChatOpts = {}): Promise<string> {
+  const c = client(opts.apiKey);
   let lastErr: unknown;
   for (const model of visionModels()) {
     try {
-      const res = await client().chat.completions.create({
+      const res = await c.chat.completions.create({
         model,
         messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
         temperature: opts.temperature ?? 0.4,
@@ -121,12 +144,13 @@ export async function nimChatVision(messages: ChatMessage[], opts: ChatOpts = {}
   );
 }
 
-export async function* nimChatStream(messages: ChatMessage[]): AsyncGenerator<string> {
+export async function* nimChatStream(messages: ChatMessage[], opts: ChatOpts = {}): AsyncGenerator<string> {
+  const c = client(opts.apiKey);
   let lastErr: unknown;
   for (const model of models()) {
     let yielded = false;
     try {
-      const stream = client().chat.completions.stream({
+      const stream = c.chat.completions.stream({
         model,
         messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
       });

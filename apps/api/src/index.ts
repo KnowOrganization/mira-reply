@@ -21,6 +21,7 @@ import { teamRoute } from "./routes/team";
 import { postsRoute } from "./routes/posts";
 import { inboxRoute } from "./routes/inbox";
 import { crmRoute } from "./routes/crm";
+import { uploadRoute } from "./routes/upload";
 import { opportunitiesRoute } from "./routes/opportunities";
 import { analyticsRoute } from "./routes/analytics";
 import { llmRoute } from "./routes/llm";
@@ -36,6 +37,9 @@ import { funnelsRoute } from "./routes/funnels";
 import { inboxAiRoute } from "./routes/inboxAi";
 import { commerceRoute } from "./routes/commerce";
 import { contactsRoute } from "./routes/contacts";
+import { checkoutRoute } from "./routes/checkout";
+import { razorpayWebhookRoute } from "./routes/razorpayWebhook";
+import { ordersRoute } from "./routes/orders";
 
 // Railway (and most PaaS) inject PORT; honor it first, then API_PORT, then 4000.
 const PORT = Number(process.env.PORT || process.env.API_PORT || 4000);
@@ -49,6 +53,9 @@ const REQUIRED_ENV = [
   "META_APP_SECRET",
   "META_WEBHOOK_VERIFY_TOKEN",
   "BETTER_AUTH_SECRET",
+  "RAZORPAY_KEY_ID",
+  "RAZORPAY_KEY_SECRET",
+  "RAZORPAY_WEBHOOK_SECRET",
 ];
 const missingEnv = REQUIRED_ENV.filter((k) => !process.env[k]);
 if (missingEnv.length) {
@@ -151,12 +158,14 @@ export const app = new Elysia()
         request.headers.get("x-mira-account") ||
         server?.requestIP(request)?.address ||
         "anon",
-      // Never throttle Meta's webhook (dropping events loses messages; it's
-      // HMAC-verified + idempotent) or the uptime probes / API docs.
+      // Never throttle Meta's webhook, Razorpay's webhook (both are HMAC-verified
+      // + idempotent — dropping events loses messages / payment confirmations),
+      // or the uptime probes / API docs.
       skip: (request) => {
         const p = new URL(request.url).pathname;
         return (
           p.startsWith("/api/ig/webhook") ||
+          p.startsWith("/api/razorpay/webhook") ||
           p === "/health" ||
           p === "/ready" ||
           p.startsWith("/swagger")
@@ -188,6 +197,7 @@ export const app = new Elysia()
   .use(postsRoute)
   .use(inboxRoute)
   .use(crmRoute)
+  .use(uploadRoute)
   .use(opportunitiesRoute)
   .use(analyticsRoute)
   .use(llmRoute)
@@ -205,6 +215,12 @@ export const app = new Elysia()
   .use(webhookRoute)
   // public storefront (no auth — field-whitelisted, slug-resolved server-side)
   .use(storeRoute)
+  // public checkout endpoints under /api/store/:slug/checkout/* and /order/:id
+  .use(checkoutRoute)
+  // Razorpay webhook — raw-body HMAC-verified, always 200, rate-limit skipped
+  .use(razorpayWebhookRoute)
+  // owner orders view (authenticated)
+  .use(ordersRoute)
   // Bind all interfaces — on Railway the API runs as its own service reached over
   // the network (Vercel rewrites /api/* here). Security rests on per-route auth,
   // webhook HMAC, and the CORS allowlist (ALLOWED_ORIGINS) — not on loopback.

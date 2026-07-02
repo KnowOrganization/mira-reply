@@ -2,14 +2,15 @@
 // Replaces the per-route raw SQL / file-store access during the strangler port.
 // Single-account for now: currentAccountId() returns the connected account;
 // every function takes accountId so multi-account is a later no-op.
-import { eq, and, desc, count, sql as rawSql } from "drizzle-orm";
+import { eq, and, desc, count, sum, sql as rawSql } from "drizzle-orm";
 import { db } from "./client";
 import {
   accounts, automations, postConfigs, processedComments, userStates, knowledge, products,
   deviceTokens, moderationRules, moderationLog, scheduledPosts,
   funnelEntries, discountCodes, abAssignments, productInterest, commenters, conversations,
+  orders, orderItems,
 } from "./schema";
-import type { ProductVariant } from "./schema";
+import type { ProductVariant, ShippingAddress } from "./schema";
 import type { Settings } from "../../../lib/ig/store";
 
 // ── onboarding / brain readiness ─────────────────────────────────────────────
@@ -231,14 +232,16 @@ export async function funnelStats(igPostId: string) {
 type ProductRow = typeof products.$inferSelect;
 export type ProductApi = {
   id: string; title: string; subtitle: string; description: string;
-  priceText: string | null; imageUrl: string | null; images: string[]; variants: ProductVariant[]; ctaUrl: string | null;
+  priceText: string | null; priceMinor: number | null; currency: string;
+  imageUrl: string | null; images: string[]; variants: ProductVariant[]; ctaUrl: string | null;
   available: boolean; featured: boolean; aliases: string[]; slug: string | null; sortOrder: number;
   createdAt: number; updatedAt: number;
 };
 function toProductApi(r: ProductRow): ProductApi {
   return {
     id: r.id, title: r.title, subtitle: r.subtitle, description: r.description,
-    priceText: r.priceText, imageUrl: r.imageUrl, images: r.images, variants: r.variants, ctaUrl: r.ctaUrl,
+    priceText: r.priceText, priceMinor: r.priceMinor, currency: r.currency,
+    imageUrl: r.imageUrl, images: r.images, variants: r.variants, ctaUrl: r.ctaUrl,
     available: r.available, featured: r.featured, aliases: r.aliases, slug: r.slug, sortOrder: r.sortOrder,
     createdAt: r.createdAt, updatedAt: r.updatedAt,
   };
@@ -259,7 +262,9 @@ export async function createProduct(accountId: string, input: Partial<ProductApi
   const row = {
     id: crypto.randomUUID(), accountId, title: input.title,
     subtitle: input.subtitle ?? "", description: input.description ?? "",
-    priceText: input.priceText ?? null, imageUrl: input.imageUrl ?? null,
+    priceText: input.priceText ?? null,
+    priceMinor: input.priceMinor ?? null, currency: input.currency ?? "INR",
+    imageUrl: input.imageUrl ?? null,
     images: input.images ?? [], variants: input.variants ?? [], ctaUrl: input.ctaUrl ?? null,
     available: input.available ?? true, featured: input.featured ?? false, aliases: input.aliases ?? [],
     embedding: null, slug: input.slug ?? null, sortOrder: input.sortOrder ?? 0,
@@ -277,6 +282,8 @@ export async function updateProduct(accountId: string, id: string, patch: Partia
   if (patch.subtitle !== undefined) set.subtitle = patch.subtitle;
   if (patch.description !== undefined) set.description = patch.description;
   if (patch.priceText !== undefined) set.priceText = patch.priceText;
+  if (patch.priceMinor !== undefined) set.priceMinor = patch.priceMinor;
+  if (patch.currency !== undefined) set.currency = patch.currency;
   if (patch.imageUrl !== undefined) set.imageUrl = patch.imageUrl;
   if (patch.images !== undefined) set.images = patch.images;
   if (patch.variants !== undefined) set.variants = patch.variants;
@@ -634,4 +641,170 @@ export async function getAccountByStorefrontSlug(slug: string): Promise<string |
     if (s?.storefrontSlug === slug && s?.storefrontEnabled) return r.id;
   }
   return null;
+}
+
+// ── Orders (Razorpay checkout) ────────────────────────────────────────────────
+type OrderRow = typeof orders.$inferSelect;
+
+export type OrderApi = {
+  id: string; status: string; currency: string; amountTotal: number;
+  email: string | null; customerName: string | null;
+  razorpayOrderId: string | null; razorpayPaymentId: string | null;
+  createdAt: number; updatedAt: number; paidAt: number | null;
+};
+
+function toOrderApi(r: OrderRow): OrderApi {
+  return {
+    id: r.id, status: r.status, currency: r.currency, amountTotal: r.amountTotal,
+    email: r.email, customerName: r.customerName,
+    razorpayOrderId: r.razorpayOrderId, razorpayPaymentId: r.razorpayPaymentId,
+    createdAt: r.createdAt, updatedAt: r.updatedAt, paidAt: r.paidAt,
+  };
+}
+
+// Cart types exposed for checkout route + self-test
+export type CartItem = { productId: string; qty: number; variantId?: string };
+export type CartLine = {
+  productId: string; qty: number; priceMinor: number; titleSnapshot: string;
+  variantId?: string; variantLabel?: string;
+};
+export type CartTotal = { amountTotal: number; currency: string; lineItems: CartLine[] };
+
+/**
+ * Pure computation — no DB. Exported so the checkout route and cart-check.ts
+ * self-test can call it without a live DB dependency.
+ * Skips: unknown products, unavailable products, null-priceMinor products.
+ * Currency is taken from the last sellable product (all products in one account
+ * share one currency — mixed-currency cart is not a supported scenario).
+ */
+export function applyCartItems(
+  prods: Array<{
+    id: string; available: boolean; priceMinor: number | null;
+    currency: string; title: string;
+    variants: Array<{ id: string; label: string }>;
+  }>,
+  items: CartItem[],
+): CartTotal {
+  const prodMap = new Map(prods.map((p) => [p.id, p]));
+  const lineItems: CartLine[] = [];
+  let amountTotal = 0;
+  let currency = "INR";
+  for (const item of items) {
+    const p = prodMap.get(item.productId);
+    if (!p || !p.available || p.priceMinor == null) continue;
+    const qty = Math.max(1, Math.floor(item.qty));
+    const variantLabel = p.variants.find((v) => v.id === item.variantId)?.label;
+    lineItems.push({
+      productId: p.id, qty, priceMinor: p.priceMinor, titleSnapshot: p.title,
+      variantId: item.variantId, variantLabel,
+    });
+    amountTotal += p.priceMinor * qty;
+    currency = p.currency || "INR";
+  }
+  return { amountTotal, currency, lineItems };
+}
+
+/** Server-side cart total — ONLY source of truth for checkout amounts.
+ *  Client-side cart quantities are used for item selection only; price is
+ *  always fetched fresh from DB here so tampering has no effect. */
+export async function computeCartTotal(accountId: string, items: CartItem[]): Promise<CartTotal> {
+  const prods = await listProducts(accountId);
+  return applyCartItems(prods, items);
+}
+
+/** Insert order + all line items atomically. */
+export async function createOrder(
+  accountId: string,
+  input: { currency: string; amountTotal: number; email?: string; shipping?: ShippingAddress | null; items: CartLine[] },
+): Promise<OrderApi> {
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  const orderRow = {
+    id, accountId, status: "pending",
+    currency: input.currency, amountTotal: input.amountTotal,
+    email: input.email ?? null, customerName: null,
+    shipping: input.shipping ?? null,
+    razorpayOrderId: null, razorpayPaymentId: null,
+    createdAt: now, updatedAt: now, paidAt: null,
+  };
+  await db.transaction(async (tx) => {
+    await tx.insert(orders).values(orderRow);
+    if (input.items.length) {
+      await tx.insert(orderItems).values(
+        input.items.map((li) => ({
+          orderId: id, accountId,
+          productId: li.productId, titleSnapshot: li.titleSnapshot,
+          priceMinor: li.priceMinor, qty: li.qty,
+          variantId: li.variantId ?? null, variantLabel: li.variantLabel ?? null,
+        })),
+      );
+    }
+  });
+  return toOrderApi(orderRow as OrderRow);
+}
+
+/** Set razorpayOrderId after Razorpay order creation. */
+export async function attachRazorpayOrder(orderId: string, rzpOrderId: string): Promise<void> {
+  await db.update(orders).set({ razorpayOrderId: rzpOrderId, updatedAt: Date.now() })
+    .where(eq(orders.id, orderId));
+}
+
+/** Mark an order paid. Idempotent: the WHERE status<>'paid' guard prevents
+ *  double-write if both the client verify path and the webhook fire. */
+export async function markOrderPaid(
+  rzpOrderId: string,
+  payload: { paymentId: string; email?: string; shipping?: ShippingAddress },
+): Promise<void> {
+  const set: Partial<OrderRow> = {
+    status: "paid",
+    razorpayPaymentId: payload.paymentId,
+    paidAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  if (payload.email) set.email = payload.email;
+  if (payload.shipping) set.shipping = payload.shipping;
+  await db.update(orders).set(set)
+    .where(and(eq(orders.razorpayOrderId, rzpOrderId), rawSql`${orders.status} <> 'paid'`));
+}
+
+export async function markOrderFailed(rzpOrderId: string): Promise<void> {
+  await db.update(orders).set({ status: "failed", updatedAt: Date.now() })
+    .where(and(eq(orders.razorpayOrderId, rzpOrderId), rawSql`${orders.status} = 'pending'`));
+}
+
+/** Public status poll endpoint — no PII, scoped to accountId. */
+export async function getOrderPublic(
+  accountId: string, id: string,
+): Promise<{ status: string; amountTotal: number; currency: string } | null> {
+  const [r] = await db
+    .select({ status: orders.status, amountTotal: orders.amountTotal, currency: orders.currency })
+    .from(orders)
+    .where(and(eq(orders.accountId, accountId), eq(orders.id, id)));
+  return r ?? null;
+}
+
+export async function listOrders(accountId: string): Promise<OrderApi[]> {
+  const rows = await db.select().from(orders)
+    .where(eq(orders.accountId, accountId))
+    .orderBy(desc(orders.createdAt));
+  return rows.map(toOrderApi);
+}
+
+export async function orderStats(
+  accountId: string,
+): Promise<{ count: number; revenueCents: number; newCount: number }> {
+  const [totals] = await db
+    .select({ total: count(), revenue: sum(orders.amountTotal) })
+    .from(orders)
+    .where(and(eq(orders.accountId, accountId), eq(orders.status, "paid")));
+  const dayAgo = Date.now() - 86_400_000;
+  const [newRow] = await db
+    .select({ c: count() })
+    .from(orders)
+    .where(and(eq(orders.accountId, accountId), rawSql`${orders.createdAt} > ${dayAgo}`));
+  return {
+    count: totals?.total ?? 0,
+    revenueCents: Number(totals?.revenue ?? 0),
+    newCount: newRow?.c ?? 0,
+  };
 }

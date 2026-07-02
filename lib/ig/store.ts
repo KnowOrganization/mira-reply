@@ -215,6 +215,9 @@ export type Settings = {
   storefrontAbout?: string;
   storefrontContactUrl?: string;     // https
   storefrontBuyLabel?: "Buy" | "Shop" | "Order";
+  storefrontTemplate?: string;          // resolveTemplateId validates; default "t01-editorial"
+  storefrontCurrency?: string;          // ISO 4217 e.g. "INR"; resolver uppercases + defaults INR
+  storefrontCheckoutEnabled?: boolean;  // opt-in per store; false = link-out only (non-breaking)
   // ── Guard crisis kill-switch (FLAT key, same shallow-merge constraint) ──
   crisisArmed?: boolean;
   // ── Conversational Inbox AI config (FLAT keys) ──

@@ -5,6 +5,10 @@ import { enqueueOutbound } from "@/lib/ig/ingestQueue";
 import { recordOutboundMessage, importDMThreads } from "@/lib/ig/crm";
 import { getDMThreads } from "@/lib/ig/graph";
 import { publish } from "@/lib/ig/bus";
+import { readStore } from "@/lib/ig/store";
+import { assembleContext } from "@/lib/ig/ctx";
+import { generateAutomationMessage } from "@/lib/ig/automationReply";
+import { AiKeyMissingError } from "@/lib/ig/llm";
 import {
   canSend, STANDARD_WINDOW_MS, HUMAN_AGENT_WINDOW_MS,
   type WindowState, type SendDecision,
@@ -106,6 +110,67 @@ export async function patchConversation(accountId: string, conversationId: strin
   return rows[0] ?? null;
 }
 
+// Generate (or regenerate) Mira's reply draft for a conversation, on demand.
+// This is THE producer for ai_draft — same generator the automation engine
+// uses (generateAutomationMessage → chat → NIM), so the voice is identical
+// everywhere. Throws AiKeyMissingError until a key is configured.
+export async function generateDraft(
+  accountId: string,
+  conversationId: string,
+): Promise<{ ok: true; draft: string } | { ok: false; status: number; reason: string }> {
+  const found = await getConversation(accountId, conversationId);
+  if (!found) return { ok: false, status: 404, reason: "conversation not found" };
+  const { conversation, messages } = found;
+
+  type MsgRow = { direction: string; body: { text?: string } | null };
+  const lastInbound = ([...messages] as MsgRow[]).reverse().find(
+    (m) => m.direction === "in" && !!m.body?.text?.trim()
+  );
+  const inboundText = lastInbound?.body?.text?.trim();
+  if (!inboundText) return { ok: false, status: 400, reason: "no inbound message to reply to" };
+
+  const store = await readStore(accountId);
+  if (!store.account) return { ok: false, status: 404, reason: "account not connected" };
+
+  let draft: string;
+  try {
+    const ctx = await assembleContext(inboundText, undefined, conversation.igsid ?? "", store);
+    draft = await generateAutomationMessage("dm_message", ctx, inboundText);
+  } catch (e) {
+    if (e instanceof AiKeyMissingError) return { ok: false, status: 503, reason: e.message };
+    return { ok: false, status: 502, reason: e instanceof Error ? e.message : "generation failed" };
+  }
+  if (!draft.trim()) return { ok: false, status: 502, reason: "generation produced empty text" };
+
+  await query(
+    `UPDATE crm_conversations SET ai_draft = $1, ai_draft_at = $2 WHERE account_id = $3 AND id = $4`,
+    [draft, Date.now(), accountId, conversationId]
+  );
+  publish({ type: "draft", draftId: conversationId, ts: Date.now() });
+  return { ok: true, draft };
+}
+
+// Dismiss the parked AI draft — a verb, not a PATCH field: dismissal is an
+// auditable decision (owner rejected Mira's draft) and must never let a client
+// write arbitrary draft text.
+export async function dismissDraft(accountId: string, conversationId: string) {
+  const rows = await query<ConversationRow>(
+    `UPDATE crm_conversations SET ai_draft = NULL, ai_draft_at = NULL
+     WHERE account_id = $1 AND id = $2 RETURNING *`,
+    [accountId, conversationId]
+  );
+  const conversation = rows[0] ?? null;
+  if (!conversation) return null;
+  await query(
+    `INSERT INTO audit_log (account_id, actor, action, conversation_id, reason, created_at)
+     VALUES ($1, 'human', 'draft_dismiss', $2, $3, $4)`,
+    [accountId, conversationId, "owner dismissed Mira's draft", Date.now()]
+  );
+  // live nudge so other clients drop the parked draft too
+  publish({ type: "draft", draftId: conversationId, ts: Date.now() });
+  return conversation;
+}
+
 // ── window-gated human send ─────────────────────────────────────────────────
 
 export type SendResult =
@@ -118,9 +183,15 @@ export type SendResult =
  * the human-agent 7-day window applies because this endpoint is only ever a
  * human action (sentBy=human is enforced here, not caller-supplied).
  */
-export async function sendHumanReply(accountId: string, conversationId: string, text: string): Promise<SendResult> {
+export async function sendHumanReply(
+  accountId: string,
+  conversationId: string,
+  text: string,
+  imageUrl?: string,
+): Promise<SendResult> {
   const trimmed = (text ?? "").trim();
-  if (!trimmed) return { ok: false, status: 400, reason: "empty message" };
+  const img = (imageUrl ?? "").trim();
+  if (!trimmed && !img) return { ok: false, status: 400, reason: "empty message" };
   if (trimmed.length > 1000) return { ok: false, status: 400, reason: "message exceeds 1000 bytes (spec §3.4)" };
 
   const found = await getConversation(accountId, conversationId);
@@ -149,16 +220,22 @@ export async function sendHumanReply(accountId: string, conversationId: string, 
   }
   if (!decision.allowed) return { ok: false, status: 409, reason: decision.reason };
 
+  // An image send rides the same outbound queue — Graph takes an attachment
+  // message with a PUBLICLY fetchable url (Meta's CDN pulls it).
+  const message = img
+    ? { attachment: { type: "image", payload: { url: img, is_reusable: false } } }
+    : { text: trimmed };
   await enqueueOutbound({
     accountId,
     id: `crm_${conversationId}_${now}`,
     type: "dm",
     recipient: { id: conversation.igsid },
-    message: { text: trimmed },
+    message,
     igsid: conversation.igsid,
   });
   const messageId = await recordOutboundMessage(accountId, conversationId, {
-    body: { text: trimmed }, sentBy: "human",
+    body: img ? { imageUrl: img, ...(trimmed ? { text: trimmed } : {}) } : { text: trimmed },
+    sentBy: "human",
   });
   // live nudge — the sent bubble appears instantly on the sender's other tabs
   publish({ type: "sent", accountId, conversationId, replyId: messageId, ts: Date.now() });

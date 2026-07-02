@@ -1,13 +1,18 @@
 "use client";
 
-import { Sparkles, Star, Check, X, CornerDownRight } from "lucide-react";
-import { useDraftAction } from "@/lib/api/hooks";
+import { useState } from "react";
+import { Sparkles, Star, Check, X, CornerDownRight, Send } from "lucide-react";
+import { useDraftAction, useGenerateCommentReply, useReplyToComment } from "@/lib/api/hooks";
 import { fmtAgo } from "../utils";
 import type { CommentRow } from "./types";
 import { STATUS_BADGE } from "./constants";
 
 export function CommentCard({ c }: { c: CommentRow }) {
   const draftAction = useDraftAction();
+  const generate = useGenerateCommentReply();
+  const sendReply = useReplyToComment();
+  // Mira's on-demand suggestion (distinct from a pipeline-parked draft)
+  const [suggested, setSuggested] = useState<string | null>(null);
   const badge = STATUS_BADGE[c.status];
 
   return (
@@ -52,6 +57,59 @@ export function CommentCard({ c }: { c: CommentRow }) {
             <div className="text-[11.5px]" style={{ color: "var(--text-muted)" }}>{c.ownReply.text}</div>
             <div className="text-[9px] mt-0.5" style={{ color: "var(--text-subtle)" }}>your reply · {fmtAgo(c.ownReply.ts)}</div>
           </div>
+        </div>
+      )}
+
+      {/* On-demand Mira suggestion — generate → review/edit → send */}
+      {!c.isOwn && !c.ownReply && !(c.status === "pending" && c.draftText) && (
+        suggested == null ? (
+          <button
+            onClick={() =>
+              generate.mutate(c.id, { onSuccess: (d) => setSuggested(d.reply) })
+            }
+            disabled={generate.isPending}
+            className="mt-2 px-2.5 py-1 rounded-md text-[10.5px] font-semibold flex items-center gap-1 disabled:opacity-40"
+            style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--border)" }}
+          >
+            <Sparkles size={10} /> {generate.isPending ? "Generating…" : "Generate reply"}
+          </button>
+        ) : (
+          <div className="mt-2 rounded-lg p-2.5" style={{ background: "var(--accent-soft)", border: "1px solid var(--border)" }}>
+            <div className="text-[10px] font-bold flex items-center gap-1 mb-1" style={{ color: "var(--accent)" }}>
+              <Sparkles size={9} /> Mira suggests
+            </div>
+            <textarea
+              value={suggested}
+              onChange={(e) => setSuggested(e.target.value)}
+              rows={2}
+              className="w-full text-[12px] rounded-md p-1.5 resize-none"
+              style={{ background: "var(--bg-elev)", color: "var(--text)", border: "1px solid var(--border)" }}
+            />
+            <div className="flex gap-1.5 mt-1.5">
+              <button
+                onClick={() =>
+                  sendReply.mutate({ id: c.id, text: suggested }, { onSuccess: () => setSuggested(null) })
+                }
+                disabled={sendReply.isPending || !suggested.trim()}
+                className="px-2.5 py-1 rounded-md text-[10.5px] font-semibold flex items-center gap-1 disabled:opacity-40"
+                style={{ background: "var(--accent)", color: "#fff" }}
+              >
+                <Send size={10} /> {sendReply.isPending ? "Sending…" : "Send reply"}
+              </button>
+              <button
+                onClick={() => setSuggested(null)}
+                className="px-2.5 py-1 rounded-md text-[10.5px] font-semibold"
+                style={{ background: "var(--bg-elev)", color: "var(--text-muted)", border: "1px solid var(--border)" }}
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        )
+      )}
+      {generate.isError && (
+        <div className="text-[10px] mt-1" style={{ color: "#ef4444" }}>
+          {(generate.error as Error)?.message || "Generation failed"}
         </div>
       )}
 

@@ -5,13 +5,15 @@ import {
   Text,
   Pressable,
   TextInput,
+  Image,
   StyleSheet,
   LayoutAnimation,
   Platform,
   UIManager,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
@@ -20,12 +22,15 @@ import { Chip, Toggle, type ChipTone } from '../../src/components/primitives';
 import { Icon } from '../../src/components/Icon';
 import { colors, radius, space, shadow } from '../../src/theme';
 import { SkCard, SkLine, SkChip, SkCircle, SkRepeat } from '../../src/components/skeleton/primitives';
-import { useAutomations, usePatchAutomation } from '../../src/api/hooks';
+import { useAutomations, useAutomation, useCreateAutomation, usePatchAutomation, useTestAutomation, useDeleteAutomation, usePosts } from '../../src/api/hooks';
+import { deriveLinearEdges } from '../../src/api/automationGraph';
+import { TEMPLATES } from '../../src/automationTemplates';
 import {
   BuilderSheet,
+  NODE_ICONS,
   type BuilderSheetHandle,
   type FieldDef,
-  type TestMessage,
+  type PostPick,
 } from '../../src/components/sheets/BuilderSheet';
 import type {
   Automation,
@@ -79,8 +84,6 @@ const TRIGGER_LABELS: Record<AutomationTriggerType, string> = {
   story_reply: 'Story reply',
 };
 
-const TRIGGER_ORDER: AutomationTriggerType[] = ['comment_post', 'dm', 'live_comment', 'story_reply'];
-
 // Control / gating nodes read as 'grey'; everything else is an action ('accent').
 const GREY_NODES: AutomationNodeType[] = ['post_filter', 'ask_follow', 'follow_gate', 'ab_split'];
 function nodeTone(type: AutomationNodeType): ChipTone {
@@ -88,38 +91,27 @@ function nodeTone(type: AutomationNodeType): ChipTone {
 }
 
 // ── per-node-type config fields ──────────────────────────────────────────────
-// Pragmatic field sets per node type — the jsonb `data` bag's exact shape isn't
-// fully self-describing from the shared types, so list/object fields (codes,
-// answers, variants) are edited as simple delimited text and parsed back.
+// Message copy for the AI nodes below is generated server-side by Mira (account
+// voice + live context — engine's genMsg ignores data.text), so those nodes
+// expose NO text inputs, matching web. Only structural knobs (image, buttons,
+// delay, lead question) and the literal-content funnel nodes take input.
 const NODE_FIELDS: Record<AutomationNodeType, FieldDef[]> = {
   trigger: [],
   post_filter: [
     { key: 'postIds', label: 'Post IDs (comma separated)', type: 'text', placeholder: 'blank = all posts' },
   ],
-  opening_message: [
-    { key: 'text', label: 'Message', type: 'textarea', placeholder: 'First message when a DM starts' },
-  ],
-  text_message: [{ key: 'text', label: 'Message', type: 'textarea', placeholder: 'What Mira sends' }],
+  opening_message: [],
+  text_message: [],
   card_message: [
-    { key: 'title', label: 'Title', type: 'text' },
-    { key: 'subtitle', label: 'Subtitle', type: 'text' },
-    { key: 'text', label: 'Message', type: 'textarea' },
     { key: 'imageUrl', label: 'Image URL', type: 'text' },
+    { key: 'buttons', label: 'Buttons (one per line: label:payload)', type: 'textarea' },
   ],
-  image_message: [
-    { key: 'imageUrl', label: 'Image URL', type: 'text' },
-    { key: 'text', label: 'Caption', type: 'textarea' },
-  ],
-  comment_reply: [
-    { key: 'text', label: 'Reply text', type: 'textarea', placeholder: 'Posted as a public comment reply' },
-  ],
-  ask_follow: [{ key: 'question', label: 'Prompt', type: 'textarea', placeholder: 'Ask the user to follow' }],
-  follow_gate: [{ key: 'question', label: 'Gate message', type: 'textarea' }],
+  image_message: [{ key: 'imageUrl', label: 'Image URL', type: 'text' }],
+  comment_reply: [],
+  ask_follow: [],
+  follow_gate: [],
   lead_form: [{ key: 'question', label: 'Question', type: 'textarea', placeholder: 'What detail to capture' }],
-  followup_message: [
-    { key: 'text', label: 'Message', type: 'textarea' },
-    { key: 'delayMinutes', label: 'Delay (minutes)', type: 'number' },
-  ],
+  followup_message: [{ key: 'delayMinutes', label: 'Delay (minutes)', type: 'number' }],
   giveaway: [
     { key: 'text', label: 'Confirmation message', type: 'textarea' },
     { key: 'showEntryNumber', label: 'Show entry number? (yes/no)', type: 'text' },
@@ -140,10 +132,19 @@ const NODE_FIELDS: Record<AutomationNodeType, FieldDef[]> = {
   price_reply: [{ key: 'text', label: 'Fallback message', type: 'textarea' }],
 };
 
-const TRIGGER_FIELDS: FieldDef[] = [
-  { key: 'keywords', label: 'Keywords (comma separated)', type: 'text', placeholder: 'blank = match any text' },
-  { key: 'postIds', label: 'Post IDs (comma separated)', type: 'text', placeholder: 'blank = all posts' },
-];
+// Nodes whose copy Mira writes with AI — config sheet shows this note instead
+// of a text box (mirrors web's AiGeneratedNote).
+const AI_NODES: Partial<Record<AutomationNodeType, true>> = {
+  opening_message: true,
+  text_message: true,
+  comment_reply: true,
+  ask_follow: true,
+  follow_gate: true,
+  followup_message: true,
+  card_message: true,
+};
+const AI_NOTE =
+  'Mira writes this message with AI — your account voice + live context. No manual text needed.';
 
 // ── node data <-> sheet field values ─────────────────────────────────────────
 function dataToValues(node: AutomationNode): Record<string, string> {
@@ -162,6 +163,9 @@ function dataToValues(node: AutomationNode): Record<string, string> {
         break;
       case 'variants':
         values.variants = (d.variants ?? []).map((v) => `${v.label}:${v.text}`).join('\n');
+        break;
+      case 'buttons':
+        values.buttons = (d.buttons ?? []).map((b) => `${b.label}:${b.payload}`).join('\n');
         break;
       case 'minTags':
         values.minTags = String(d.minTags ?? 1);
@@ -214,6 +218,17 @@ function valuesToData(type: AutomationNodeType, values: Record<string, string>):
               .filter((v) => v.label)
           : [];
         break;
+      case 'buttons':
+        data.buttons = raw
+          ? raw
+              .split('\n')
+              .map((line) => {
+                const [label, ...rest] = line.split(':');
+                return { label: (label ?? '').trim(), payload: rest.join(':').trim() };
+              })
+              .filter((b) => b.label)
+          : [];
+        break;
       case 'minTags':
         data.minTags = raw ? Number(raw) || 1 : 1;
         break;
@@ -228,20 +243,6 @@ function valuesToData(type: AutomationNodeType, values: Record<string, string>):
     }
   }
   return data;
-}
-
-function triggerToValues(t: AutomationTrigger): Record<string, string> {
-  return { keywords: (t.keywords ?? []).join(', '), postIds: (t.postIds ?? []).join(', ') };
-}
-
-function valuesToTrigger(type: AutomationTriggerType, values: Record<string, string>): AutomationTrigger {
-  const keywords = (values.keywords ?? '').trim();
-  const postIds = (values.postIds ?? '').trim();
-  return {
-    type,
-    keywords: keywords ? keywords.split(',').map((s) => s.trim()).filter(Boolean) : [],
-    postIds: postIds ? postIds.split(',').map((s) => s.trim()).filter(Boolean) : [],
-  };
 }
 
 // ── graph linearization ──────────────────────────────────────────────────────
@@ -279,18 +280,22 @@ function nodeSummary(node: AutomationNode): string | null {
   switch (node.type) {
     case 'opening_message':
     case 'text_message':
-    case 'followup_message':
     case 'comment_reply':
-      return d.text?.trim() || null;
-    case 'card_message':
-      return [d.title, d.subtitle].filter(Boolean).join(' — ') || d.text?.trim() || null;
+      return 'Written by Mira with AI';
+    case 'followup_message':
+      return d.delayMinutes ? `AI message after ${d.delayMinutes}m` : 'Set a delay to schedule';
+    case 'card_message': {
+      const bits = [d.imageUrl ? 'image' : null, d.buttons?.length ? `${d.buttons.length} button(s)` : null].filter(Boolean);
+      return bits.length ? `AI text + ${bits.join(' + ')}` : 'AI text — add image or buttons';
+    }
     case 'image_message':
-      return d.imageUrl ? 'Sends an image' : d.text?.trim() || null;
+      return d.imageUrl ? 'Sends an image' : 'Add an image URL';
     case 'post_filter':
       return d.postIds?.length ? `${d.postIds.length} post(s)` : 'All posts';
     case 'ask_follow':
+      return 'AI asks the user to follow';
     case 'follow_gate':
-      return d.question?.trim() || 'Requires a follow to continue';
+      return 'Requires a follow to continue';
     case 'lead_form':
       return d.question?.trim() || 'Collects a lead detail';
     case 'giveaway':
@@ -336,12 +341,27 @@ function triggerTestLine(t: AutomationTrigger | null): string {
 }
 
 export default function FlowScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const { data, isLoading } = useAutomations();
+  const { id, template: templateId } = useLocalSearchParams<{ id: string; template?: string }>();
+  const router = useRouter();
+  const { data, isLoading: listLoading } = useAutomations();
+  const postsQ = usePosts<{ posts?: PostPick[] }>();
+  const createAutomation = useCreateAutomation();
   const patch = usePatchAutomation();
+  const testAutomation = useTestAutomation();
+  const deleteAutomation = useDeleteAutomation();
   const sheetRef = useRef<BuilderSheetHandle>(null);
 
-  const automation = data?.automations?.find((a) => a.id === id);
+  // DRAFT mode (/flow/new[?template=<id>]): everything stays local — the
+  // automation is only POSTed+PATCHed when the user taps Save. Mirrors the
+  // directive: no API call just for opening the builder.
+  const isDraft = id === 'new';
+  const template = isDraft && templateId ? TEMPLATES.find((t) => t.id === templateId) : undefined;
+
+  // list cache first; single-fetch fallback covers deep links / cache misses
+  const listHit = !isDraft ? data?.automations?.find((a) => a.id === id) : undefined;
+  const single = useAutomation(listHit || isDraft ? undefined : id);
+  const automation = listHit ?? single.data?.automation;
+  const isLoading = !isDraft && (listLoading || (!!id && !listHit && single.isLoading));
 
   // local optimistic state, synced from the query when it lands/changes
   const [enabled, setEnabled] = useState(false);
@@ -363,58 +383,136 @@ export default function FlowScreen() {
     setSteps(linearize(automation.nodes, automation.edges).filter((n) => n.type !== 'trigger'));
   }, [automation?.id, automation?.updatedAt]);
 
+  // draft init — seed local state once (blank or from the chosen template).
+  // Blank comment_post drafts get the "reply publicly + open the DM" spine,
+  // mirroring web's auto-seed on trigger selection.
+  useEffect(() => {
+    if (!isDraft) return;
+    setName(template?.name ?? 'New Automation');
+    setTrigger(template?.trigger ?? { type: 'comment_post', keywords: [], postIds: [] });
+    const seedNodes: Omit<AutomationNode, 'id'>[] = template?.nodes ?? [
+      { type: 'comment_reply', position: { x: 0, y: 0 }, data: {} },
+      { type: 'opening_message', position: { x: 0, y: 0 }, data: {} },
+    ];
+    setSteps(seedNodes.map((n, i) => ({ ...n, id: `node_draft_${i}` })) as AutomationNode[]);
+  }, [isDraft, template?.id]);
+
   const triggerNode = automation?.nodes.find((n) => n.type === 'trigger');
 
   function persistSteps(next: AutomationNode[]) {
-    if (!id) return;
+    if (isDraft || !id) return; // draft: local only, saved all at once by saveDraft()
     const fullNodes = triggerNode ? [triggerNode, ...next] : next;
-    patch.mutate({ id, patch: { nodes: fullNodes } });
+    patch.mutate({ id, patch: { nodes: fullNodes, edges: deriveLinearEdges(fullNodes) } });
   }
 
   function toggleEnabled(v: boolean) {
-    if (!id) return;
+    if (isDraft || !id) return;
     setEnabled(v);
     patch.mutate({ id, patch: { enabled: v } });
   }
 
   function commitName() {
-    if (!id || !automation) return;
     const trimmed = name.trim() || 'Untitled flow';
     setName(trimmed);
+    if (isDraft || !id || !automation) return;
     if (trimmed === automation.name) return;
     patch.mutate({ id, patch: { name: trimmed } });
   }
 
-  // ── trigger edit / swap ─────────────────────────────────────────────────────
-  function openTriggerConfig() {
-    if (!automation || !id) return;
-    const current = trigger ?? automation.trigger;
-    sheetRef.current?.presentConfig('Trigger', TRIGGER_FIELDS, triggerToValues(current), (values) => {
-      const nextTrigger = valuesToTrigger(current.type, values);
-      setTrigger(nextTrigger);
-      patch.mutate({ id, patch: { trigger: nextTrigger } });
-    });
+  const [savingDraft, setSavingDraft] = useState(false);
+  async function saveDraft() {
+    if (savingDraft) return;
+    setSavingDraft(true);
+    let createdId: string | null = null;
+    try {
+      const created = await createAutomation.mutateAsync();
+      createdId = created.automation.id;
+      const t = trigger ?? { type: 'comment_post' as const, keywords: [], postIds: [] };
+      // keep the backend-seeded trigger node (engine requires it; data.text
+      // carries the trigger type by convention)
+      const seededTrigger = created.automation.nodes.find((n) => n.type === 'trigger');
+      const now = Date.now();
+      const stepNodes = stepsRef.current.map((n, i) => ({ ...n, id: `node_${now.toString(36)}_${i}` }));
+      const fullNodes = seededTrigger
+        ? [{ ...seededTrigger, data: { ...seededTrigger.data, text: t.type } }, ...stepNodes]
+        : stepNodes;
+      await patch.mutateAsync({
+        id: createdId,
+        patch: {
+          name: name.trim() || 'Untitled flow',
+          trigger: t,
+          nodes: fullNodes,
+          edges: deriveLinearEdges(fullNodes),
+        },
+      });
+      router.replace(`/flow/${createdId}`);
+    } catch (e) {
+      if (createdId) deleteAutomation.mutateAsync(createdId).catch(() => {});
+      Alert.alert('Failed to save automation', e instanceof Error ? e.message : 'Please try again.');
+      setSavingDraft(false);
+      return;
+    }
+    setSavingDraft(false);
   }
 
-  // ponytail: "swap trigger" cycles to the next trigger type on tap rather than
-  // opening a dedicated type picker — presentPicker only knows AutomationNodeType,
-  // and there are just 4 trigger types, so a cycle button is the simpler, still-
-  // discoverable affordance. Tap the card itself to edit keywords/posts.
-  function swapTriggerType() {
-    if (!automation || !id) return;
-    const current = trigger ?? automation.trigger;
-    const idx = TRIGGER_ORDER.indexOf(current.type);
-    const nextType = TRIGGER_ORDER[(idx + 1) % TRIGGER_ORDER.length];
-    const nextTrigger: AutomationTrigger = { ...current, type: nextType };
+  // ── trigger edit / swap ─────────────────────────────────────────────────────
+  // Trigger-type change reshapes the step list the way web's canvas auto-seeds:
+  // comment triggers need a public reply up front; DM/story triggers can't
+  // reply to a comment; live comments can't schedule follow-ups.
+  function reconcileStepsForTrigger(nextType: AutomationTriggerType, cur: AutomationNode[]): AutomationNode[] {
+    let next = cur;
+    const commentBased = nextType === 'comment_post' || nextType === 'live_comment';
+    if (!commentBased) next = next.filter((s) => s.type !== 'comment_reply');
+    if (nextType === 'live_comment') next = next.filter((s) => s.type !== 'followup_message');
+    if (nextType === 'comment_post' && !next.some((s) => s.type === 'comment_reply')) {
+      next = [
+        { id: `node_${Date.now()}_cr`, type: 'comment_reply', position: { x: 0, y: 0 }, data: {} },
+        ...next,
+      ];
+    }
+    return next;
+  }
+
+  // inline "Runs on" post scoping — writes trigger.postIds directly
+  function setTriggerPosts(ids: string[]) {
+    const current = trigger ?? automation?.trigger;
+    if (!current) return;
+    const nextTrigger: AutomationTrigger = { ...current, postIds: ids };
     setTrigger(nextTrigger);
-    patch.mutate({ id, patch: { trigger: nextTrigger } });
+    if (!isDraft && id) patch.mutate({ id, patch: { trigger: nextTrigger } });
+  }
+
+  function togglePostId(pid: string) {
+    const cur = (trigger ?? automation?.trigger)?.postIds ?? [];
+    setTriggerPosts(cur.includes(pid) ? cur.filter((x) => x !== pid) : [...cur, pid]);
+  }
+
+  function openTriggerConfig() {
+    const current = trigger ?? automation?.trigger;
+    if (!current) return;
+    // Trigger sheet = type + keywords; post selection lives inline on the page.
+    sheetRef.current?.presentTrigger(current, (nextTrigger) => {
+      setTrigger(nextTrigger);
+      if (nextTrigger.type !== current.type) {
+        const next = reconcileStepsForTrigger(nextTrigger.type, stepsRef.current);
+        if (next !== stepsRef.current) {
+          setSteps(next);
+          persistSteps(next);
+        }
+      }
+      if (!isDraft && id) patch.mutate({ id, patch: { trigger: nextTrigger } });
+    });
   }
 
   // ── step config / insert / delete ───────────────────────────────────────────
   function openStepConfig(node: AutomationNode) {
-    sheetRef.current?.presentConfig(NODE_LABELS[node.type], NODE_FIELDS[node.type], dataToValues(node), (values) => {
-      saveNodeConfig(node.id, node.type, values);
-    });
+    sheetRef.current?.presentConfig(
+      NODE_LABELS[node.type],
+      NODE_FIELDS[node.type],
+      dataToValues(node),
+      (values) => saveNodeConfig(node.id, node.type, values),
+      AI_NODES[node.type] ? AI_NOTE : undefined,
+    );
   }
 
   function saveNodeConfig(nodeId: string, type: AutomationNodeType, values: Record<string, string>) {
@@ -436,10 +534,17 @@ export default function FlowScreen() {
       next.splice(index, 0, newNode);
       setSteps(next);
       persistSteps(next);
-      // immediately open config for the freshly inserted node
-      sheetRef.current?.presentConfig(NODE_LABELS[type], NODE_FIELDS[type], dataToValues(newNode), (values) => {
-        saveNodeConfig(newNode.id, type, values);
-      });
+      // immediately open config for the freshly inserted node (skip when the
+      // node has nothing to configure — AI writes its copy)
+      if (NODE_FIELDS[type].length > 0) {
+        sheetRef.current?.presentConfig(
+          NODE_LABELS[type],
+          NODE_FIELDS[type],
+          dataToValues(newNode),
+          (values) => saveNodeConfig(newNode.id, type, values),
+          AI_NODES[type] ? AI_NOTE : undefined,
+        );
+      }
     });
   }
 
@@ -458,6 +563,9 @@ export default function FlowScreen() {
   const originIndexRef = useRef<number | null>(null);
   const originStepsRef = useRef<AutomationNode[]>([]);
   const currentIndexRef = useRef<number>(0);
+  // Finger-follow offset for the dragged card: raw translation minus the
+  // distance the card's slot already moved when the list reordered under it.
+  const [dragOffset, setDragOffset] = useState(0);
 
   function beginDrag(nodeId: string) {
     const idx = stepsRef.current.findIndex((s) => s.id === nodeId);
@@ -465,6 +573,7 @@ export default function FlowScreen() {
     originIndexRef.current = idx;
     currentIndexRef.current = idx;
     originStepsRef.current = stepsRef.current;
+    setDragOffset(0);
     setDraggingId(nodeId);
   }
 
@@ -474,6 +583,7 @@ export default function FlowScreen() {
     const max = origin.length - 1;
     const rawTarget = originIndexRef.current + Math.round(translationY / ROW_HEIGHT);
     const target = Math.max(0, Math.min(max, rawTarget));
+    setDragOffset(translationY - (target - originIndexRef.current) * ROW_HEIGHT);
     if (target === currentIndexRef.current) return;
     currentIndexRef.current = target;
     const next = [...origin];
@@ -486,6 +596,7 @@ export default function FlowScreen() {
   function endDrag() {
     if (originIndexRef.current == null) return;
     originIndexRef.current = null;
+    setDragOffset(0);
     setDraggingId(null);
     persistSteps(stepsRef.current);
   }
@@ -506,26 +617,43 @@ export default function FlowScreen() {
 
   // ── test ─────────────────────────────────────────────────────────────────────
   function openTest() {
-    if (!automation) return;
+    if (!automation || !id) return;
     const current = trigger ?? automation.trigger;
-    const messages: TestMessage[] = [{ from: 'user', text: triggerTestLine(current) }];
-    if (steps.length === 0) {
-      messages.push({ from: 'mira', text: 'No steps configured yet — add one below.' });
-    } else {
-      for (const step of steps.slice(0, 3)) {
-        messages.push({ from: 'mira', text: nodeSummary(step) ?? NODE_LABELS[step.type] });
+    sheetRef.current?.presentTest(triggerTestLine(current), async (text) => {
+      const res = await testAutomation.mutateAsync({ id, text });
+      const raw = (res.steps ?? []) as { nodeType?: AutomationNodeType; action?: string; text?: string }[];
+      if (raw.length === 0) {
+        return [{ from: 'mira', text: 'No steps would run — check trigger keywords or step config.' }];
       }
-    }
-    sheetRef.current?.presentTest(messages);
+      return raw.map((s) => ({
+        from: 'mira' as const,
+        text: s.text?.trim() || `${(s.nodeType && NODE_LABELS[s.nodeType]) ?? s.nodeType ?? 'Step'} — ${s.action ?? 'ran'}`,
+      }));
+    });
   }
 
-  const headerRight = automation ? (
+  function confirmDeleteAutomation() {
+    if (!automation || !id) return;
+    Alert.alert('Delete automation', `Delete "${automation.name}"? This can't be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => deleteAutomation.mutate(id, { onSuccess: () => router.back() }),
+      },
+    ]);
+  }
+
+  const headerRight = isDraft ? undefined : automation ? (
     <View style={styles.headerRightRow}>
       <Pressable onPress={openTest} hitSlop={6} style={({ pressed }) => [styles.testBtn, pressed && styles.pressed]}>
         <Text style={styles.testGlyph}>▶</Text>
         <Text style={styles.testBtnText}>Test</Text>
       </Pressable>
       <Toggle value={enabled} onValueChange={toggleEnabled} />
+      <Pressable onPress={confirmDeleteAutomation} hitSlop={8} style={({ pressed }) => [styles.deleteHeaderBtn, pressed && styles.pressed]}>
+        <Icon name="trash" size={16} color={colors.textSubtle} />
+      </Pressable>
     </View>
   ) : undefined;
 
@@ -534,12 +662,12 @@ export default function FlowScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <LinearGradient colors={colors.frame} style={StyleSheet.absoluteFill} />
-      <ScreenHeader title={automation?.name ?? 'Flow'} right={headerRight} />
+      <ScreenHeader title={isDraft ? 'New flow' : automation?.name ?? 'Flow'} right={headerRight} />
       <ScrollView
-        contentContainerStyle={{ padding: space.xl, paddingBottom: 40 }}
+        contentContainerStyle={{ padding: space.xl, paddingBottom: isDraft ? 130 : 40 }}
         showsVerticalScrollIndicator={false}
       >
-        {isLoading && !automation ? (
+        {isLoading && !automation && !isDraft ? (
           <>
             {/* Flow name skeleton */}
             <Text style={styles.sectionLabel}>Flow name</Text>
@@ -598,7 +726,7 @@ export default function FlowScreen() {
               </View>
             </SkCard>
           </>
-        ) : !automation ? (
+        ) : !automation && !isDraft ? (
           <Card radius={radius.lg} style={styles.notFound}>
             <View style={styles.notFoundInner}>
               <View style={styles.emptyIcon}>
@@ -638,14 +766,52 @@ export default function FlowScreen() {
                           <Chip label={TRIGGER_LABELS[effectiveTrigger.type]} tone="warm" />
                         </View>
                         <Text style={styles.cardSummary}>{triggerSummary(effectiveTrigger)}</Text>
+                        <Text style={styles.tapHint}>Tap to change trigger or filters</Text>
                       </View>
-                      <Pressable onPress={swapTriggerType} hitSlop={8} style={styles.swapBtn}>
-                        <Text style={styles.swapGlyph}>⇄</Text>
-                      </Pressable>
+                      <Icon name="chevronRight" size={18} color={colors.textSubtle} />
                     </View>
                   </View>
                 </Card>
               </Pressable>
+            )}
+
+            {/* Runs on — inline post scoping for comment-based triggers */}
+            {effectiveTrigger && (effectiveTrigger.type === 'comment_post' || effectiveTrigger.type === 'live_comment') && (
+              <>
+                <Text style={[styles.sectionLabel, { marginTop: space.lg }]}>Runs on</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.postStrip}>
+                  <Pressable
+                    onPress={() => setTriggerPosts([])}
+                    style={[styles.allPostsChip, (effectiveTrigger.postIds?.length ?? 0) === 0 && styles.allPostsChipActive]}
+                  >
+                    <Text
+                      style={[styles.allPostsChipText, (effectiveTrigger.postIds?.length ?? 0) === 0 && styles.allPostsChipTextActive]}
+                    >
+                      All posts
+                    </Text>
+                  </Pressable>
+                  {(postsQ.data?.posts ?? []).map((p) => {
+                    const sel = (effectiveTrigger.postIds ?? []).includes(p.id);
+                    const uri = p.thumbnailUrl || p.mediaUrl;
+                    return (
+                      <Pressable key={p.id} onPress={() => togglePostId(p.id)} style={[styles.postThumbWrap, sel && styles.postThumbSel]}>
+                        {uri ? (
+                          <Image source={{ uri }} style={styles.postThumb} />
+                        ) : (
+                          <View style={[styles.postThumb, styles.postThumbEmpty]}>
+                            <Icon name="instagram" size={16} color={colors.textSubtle} />
+                          </View>
+                        )}
+                        {sel && (
+                          <View style={styles.postCheck}>
+                            <Icon name="check" size={11} color={colors.accentFg} />
+                          </View>
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </>
             )}
 
             {/* Steps */}
@@ -654,9 +820,16 @@ export default function FlowScreen() {
             </Text>
 
             {steps.length === 0 && (
-              <Text style={[styles.notFoundText, { marginBottom: space.md, textAlign: 'left' }]}>
-                No steps yet — tap "Add step" below to start building.
-              </Text>
+              <Card radius={16} style={styles.card}>
+                <View style={styles.emptySteps}>
+                  <View style={styles.stepIconTile}>
+                    <Icon name="flows" size={16} color={colors.accentDeep} />
+                  </View>
+                  <Text style={[styles.notFoundText, { flex: 1, textAlign: 'left' }]}>
+                    No steps yet — tap "Add step" to choose what happens next.
+                  </Text>
+                </View>
+              </Card>
             )}
 
             {steps.map((node, i) => {
@@ -669,20 +842,31 @@ export default function FlowScreen() {
                       <Icon name="plus" size={13} color={colors.textSubtle} />
                     </View>
                   </Pressable>
-                  <Card radius={16} style={[styles.card, draggingId === node.id && styles.cardDragging]}>
+                  <Card
+                    radius={16}
+                    style={[
+                      styles.stepCard,
+                      draggingId === node.id && [styles.cardDragging, { transform: [{ translateY: dragOffset }, { scale: 1.02 }] }],
+                    ]}
+                  >
                     <View style={styles.stepInner}>
                       <Pressable onPress={() => openStepConfig(node)} style={styles.stepTapArea}>
-                        <View style={styles.indexBadge}>
-                          <Text style={styles.indexBadgeText}>{i + 1}</Text>
+                        <View style={styles.stepIconTile}>
+                          <Icon name={NODE_ICONS[node.type]} size={16} color={colors.accentDeep} />
+                          <View style={styles.stepIndexDot}>
+                            <Text style={styles.stepIndexDotText}>{i + 1}</Text>
+                          </View>
                         </View>
                         <View style={styles.stepBody}>
                           <View style={styles.chipRow}>
                             <Chip label={NODE_LABELS[node.type]} tone={nodeTone(node.type)} />
                           </View>
-                          {summary && (
+                          {summary ? (
                             <Text style={styles.cardSummary} numberOfLines={2}>
                               {summary}
                             </Text>
+                          ) : (
+                            <Text style={styles.tapHint}>Tap to configure</Text>
                           )}
                         </View>
                       </Pressable>
@@ -712,20 +896,38 @@ export default function FlowScreen() {
               <Text style={styles.endText}>End of flow</Text>
             </View>
 
-            {/* Stats footer */}
-            <Text style={[styles.sectionLabel, { marginTop: space.xl }]}>Performance</Text>
-            <Card radius={radius.lg} style={styles.card}>
-              <View style={styles.statsRow}>
-                <Stat label="Triggered" value={automation.stats.triggered} />
-                <View style={styles.statDivider} />
-                <Stat label="Completed" value={automation.stats.completed} tone={colors.stDone} />
-                <View style={styles.statDivider} />
-                <Stat label="Failed" value={automation.stats.failed} tone={colors.stBlocked} />
-              </View>
-            </Card>
+            {/* Stats footer — saved automations only; a draft has no history */}
+            {!isDraft && automation && (
+              <>
+                <Text style={[styles.sectionLabel, { marginTop: space.xl }]}>Performance</Text>
+                <Card radius={radius.lg} style={styles.card}>
+                  <View style={styles.statsRow}>
+                    <Stat label="Triggered" value={automation.stats.triggered} />
+                    <View style={styles.statDivider} />
+                    <Stat label="Completed" value={automation.stats.completed} tone={colors.stDone} />
+                    <View style={styles.statDivider} />
+                    <Stat label="Failed" value={automation.stats.failed} tone={colors.stBlocked} />
+                  </View>
+                </Card>
+              </>
+            )}
           </>
         )}
       </ScrollView>
+
+      {/* Draft: sticky save bar — the ONE moment the API is called */}
+      {isDraft && (
+        <View style={styles.saveBar}>
+          <Pressable
+            onPress={saveDraft}
+            disabled={savingDraft}
+            style={({ pressed }) => [styles.saveBarBtn, (pressed || savingDraft) && styles.pressed]}
+          >
+            <Text style={styles.saveBarBtnText}>{savingDraft ? 'Saving…' : 'Save automation'}</Text>
+          </Pressable>
+        </View>
+      )}
+
       <BuilderSheet ref={sheetRef} />
     </View>
   );
@@ -754,7 +956,10 @@ const styles = StyleSheet.create({
   },
 
   card: { marginBottom: space.md },
-  cardDragging: { ...shadow.pop, opacity: 0.94, transform: [{ scale: 1.01 }] },
+  // step cards get no bottom margin — the insert-plus row between them owns the
+  // vertical rhythm, keeping the + dead-center between two cards
+  stepCard: { marginBottom: 0 },
+  cardDragging: { ...shadow.pop, opacity: 0.96, zIndex: 10, elevation: 8 },
   cardInner: { padding: space.lg },
   cardSummary: { fontSize: 13, lineHeight: 18, color: colors.textMuted, marginTop: 6 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
@@ -785,20 +990,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   triggerBody: { flex: 1 },
-  swapBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: radius.sm,
-    borderWidth: 1,
+  tapHint: { fontSize: 12, color: colors.textSubtle, marginTop: 5 },
+
+  // Runs on — post strip
+  postStrip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2, paddingRight: space.xl },
+  allPostsChip: {
+    paddingHorizontal: 13,
+    height: 64,
+    borderRadius: 12,
+    borderWidth: 1.5,
     borderColor: colors.border,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bgElev,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  swapGlyph: { fontSize: 14, color: colors.textSubtle },
+  allPostsChipActive: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  allPostsChipText: { fontSize: 12.5, fontWeight: '500', color: colors.textMuted },
+  allPostsChipTextActive: { color: colors.accentDeep },
+  postThumbWrap: { borderRadius: 12, borderWidth: 2, borderColor: 'transparent', overflow: 'hidden' },
+  postThumbSel: { borderColor: colors.accent },
+  postThumb: { width: 64, height: 64, borderRadius: 10, backgroundColor: colors.bgInset },
+  postThumbEmpty: { alignItems: 'center', justifyContent: 'center' },
+  postCheck: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   // insert-before
-  insertRow: { alignItems: 'center', justifyContent: 'center', paddingVertical: 2 },
+  insertRow: { height: 36, alignItems: 'center', justifyContent: 'center' },
   insertBtn: {
     width: 24,
     height: 24,
@@ -814,16 +1040,27 @@ const styles = StyleSheet.create({
   // step card
   stepInner: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: 14 },
   stepTapArea: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.md, minWidth: 0 },
-  indexBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.pill,
+  stepIconTile: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepIndexDot: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadow.card,
   },
-  indexBadgeText: { fontSize: 13, fontWeight: '600', color: colors.accentFg },
+  stepIndexDotText: { fontSize: 9.5, fontWeight: '700', color: colors.accentFg },
+  emptySteps: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: 14 },
   stepBody: { flex: 1 },
   deleteBtn: {
     width: 32,
@@ -847,7 +1084,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: space.sm,
-    marginTop: space.xs,
+    marginTop: space.md,
   },
   addStepText: { fontSize: 13.5, fontWeight: '500', color: colors.accent },
   endOfFlow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, marginTop: space.md },
@@ -869,6 +1106,28 @@ const styles = StyleSheet.create({
   },
   testGlyph: { fontSize: 10, color: colors.text },
   testBtnText: { fontSize: 12.5, fontWeight: '500', color: colors.text },
+  deleteHeaderBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  saveBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: space.xl,
+    paddingTop: space.md,
+    paddingBottom: 34,
+    backgroundColor: colors.bgElev,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  saveBarBtn: {
+    height: 52,
+    borderRadius: 15,
+    backgroundColor: colors.text,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow.card,
+  },
+  saveBarBtnText: { fontSize: 15.5, fontWeight: '600', color: colors.accentFg },
 
   // stats
   statsRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: space.lg },

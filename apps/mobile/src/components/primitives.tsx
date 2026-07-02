@@ -117,6 +117,33 @@ export function Ring({ value, size = 44, stroke = 4 }: { value: number; size?: n
   );
 }
 
+// ── SegmentedControl (bgInset track, sliding white thumb) ────────────────────
+export function SegmentedControl({
+  segments, index, onChange,
+}: {
+  segments: string[]; index: number; onChange: (i: number) => void;
+}) {
+  const pos = useRef(new Animated.Value(index)).current;
+  useEffect(() => {
+    Animated.spring(pos, { toValue: index, damping: 20, stiffness: 250, useNativeDriver: false }).start();
+  }, [index, pos]);
+  const widthPct = 100 / segments.length;
+  const left = pos.interpolate({
+    inputRange: [0, segments.length - 1],
+    outputRange: ['0%', `${100 - widthPct}%`],
+  });
+  return (
+    <View style={styles.segTrack}>
+      <Animated.View style={[styles.segThumb, { width: `${widthPct}%`, left }]} />
+      {segments.map((s, i) => (
+        <Pressable key={s} style={styles.segItem} onPress={() => onChange(i)}>
+          <Text style={[styles.segLabel, i === index && styles.segLabelActive]} numberOfLines={1}>{s}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   chip: { alignSelf: 'flex-start', paddingVertical: 5, paddingHorizontal: 9, borderRadius: 7 },
   chipSmall: { paddingVertical: 4, paddingHorizontal: 8 },
@@ -125,6 +152,18 @@ const styles = StyleSheet.create({
   section: { fontSize: 11, fontWeight: '500', letterSpacing: 1, color: colors.textSubtle, marginBottom: 9, marginLeft: 2 },
   statValue: {},
   statLabel: { color: colors.textSubtle, marginTop: 2 },
+  segTrack: {
+    flexDirection: 'row', height: 36, borderRadius: radius.pill,
+    backgroundColor: colors.bgInset, padding: 3, position: 'relative',
+  },
+  segThumb: {
+    position: 'absolute', top: 3, bottom: 3, borderRadius: radius.pill,
+    backgroundColor: '#fff',
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2,
+  },
+  segItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  segLabel: { fontSize: 12.5, fontWeight: '500', color: colors.textMuted },
+  segLabelActive: { color: colors.text, fontWeight: '600' },
   track: { width: 48, height: 29, borderRadius: radius.pill, justifyContent: 'center' },
   knob: {
     position: 'absolute', width: 23, height: 23, borderRadius: 12, backgroundColor: '#fff',

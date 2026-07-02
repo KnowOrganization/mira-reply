@@ -31,7 +31,10 @@ export const qk = {
   watcher: ["ig", "watcher"] as const,
   mentions: ["ig", "mentions"] as const,
   automations: ["ig", "automations"] as const,
+  // nested under the list key so qk.automations invalidations prefix-match it
+  automation: (id: string) => ["ig", "automations", id] as const,
   products: ["ig", "products"] as const,
+  orders: ["ig", "orders"] as const,
   conversations: (folder?: string) => ["ig", "crm", "conversations", { folder: folder ?? "" }] as const,
   conversation: (id: string) => ["ig", "crm", "conversations", id] as const,
 };
@@ -208,6 +211,34 @@ export function useDeleteProduct() {
   return useMutation({
     mutationFn: (id: string) => api.del(`/api/ig/products/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.products }),
+  });
+}
+
+// ── orders ──────────────────────────────────────────────────────────────────
+export type OrderApi = {
+  id: string;
+  status: string;           // "pending" | "paid" | "failed"
+  currency: string;
+  amountTotal: number;      // minor units (paise)
+  email: string | null;
+  customerName: string | null;
+  razorpayOrderId: string | null;
+  razorpayPaymentId: string | null;
+  createdAt: number;
+  updatedAt: number;
+  paidAt: number | null;
+};
+
+export type OrdersResp = {
+  orders: OrderApi[];
+  stats: { count: number; revenueCents: number; newCount: number };
+};
+
+export function useOrders(opts?: QOpts<OrdersResp>) {
+  return useQuery<OrdersResp>({
+    queryKey: qk.orders,
+    queryFn: () => api.get<OrdersResp>('/api/ig/orders'),
+    ...opts,
   });
 }
 
@@ -447,6 +478,16 @@ export function useAutomations(opts?: QOpts<AutomationsResp>) {
   });
 }
 
+export function useAutomation(id: string | undefined, opts?: QOpts<{ automation: Automation }>) {
+  return useQuery<{ automation: Automation }>({
+    queryKey: qk.automation(id ?? ""),
+    queryFn: () => api.get<{ automation: Automation }>(`/api/ig/automations/${id}`),
+    enabled: !!id,
+    retry: false,
+    ...opts,
+  });
+}
+
 export function useCreateAutomation() {
   const qc = useQueryClient();
   return useMutation({
@@ -593,10 +634,54 @@ export function useConversation(id: string | null) {
 export function useSendReply() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, text }: { id: string; text: string }) =>
-      api.post<{ ok: true; messageId: string; via: string }>(`/api/ig/crm/conversations/${id}/send`, { text }),
+    mutationFn: ({ id, text, imageUrl }: { id: string; text?: string; imageUrl?: string }) =>
+      api.post<{ ok: true; messageId: string; via: string }>(`/api/ig/crm/conversations/${id}/send`, { text, imageUrl }),
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: qk.conversation(vars.id) });
+      qc.invalidateQueries({ queryKey: ["ig", "crm", "conversations"] });
+    },
+  });
+}
+
+/** Relay a picked image (base64 data URL) to the API's local-disk host; the
+ *  returned URL is what Meta's CDN fetches for DM image attachments. */
+export function useUploadImage() {
+  return useMutation({
+    mutationFn: (dataUrl: string) => api.post<{ url: string }>(`/api/upload`, { dataUrl }),
+  });
+}
+
+/** Ask Mira to (re)generate the reply draft for a conversation on demand.
+ *  Server writes ai_draft + publishes an SSE draft event; the invalidations
+ *  here are the poll-path backstop. 503 until an AI key is configured. */
+export function useGenerateDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<{ draft: string }>(`/api/ig/crm/conversations/${id}/draft/generate`),
+    onSuccess: (_d, id) => {
+      qc.invalidateQueries({ queryKey: qk.conversation(id) });
+      qc.invalidateQueries({ queryKey: ["ig", "crm", "conversations"] });
+    },
+  });
+}
+
+/** Generate a suggested public reply for a comment (request/response — client
+ *  reviews then sends via the existing comment reply endpoint). */
+export function useGenerateCommentReply() {
+  return useMutation({
+    mutationFn: (commentId: string) =>
+      api.post<{ reply: string }>(`/api/ig/comments/${commentId}/generate`),
+  });
+}
+
+export function useDismissDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<{ conversation: CrmConversationListItem }>(`/api/ig/crm/conversations/${id}/draft/dismiss`),
+    onSuccess: (_d, id) => {
+      qc.invalidateQueries({ queryKey: qk.conversation(id) });
       qc.invalidateQueries({ queryKey: ["ig", "crm", "conversations"] });
     },
   });

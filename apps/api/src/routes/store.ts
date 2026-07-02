@@ -11,11 +11,13 @@ import { resolveStorefrontConfig, type StorefrontSettingsInput } from "@shaiz/sh
 type StoreProduct = ReturnType<typeof toStoreProduct>;
 function toStoreProduct(p: {
   id: string; title: string; subtitle: string; description: string;
-  priceText: string | null; imageUrl: string | null; ctaUrl: string | null; slug: string | null;
+  priceText: string | null; priceMinor: number | null; currency: string;
+  imageUrl: string | null; ctaUrl: string | null; slug: string | null;
 }) {
   return {
     id: p.id, title: p.title, subtitle: p.subtitle, description: p.description,
-    priceText: p.priceText, imageUrl: p.imageUrl, ctaUrl: p.ctaUrl, slug: p.slug,
+    priceText: p.priceText, priceMinor: p.priceMinor, currency: p.currency,
+    imageUrl: p.imageUrl, ctaUrl: p.ctaUrl, slug: p.slug,
   };
 }
 

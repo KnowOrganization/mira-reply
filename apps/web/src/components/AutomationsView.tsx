@@ -486,9 +486,16 @@ export function AutomationsView({
         ...n,
         id: `node_${now.toString(36)}_${i}`,
       }));
+      // Engine executes via edges — seed the linear chain too, so the template
+      // runs without needing a canvas open+save first.
+      const edges = nodes.slice(0, -1).map((n, i) => ({
+        id: `e_${n.id}_${nodes[i + 1].id}`,
+        source: n.id,
+        target: nodes[i + 1].id,
+      }));
       await patchMut.mutateAsync({
         id: created.automation.id,
-        patch: { name: tpl.name, trigger: tpl.trigger, nodes },
+        patch: { name: tpl.name, trigger: tpl.trigger, nodes, edges },
       });
       router.push(`/automations/${created.automation.id}`);
     } catch {

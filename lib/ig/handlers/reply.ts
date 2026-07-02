@@ -81,7 +81,7 @@ async function generateAndClean(
         { role: "system", content: seeded },
         { role: "user", content: userContent },
       ],
-      { temperature: temp }
+      { temperature: temp, accountId: ctx.account?.igUserId }
     )
   );
 
@@ -96,7 +96,7 @@ async function generateAndClean(
           },
           { role: "user", content: userContent },
         ],
-        { temperature: 0.5 }
+        { temperature: 0.5, accountId: ctx.account?.igUserId }
       )
     );
   }
@@ -119,7 +119,7 @@ async function generateAndClean(
           },
           { role: "user", content: userContent },
         ],
-        { temperature: 0.97 }
+        { temperature: 0.97, accountId: ctx.account?.igUserId }
       )
     );
   }

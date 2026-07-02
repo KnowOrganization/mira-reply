@@ -2,6 +2,7 @@
 // derives + sanitization for the public storefront. Called by BOTH the public
 // API (apps/api store route) AND the in-Mira customizer live preview, so the
 // preview equals production by construction (same function, two callers).
+import { resolveTemplateId } from "./templates";
 
 export type StorefrontSettingsInput = {
   storefrontTitle?: string;
@@ -17,10 +18,20 @@ export type StorefrontSettingsInput = {
   storefrontAbout?: string;
   storefrontContactUrl?: string;
   storefrontBuyLabel?: "Buy" | "Shop" | "Order";
+  // ── template + checkout (Workstream B additions) ──
+  storefrontTemplate?: string;
+  storefrontCurrency?: string;
+  storefrontCheckoutEnabled?: boolean;
 };
 
 // Minimal product shape the resolver needs (the API/customizer pass real rows).
-export type StorefrontProductLite = { id: string; available: boolean; imageUrl?: string | null };
+export type StorefrontProductLite = {
+  id: string;
+  available: boolean;
+  imageUrl?: string | null;
+  priceMinor?: number | null;
+  currency?: string;
+};
 
 export type StorefrontConfig = {
   title: string;
@@ -37,6 +48,10 @@ export type StorefrontConfig = {
   about: string;
   contactUrl: string | null;
   featuredIds: string[];
+  // ── template + checkout (Workstream B additions) ──
+  templateId: string;
+  currency: string;       // ISO 4217 uppercase e.g. "INR", amounts in minor units (paise)
+  checkoutEnabled: boolean;
 };
 
 export const DEFAULT_ACCENT = "#4f6bed";
@@ -101,5 +116,8 @@ export function resolveStorefrontConfig(
     about: (s.storefrontAbout || "").trim(),
     contactUrl: httpsOrNull(s.storefrontContactUrl),
     featuredIds,
+    templateId: resolveTemplateId(s.storefrontTemplate),
+    currency: (s.storefrontCurrency || "INR").toUpperCase(),
+    checkoutEnabled: s.storefrontCheckoutEnabled === true,
   };
 }
