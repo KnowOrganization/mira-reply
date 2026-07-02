@@ -1,7 +1,12 @@
-// Demo data for /s/preview/[template] — PUBLIC, no auth, no DB.
-// All 10 template previews share identical data so they are visually comparable.
+// Shared fallback demo data for /s/preview/[template] — PUBLIC, no auth, no DB.
+// Per-template curated catalogs live in ./sets/*; unknown ids fall back here.
 import type { StorefrontSettingsInput } from "@shaiz/shared";
-import type { SfProduct } from "../_templates/_shared/types";
+import type { SfProduct } from "../../_templates/_shared/types";
+
+export type DemoSet = {
+  settings: StorefrontSettingsInput;
+  products: SfProduct[];
+};
 
 export const DEMO_SETTINGS: StorefrontSettingsInput = {
   storefrontTitle: "Aurora Goods",
@@ -109,3 +114,8 @@ export const DEMO_PRODUCTS: SfProduct[] = [
     ctaUrl: null,
   },
 ];
+
+export const FALLBACK_SET: DemoSet = {
+  settings: DEMO_SETTINGS,
+  products: DEMO_PRODUCTS,
+};
